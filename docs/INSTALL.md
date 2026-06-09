@@ -27,7 +27,7 @@ For macOS or Linux, download the matching asset from
 `https://github.com/matingai/crab/releases`, then install the binary:
 
 ```bash
-VERSION=v0.1.0
+VERSION=v0.1.1
 TARGET=aarch64-apple-darwin
 curl -LO "https://github.com/matingai/crab/releases/download/${VERSION}/crab-${VERSION}-${TARGET}.tar.gz"
 tar -xzf "crab-${VERSION}-${TARGET}.tar.gz"

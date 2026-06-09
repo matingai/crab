@@ -7,6 +7,21 @@ and uses semantic versioning once stable release boundaries are established.
 
 ## Unreleased
 
+## 0.1.1
+
+### Changed
+
+- Release archives now build with current GitHub-hosted runner labels for macOS Intel,
+  macOS Apple Silicon, Linux x64, and Windows x64.
+- GitHub Actions workflows use Node 24-compatible action versions.
+
+### Fixed
+
+- PDFKit-backed PDF tests now skip gracefully on CI environments where Swift exists
+  without Apple's PDFKit framework.
+- Local command cancellation now terminates Unix process groups so shell/script child
+  processes are cleaned up reliably.
+
 ### Added
 
 - Public open-source packaging files, including contribution, security, support, conduct,

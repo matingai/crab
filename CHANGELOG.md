@@ -22,6 +22,8 @@ and uses semantic versioning once stable release boundaries are established.
   discussion.
 - English and Chinese FAQ pages plus README no-key trial sections for first-time visitors.
 - English and Chinese install guides plus package metadata for public source installs.
+- Release automation for macOS, Linux, and Windows CLI archives, plus a local package
+  script for single-platform installable builds.
 
 ### Changed
 

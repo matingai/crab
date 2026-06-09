@@ -1,7 +1,8 @@
 # Installing Crab
 
-Crab is early, so source installation is the most reliable path today. Prebuilt binaries
-are not published yet.
+Crab can be installed from source or from GitHub Release CLI archives. Source installation
+is still the most reliable path during early 0.1.x development, but release archives avoid
+the long first compile.
 
 ## Requirements
 
@@ -10,7 +11,35 @@ are not published yet.
 - A model provider only for model-backed runs. The no-key smoke test works without one.
 - Node.js and npm only if you want to run the desktop shell.
 
-## Install From GitHub
+## Install From A GitHub Release
+
+Tagged releases can publish these CLI archives:
+
+| Platform | Asset |
+| --- | --- |
+| macOS Apple Silicon | `crab-vX.Y.Z-aarch64-apple-darwin.tar.gz` |
+| macOS Intel | `crab-vX.Y.Z-x86_64-apple-darwin.tar.gz` |
+| Linux x64 | `crab-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz` |
+| Windows x64 | `crab-vX.Y.Z-x86_64-pc-windows-msvc.zip` |
+
+For macOS or Linux, download the matching asset from
+`https://github.com/matingai/crab/releases`, then install the binary:
+
+```bash
+VERSION=v0.1.0
+TARGET=aarch64-apple-darwin
+curl -LO "https://github.com/matingai/crab/releases/download/${VERSION}/crab-${VERSION}-${TARGET}.tar.gz"
+tar -xzf "crab-${VERSION}-${TARGET}.tar.gz"
+sudo install -m 0755 "crab-${VERSION}-${TARGET}/crab" /usr/local/bin/crab
+crab --help
+```
+
+For Windows, download the `.zip`, expand it, and add the extracted directory to `PATH` or
+move `crab.exe` into a directory already on `PATH`.
+
+Each release archive also includes a `.sha256` checksum file.
+
+## Install From GitHub Source
 
 Install the CLI directly from the public repository:
 
@@ -48,6 +77,17 @@ You can also run without installing:
 cargo run -- debug-context --prompt "Explain the runtime architecture."
 cargo run -- chat
 ```
+
+## Build A Local Release Archive
+
+To generate an installable archive for the current machine:
+
+```bash
+scripts/package-release.sh
+```
+
+The script writes `dist/crab-v<version>-<target>.tar.gz` or `.zip` plus a `.sha256`
+checksum. Set `CRAB_VERSION` or `CRAB_TARGET` to override the default version or target.
 
 ## Configure A Model Provider
 

@@ -47,13 +47,14 @@ Use this order when writing posts, talks, or release notes.
 Keep these assets fresh before a public push:
 
 - README banner and badges;
-- install command and no-key smoke test;
+- release archives, install command, and no-key smoke test;
 - four desktop screenshots in `docs/assets/screenshots/`;
 - one 30-60 second screen recording or GIF;
 - `docs/AGENT_LOOP.md` and `docs/ARCHITECTURE.md`;
 - one no-key CLI demo command;
 - one model-backed demo prompt;
 - FAQ entries for setup, model gateways, safety, and project status;
+- packaged CLI assets for macOS, Linux, and Windows releases;
 - release notes with limitations;
 - GitHub topics from `docs/BADGES_AND_TOPICS.md`;
 - a pinned issue asking for feedback on the agent-loop design.

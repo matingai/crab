@@ -238,6 +238,10 @@ Important safety notes:
 
 ## Installation
 
+Downloadable CLI archives are produced by tagged GitHub releases for macOS Apple Silicon,
+macOS Intel, Linux x64, and Windows x64. See [Installing Crab](docs/INSTALL.md) for the
+asset names and direct install commands.
+
 Install the CLI from GitHub:
 
 ```bash

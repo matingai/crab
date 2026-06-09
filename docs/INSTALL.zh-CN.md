@@ -1,6 +1,7 @@
 # 安装 Crab
 
-Crab 仍处于早期阶段，所以目前最可靠的方式是从源码安装。项目还没有发布预编译二进制。
+Crab 可以从源码安装，也可以从 GitHub Release CLI 压缩包安装。0.1.x 早期阶段源码安装仍然最可靠，
+但 release 压缩包可以避免首次长时间编译。
 
 ## 环境要求
 
@@ -9,7 +10,35 @@ Crab 仍处于早期阶段，所以目前最可靠的方式是从源码安装。
 - 只有执行真实模型请求时才需要模型 provider。无密钥 smoke test 不需要。
 - 只有运行桌面壳时才需要 Node.js 和 npm。
 
-## 从 GitHub 安装
+## 从 GitHub Release 安装
+
+tagged release 可以发布这些 CLI 压缩包：
+
+| 平台 | 文件 |
+| --- | --- |
+| macOS Apple Silicon | `crab-vX.Y.Z-aarch64-apple-darwin.tar.gz` |
+| macOS Intel | `crab-vX.Y.Z-x86_64-apple-darwin.tar.gz` |
+| Linux x64 | `crab-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz` |
+| Windows x64 | `crab-vX.Y.Z-x86_64-pc-windows-msvc.zip` |
+
+macOS 或 Linux 可以从 `https://github.com/matingai/crab/releases` 下载匹配的 asset，
+然后安装二进制：
+
+```bash
+VERSION=v0.1.0
+TARGET=aarch64-apple-darwin
+curl -LO "https://github.com/matingai/crab/releases/download/${VERSION}/crab-${VERSION}-${TARGET}.tar.gz"
+tar -xzf "crab-${VERSION}-${TARGET}.tar.gz"
+sudo install -m 0755 "crab-${VERSION}-${TARGET}/crab" /usr/local/bin/crab
+crab --help
+```
+
+Windows 下载 `.zip` 后解压，把解压目录加入 `PATH`，或者把 `crab.exe` 移到已有的 `PATH`
+目录中。
+
+每个 release 压缩包也会包含对应的 `.sha256` 校验文件。
+
+## 从 GitHub 源码安装
 
 可以直接从公开仓库安装 CLI：
 
@@ -46,6 +75,17 @@ cargo install --path . --locked
 cargo run -- debug-context --prompt "Explain the runtime architecture."
 cargo run -- chat
 ```
+
+## 构建本地 Release 压缩包
+
+为当前机器生成可安装压缩包：
+
+```bash
+scripts/package-release.sh
+```
+
+脚本会写出 `dist/crab-v<version>-<target>.tar.gz` 或 `.zip`，并生成 `.sha256` 校验文件。
+可以用 `CRAB_VERSION` 或 `CRAB_TARGET` 覆盖默认版本或 target。
 
 ## 配置模型 Provider
 

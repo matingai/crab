@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-cli:
+    name: Build CLI (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+            bin_suffix: ""
+          - os: macos-13
+            target: x86_64-apple-darwin
+            archive: tar.gz
+            bin_suffix: ""
+          - os: macos-14
+            target: aarch64-apple-darwin
+            archive: tar.gz
+            bin_suffix: ""
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+            bin_suffix: ".exe"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare Rust
+        run: |
+          rustup default stable
+          rustup target add "${{ matrix.target }}"
+
+      - name: Build
+        run: cargo build --release --locked --target "${{ matrix.target }}"
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${GITHUB_REF_NAME}"
+          if [[ "${version}" == refs/* ]]; then
+            version="dev"
+          fi
+
+          package_name="crab-${version}-${{ matrix.target }}"
+          package_dir="dist/${package_name}"
+          binary="target/${{ matrix.target }}/release/crab${{ matrix.bin_suffix }}"
+
+          mkdir -p "${package_dir}"
+          cp "${binary}" "${package_dir}/"
+          cp README.md LICENSE "${package_dir}/"
+          cp docs/INSTALL.md "${package_dir}/INSTALL.md"
+
+          if [[ "${{ matrix.archive }}" == "zip" ]]; then
+            powershell -NoProfile -Command "Compress-Archive -Path '${package_dir}/*' -DestinationPath 'dist/${package_name}.zip' -Force"
+            archive_path="dist/${package_name}.zip"
+          else
+            tar -czf "dist/${package_name}.tar.gz" -C dist "${package_name}"
+            archive_path="dist/${package_name}.tar.gz"
+          fi
+
+          if command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 "${archive_path}" > "${archive_path}.sha256"
+          else
+            sha256sum "${archive_path}" > "${archive_path}.sha256"
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: crab-${{ github.ref_name }}-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build-cli
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: true
+          generate_release_notes: true
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sha256

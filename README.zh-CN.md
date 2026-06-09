@@ -198,6 +198,9 @@ agent loop 是这个项目真正的中心。Crab 把主 agent 设计成一个面
 
 ## 安装
 
+tagged GitHub releases 会为 macOS Apple Silicon、macOS Intel、Linux x64 和 Windows x64
+生成可下载 CLI 压缩包。asset 名称和直接安装命令见 [安装 Crab](docs/INSTALL.zh-CN.md)。
+
 从 GitHub 安装 CLI：
 
 ```bash

@@ -108,6 +108,7 @@ flowchart LR
 - [Examples](examples/README.md)：可用于演示的 coding、research、browser/PDF 和文档工作流。
 - [Demo Script](docs/DEMO_SCRIPT.md)：短视频/直播演示脚本。
 - [Launch Kit](docs/LAUNCH_KIT.md)：项目定位、发帖文案、文章大纲和发布检查清单。
+- [Promotion Playbook](docs/PROMOTION_PLAYBOOK.md)：推广节奏、渠道打法、社交文案、指标和质疑回应。
 - [Future Vision](docs/FUTURE_VISION.md)：长期路线和未来畅想。
 - [Open-source Privacy Review](docs/OPEN_SOURCE_REVIEW.md)：开源前隐私与仓库卫生检查。
 - [Badges And Topics](docs/BADGES_AND_TOPICS.md)：仓库 tags、labels、badges 和社交预览建议。

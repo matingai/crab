@@ -16,6 +16,10 @@ and uses semantic versioning once stable release boundaries are established.
 - Demo-ready examples, launch copy, and a public demo script for project promotion.
 - A first-run desktop demo state that showcases Crab's goal loop, tool evidence, and
   worker delegation story before a workspace is loaded.
+- A promotion playbook covering launch sequence, channel tactics, social copy, metrics,
+  and objection handling.
+- An agent-loop feedback issue template and public feedback label for launch-driven design
+  discussion.
 
 ### Changed
 

@@ -3,6 +3,9 @@
 This document is a practical promotion kit for Crab. It keeps the public message sharp,
 repeatable, and honest.
 
+For the operational launch sequence, channel-specific tactics, social copy bank, metrics,
+and objection handling, use [Promotion Playbook](PROMOTION_PLAYBOOK.md).
+
 ## One-Line Positioning
 
 Crab is a Rust-native local agent runtime built around a goal-state agent loop, worker

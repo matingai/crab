@@ -18,6 +18,8 @@ evidence, and exposes the whole execution as a stream of structured events.
 - [Demo Script](DEMO_SCRIPT.md): a short walkthrough for recordings and live demos.
 - [Launch Kit](LAUNCH_KIT.md): positioning, channel plan, public posts, article outlines,
   and launch-day checklist.
+- [Promotion Playbook](PROMOTION_PLAYBOOK.md): launch sequence, channel-specific playbooks,
+  reusable copy, metrics, and objection handling.
 - [Future Vision](FUTURE_VISION.md): where the project can go if the current ideas are
   pushed further.
 - [Open-source Privacy Review](OPEN_SOURCE_REVIEW.md): privacy and repository-hygiene notes

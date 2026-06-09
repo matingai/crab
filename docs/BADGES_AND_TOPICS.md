@@ -61,6 +61,7 @@ architecture keywords, and one screenshot strip from `docs/assets/screenshots/`.
 The canonical label list is in `.github/labels.yml`. The most important labels for public
 project identity are:
 
+- `type: feedback`
 - `area: agent-loop`
 - `area: delegation`
 - `area: tools`
@@ -70,3 +71,6 @@ project identity are:
 
 These labels make the project look organized while also nudging contributors toward the
 ideas that make Crab different.
+
+The `Agent loop feedback` issue template should be used for design discussion around goal
+state, worker handoff, tool evidence, and approval boundaries.

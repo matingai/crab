@@ -1,0 +1,60 @@
+name: Agent loop feedback
+description: Discuss goal-state control, worker delegation, tool evidence, or approval boundaries
+title: "[Agent Loop]: "
+labels: ["type: feedback", "area: agent-loop", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for design feedback rather than bug reports. The most useful issues compare Crab's current loop against a concrete workflow or runtime tradeoff.
+  - type: dropdown
+    id: topic
+    attributes:
+      label: Feedback topic
+      multiple: true
+      options:
+        - goal-state design
+        - worker delegation
+        - tool evidence handling
+        - approval boundaries
+        - context compression or recovery
+        - desktop timeline
+        - local state or memory
+        - model/provider routing
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: observation
+    attributes:
+      label: Observation
+      description: What did you notice, question, or disagree with?
+      placeholder: The main loop should keep ... because ...
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Workflow or example
+      description: Describe the task, prompt, repo, document, or agent workflow behind the feedback.
+      placeholder: I tried / imagined a workflow where ...
+  - type: textarea
+    id: tradeoff
+    attributes:
+      label: Tradeoff
+      description: What would improve, and what might get worse?
+      placeholder: This may improve reliability, but it could increase context pressure.
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested direction
+      description: Optional proposal, API shape, prompt shape, UI behavior, or related project to compare.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I removed private prompts, credentials, logs, and personal data.
+          required: true
+        - label: I checked the README and docs/AGENT_LOOP.md first.
+          required: false

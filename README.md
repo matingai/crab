@@ -328,6 +328,14 @@ model:
   # Prefer OPENAI_API_KEY instead of storing api_key here.
 ```
 
+Bundled repository skills are enabled by default. Minimal stores, tests, or downstream
+embeddings can disable them explicitly:
+
+```yaml
+skills:
+  include_bundled: false
+```
+
 The `.hermes-agent-rs/` directory is intentionally ignored by Git. It is a legacy-compatible
 runtime path and may be renamed in a future breaking release.
 

@@ -14,6 +14,19 @@ and uses semantic versioning once stable release boundaries are established.
 - CI and dependency update configuration for the public repository.
 - Recommended GitHub labels, topics, and repository presentation guidance.
 
+### Changed
+
+- CI now runs the full locked Rust test suite after the existing test failures were fixed.
+
+### Fixed
+
+- Preserved context-compaction summaries when rebuilding retry requests after model context
+  overflow errors.
+- Kept short retry context injections from being dropped by the minimum context block
+  budget.
+- Added a `skills.include_bundled` configuration switch so tests and minimal local stores
+  can opt out of repository-bundled skills without changing production defaults.
+
 ## 0.1.0
 
 ### Added

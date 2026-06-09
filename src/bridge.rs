@@ -1297,6 +1297,11 @@ mod tests {
     #[test]
     fn bridge_lists_skills() {
         let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("config.yaml"),
+            "skills:\n  include_bundled: false\n",
+        )
+        .expect("write config");
         let store = SkillStore::new(tmp.path()).expect("store");
         store
             .save_with_metadata(

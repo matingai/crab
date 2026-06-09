@@ -291,6 +291,13 @@ model:
   # 推荐使用 OPENAI_API_KEY，而不是在这里保存 api_key。
 ```
 
+仓库内置 skills 默认启用。测试、极简本地 store 或下游嵌入场景可以显式关闭：
+
+```yaml
+skills:
+  include_bundled: false
+```
+
 `.hermes-agent-rs/` 已被 Git 忽略。它是当前兼容运行时目录，未来 breaking release 可以再迁移为
 Crab 命名。
 

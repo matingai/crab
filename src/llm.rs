@@ -493,8 +493,7 @@ impl OpenAiCompatClient {
 
         if self.base_url == "mock://context-overflow-retry" {
             let has_summary = messages.iter().any(|message| {
-                message.role == "system"
-                    && message.content_text().starts_with("[CONTEXT COMPACTION]")
+                message.role == "system" && message.content_text().contains("[CONTEXT COMPACTION]")
             });
             if !has_summary {
                 return Some(Err(anyhow::anyhow!(

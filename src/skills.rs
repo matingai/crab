@@ -135,6 +135,8 @@ struct RootConfig {
 #[derive(Debug, Clone, Default, Deserialize)]
 struct SkillsConfig {
     #[serde(default)]
+    include_bundled: Option<bool>,
+    #[serde(default)]
     disabled: Vec<String>,
     #[serde(default)]
     platform_disabled: BTreeMap<String, Vec<String>>,
@@ -226,6 +228,7 @@ impl SkillStore {
 
         let config = load_root_config(data_dir.as_ref())?;
         let SkillsConfig {
+            include_bundled,
             disabled,
             platform_disabled,
             external_dirs,
@@ -242,9 +245,12 @@ impl SkillStore {
             }
             roots.push(path);
         }
-        let bundled_root = bundled_skills_root();
-        if bundled_root.is_dir() && !roots.iter().any(|existing| existing == &bundled_root) {
-            roots.push(bundled_root);
+        let include_bundled = include_bundled.unwrap_or(true);
+        if include_bundled {
+            let bundled_root = bundled_skills_root();
+            if bundled_root.is_dir() && !roots.iter().any(|existing| existing == &bundled_root) {
+                roots.push(bundled_root);
+            }
         }
 
         let normalized_platform = platform
@@ -1619,6 +1625,22 @@ mod tests {
     use super::{SkillActivation, SkillQueryContext, SkillStore};
     use std::fs;
 
+    fn isolated_store(data_dir: &std::path::Path) -> SkillStore {
+        let config_path = data_dir.join("config.yaml");
+        if !config_path.exists() {
+            fs::write(&config_path, "skills:\n  include_bundled: false\n").expect("write config");
+        }
+        SkillStore::new(data_dir).expect("store")
+    }
+
+    fn isolated_store_with_platform(data_dir: &std::path::Path, platform: &str) -> SkillStore {
+        let config_path = data_dir.join("config.yaml");
+        if !config_path.exists() {
+            fs::write(&config_path, "skills:\n  include_bundled: false\n").expect("write config");
+        }
+        SkillStore::new_with_platform(data_dir, Some(platform)).expect("store")
+    }
+
     fn write_skill(
         root: &std::path::Path,
         category: &str,
@@ -1651,7 +1673,7 @@ mod tests {
     #[test]
     fn saves_and_lists_skills() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let store = SkillStore::new(tmp.path()).expect("store");
+        let store = isolated_store(tmp.path());
         store
             .save_with_metadata(
                 "coding",
@@ -1689,7 +1711,7 @@ mod tests {
     #[test]
     fn searches_matching_skills() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let store = SkillStore::new(tmp.path()).expect("store");
+        let store = isolated_store(tmp.path());
         store
             .save(
                 "coding",
@@ -1717,7 +1739,7 @@ mod tests {
     #[test]
     fn search_respects_activation_requirements() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let store = SkillStore::new(tmp.path()).expect("store");
+        let store = isolated_store(tmp.path());
         store
             .save_with_metadata(
                 "coding",
@@ -1752,7 +1774,7 @@ mod tests {
     #[test]
     fn search_filters_mismatched_task_kind() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let store = SkillStore::new(tmp.path()).expect("store");
+        let store = isolated_store(tmp.path());
         store
             .save_with_metadata(
                 "docs",
@@ -1804,8 +1826,7 @@ mod tests {
             &["docx", "word", "document"],
         );
 
-        let matches = SkillStore::new(tmp.path())
-            .expect("store")
+        let matches = isolated_store(tmp.path())
             .search("Please update revenue.xlsx and add a new summary sheet", 3)
             .expect("search");
         assert_eq!(matches[0].document.summary.name, "xlsx-edit");
@@ -1830,8 +1851,7 @@ mod tests {
             &["pptx", "powerpoint", "presentation", "slides"],
         );
 
-        let block = SkillStore::new(tmp.path())
-            .expect("store")
+        let block = isolated_store(tmp.path())
             .build_context_block(
                 "Please review this pitch deck.pptx and summarize the slides",
                 3,
@@ -1853,8 +1873,7 @@ mod tests {
             &["docx", "word", "document"],
         );
 
-        let block = SkillStore::new(tmp.path())
-            .expect("store")
+        let block = isolated_store(tmp.path())
             .build_brief_context_block_with_context("Please update this contract.docx", 3, None)
             .expect("context")
             .expect("some context");
@@ -1888,8 +1907,7 @@ mod tests {
             &["pptx", "powerpoint", "presentation", "slides"],
         );
 
-        let matches = SkillStore::new(tmp.path())
-            .expect("store")
+        let matches = isolated_store(tmp.path())
             .search("Create a pitch deck for our product launch", 3)
             .expect("search");
         assert_eq!(matches[0].document.summary.name, "slidev-deck");
@@ -1920,8 +1938,7 @@ mod tests {
             &["pptx", "powerpoint", "presentation", "slides"],
         );
 
-        let block = SkillStore::new(tmp.path())
-            .expect("store")
+        let block = isolated_store(tmp.path())
             .build_context_block("Please create a presentation for next week's launch", 3)
             .expect("context")
             .expect("some context");
@@ -1959,7 +1976,7 @@ Inspect ownership.
         )
         .expect("write");
 
-        let store = SkillStore::new(tmp.path()).expect("store");
+        let store = isolated_store(tmp.path());
         let skills = store.list().expect("list");
         assert_eq!(skills.len(), 1);
         assert_eq!(
@@ -2013,13 +2030,13 @@ description: Review rust
         fs::write(
             tmp.path().join("config.yaml"),
             format!(
-                "skills:\n  disabled: [rust-review]\n  external_dirs:\n    - {}\n",
+                "skills:\n  include_bundled: false\n  disabled: [rust-review]\n  external_dirs:\n    - {}\n",
                 external.path().display()
             ),
         )
         .expect("write config");
 
-        let store = SkillStore::new(tmp.path()).expect("store");
+        let store = isolated_store(tmp.path());
         let skills = store.list().expect("list");
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "docker-audit");
@@ -2044,11 +2061,11 @@ description: Review rust
         .expect("write second");
         fs::write(
             tmp.path().join("config.yaml"),
-            "skills:\n  platform_disabled:\n    desktop: [hide-me]\n",
+            "skills:\n  include_bundled: false\n  platform_disabled:\n    desktop: [hide-me]\n",
         )
         .expect("write config");
 
-        let store = SkillStore::new_with_platform(tmp.path(), Some("desktop")).expect("store");
+        let store = isolated_store_with_platform(tmp.path(), "desktop");
         let skills = store.list().expect("list");
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "keep-me");
@@ -2076,7 +2093,7 @@ description: Review rust
         )
         .expect("write script");
 
-        let store = SkillStore::new(tmp.path()).expect("store");
+        let store = isolated_store(tmp.path());
         let root_view = store
             .view_with_file("rust-review", Some("coding"), None)
             .expect("root view");
@@ -2103,7 +2120,7 @@ description: Review rust
         .expect("write skill");
         fs::write(tmp.path().join("secret.env"), "SECRET=1").expect("write secret");
 
-        let store = SkillStore::new(tmp.path()).expect("store");
+        let store = isolated_store(tmp.path());
         let error = store
             .view_with_file("rust-review", Some("coding"), Some("../secret.env"))
             .expect_err("expected traversal error");
@@ -2113,7 +2130,7 @@ description: Review rust
     #[test]
     fn patches_skill_body() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let store = SkillStore::new(tmp.path()).expect("store");
+        let store = isolated_store(tmp.path());
         store
             .save(
                 "coding",
@@ -2142,7 +2159,7 @@ description: Review rust
     #[test]
     fn writes_and_removes_supporting_files() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let store = SkillStore::new(tmp.path()).expect("store");
+        let store = isolated_store(tmp.path());
         store
             .save(
                 "coding",
@@ -2173,7 +2190,7 @@ description: Review rust
     #[test]
     fn blocks_supporting_file_traversal() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let store = SkillStore::new(tmp.path()).expect("store");
+        let store = isolated_store(tmp.path());
         store
             .save(
                 "coding",
@@ -2193,7 +2210,7 @@ description: Review rust
     #[test]
     fn deletes_skill_directory() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let store = SkillStore::new(tmp.path()).expect("store");
+        let store = isolated_store(tmp.path());
         store
             .save(
                 "coding",
@@ -2216,7 +2233,7 @@ description: Review rust
         fs::create_dir_all(&skill_dir).expect("mkdir skill");
         fs::write(
             tmp.path().join("config.yaml"),
-            "skills:\n  config:\n    wiki.path: /tmp/wiki\n",
+            "skills:\n  include_bundled: false\n  config:\n    wiki.path: /tmp/wiki\n",
         )
         .expect("write config");
         fs::write(
@@ -2241,7 +2258,7 @@ metadata:
         )
         .expect("write skill");
 
-        let store = SkillStore::new(tmp.path()).expect("store");
+        let store = isolated_store(tmp.path());
         let view = store
             .view_with_file("deploy", Some("ops"), None)
             .expect("view");

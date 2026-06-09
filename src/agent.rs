@@ -2900,6 +2900,17 @@ impl Agent {
                         return Err(error);
                     }
                     messages = self.rebuild_retry_messages(&messages, user_input);
+                    self.persist_debug_context_snapshot(
+                        "assistant_request_retry",
+                        Some(iteration),
+                        None,
+                        Some(&runtime.model),
+                        Some(estimate_messages_tokens(&messages)),
+                        &messages,
+                        None,
+                        None,
+                        tool_definitions.len(),
+                    );
                     recovery_attempts += 1;
                 }
             }
@@ -3273,14 +3284,11 @@ impl Agent {
         previous_messages: &[ChatMessage],
         user_input: &str,
     ) -> Vec<ChatMessage> {
-        let prompt_history =
-            trim_prompt_history(&self.session.history, PROMPT_HISTORY_MAX_USER_TURNS);
-        let mut rebuilt = Vec::with_capacity(prompt_history.len() + 1);
-        if let Some(system_message) = previous_messages.first().cloned() {
-            rebuilt.push(system_message);
-        }
-        rebuilt.extend(prompt_history);
-
+        let system_prompt = previous_messages
+            .first()
+            .filter(|message| message.role == "system")
+            .map(ChatMessage::content_text)
+            .unwrap_or_else(|| build_system_prompt(&self.config));
         let injected_suffix = previous_messages
             .last()
             .filter(|message| message.role == "user")
@@ -3291,14 +3299,21 @@ impl Agent {
                     .map(str::to_string)
             })
             .unwrap_or_default();
-
-        if !injected_suffix.is_empty()
-            && let Some(last_user_idx) = rebuilt.iter().rposition(|message| message.role == "user")
-            && let Some(last_user_message) = rebuilt.get_mut(last_user_idx)
-        {
-            let merged = format!("{}{}", last_user_message.content_text(), injected_suffix);
-            last_user_message.content = Some(Value::String(merged));
-        }
+        let injections = if injected_suffix.is_empty() {
+            Vec::new()
+        } else {
+            vec![ContextInjection {
+                label: "retry_context",
+                content: injected_suffix.trim().to_string(),
+                max_chars: injected_suffix.len().max(CONTEXT_INJECTION_MIN_BLOCK_CHARS),
+            }]
+        };
+        let (rebuilt, _) = assemble_turn_messages(
+            &system_prompt,
+            &self.session.history,
+            &injections,
+            usize::MAX,
+        );
 
         rebuilt
     }
@@ -5596,7 +5611,17 @@ fn trim_prompt_history(history: &[ChatMessage], max_user_turns: usize) -> Vec<Ch
         return history.to_vec();
     };
 
-    history[start_idx..].to_vec()
+    let mut trimmed = history[..start_idx]
+        .iter()
+        .filter(|message| is_context_compaction_message(message))
+        .cloned()
+        .collect::<Vec<_>>();
+    trimmed.extend_from_slice(&history[start_idx..]);
+    trimmed
+}
+
+fn is_context_compaction_message(message: &ChatMessage) -> bool {
+    message.role == "system" && message.content_text().contains("[CONTEXT COMPACTION]")
 }
 
 fn continuation_prefix_digest(history: &[ChatMessage]) -> Option<String> {
@@ -6622,7 +6647,7 @@ mod tests {
             "done",
             Some("summary=Compiler errors cluster in src/types"),
         );
-        assert!(summarized.contains("summarized for the main loop"));
+        assert!(summarized.contains("Goal-relevant summary:"));
         assert!(summarized.contains("Compiler errors cluster in src/types"));
 
         let delegate = summarize_tool_result_for_history(

@@ -272,6 +272,11 @@ mod tests {
         let emitter = RecordingTauriEmitter::new();
         let bridge = TauriEventBridge::new(emitter);
         let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("config.yaml"),
+            "skills:\n  include_bundled: false\n",
+        )
+        .expect("write config");
         let skills = bridge
             .list_skills(tmp.path().to_path_buf())
             .expect("skills");

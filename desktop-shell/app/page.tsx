@@ -559,7 +559,8 @@ type CronJobFormState = {
   enabled: boolean;
 };
 
-const storageKey = "hermes-agent-rs.desktop.preferences";
+const storageKey = "crab.desktop.preferences";
+const legacyStorageKey = "hermes-agent-rs.desktop.preferences";
 const defaultCronTickIntervalSeconds = 60;
 
 function emptyCronJobFormState(): CronJobFormState {
@@ -593,7 +594,8 @@ function loadPreferences(): Preferences {
     return defaultConfig();
   }
   try {
-    const raw = window.localStorage.getItem(storageKey);
+    const raw =
+      window.localStorage.getItem(storageKey) ?? window.localStorage.getItem(legacyStorageKey);
     if (!raw) {
       return defaultConfig();
     }
@@ -3304,6 +3306,7 @@ export default function Page() {
       return;
     }
     window.localStorage.setItem(storageKey, JSON.stringify(localPreferencePayload(config)));
+    window.localStorage.removeItem(legacyStorageKey);
   }, [config, isClient]);
 
   useEffect(() => {

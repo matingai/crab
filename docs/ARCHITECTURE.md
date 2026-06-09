@@ -1,6 +1,6 @@
 # Architecture
 
-Hermes Agent RS is organized as a reusable Rust runtime with multiple surfaces around it.
+Crab is organized as a reusable Rust runtime with multiple surfaces around it.
 The CLI and desktop shell are clients of the same core. Tools, skills, memory, sessions,
 and delegated runs are part of the runtime rather than isolated UI features.
 
@@ -84,7 +84,8 @@ optional terminal tool.
 
 ## Local State
 
-The runtime keeps state local by default. The workspace data directory is usually:
+The runtime keeps state local by default. The workspace data directory currently uses the
+legacy-compatible path:
 
 ```text
 <workspace>/.hermes-agent-rs
@@ -92,6 +93,9 @@ The runtime keeps state local by default. The workspace data directory is usuall
 
 This local state can include sessions, memory, skills, archive data, approvals, cron jobs,
 goal state, solve traces, delegated run records, and runtime configuration.
+
+The path keeps compatibility with the original prototype and may move to a Crab-named
+directory in a future breaking release.
 
 The design goal is not to store everything forever. The goal is to preserve the right
 working state so the agent can continue a task with continuity instead of pretending every

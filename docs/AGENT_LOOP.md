@@ -1,6 +1,6 @@
 # Agent Loop
 
-The agent loop is the most important part of Hermes Agent RS. It is the reason the project
+The agent loop is the most important part of Crab. It is the reason the project
 is more than a chat UI with tools.
 
 The main agent is designed as a goal-solving control model. It tracks the active objective,
@@ -84,8 +84,8 @@ the transcript.
 
 ## Tool Results As Evidence
 
-Raw tool output can be too large, too noisy, or too local to be useful forever. Hermes
-Agent RS therefore treats tool results as observations that can be summarized and routed
+Raw tool output can be too large, too noisy, or too local to be useful forever. Crab
+therefore treats tool results as observations that can be summarized and routed
 into the right state:
 
 - Conversation history for user-visible continuity.
@@ -133,4 +133,4 @@ operating systems for goals. The main loop holds the goal, tools provide grounde
 workers expand capacity, memory preserves learning, and the desktop shell makes the
 process visible.
 
-That is the heart of Hermes Agent RS.
+That is the heart of Crab.

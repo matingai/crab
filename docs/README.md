@@ -1,9 +1,9 @@
-# Hermes Agent RS Documentation
+# Crab Documentation
 
-This directory explains the engineering ideas behind Hermes Agent RS beyond the quick
+This directory explains the engineering ideas behind Crab beyond the quick
 start material in the root README.
 
-Hermes Agent RS is not just a chat wrapper. It is an attempt to build a Rust-native local
+Crab (中文名：螃蟹) is not just a chat wrapper. It is an attempt to build a Rust-native local
 agent runtime where the main agent behaves like a goal-solving control model: it tracks
 the objective, maintains compact working state, delegates bounded subtasks, integrates
 evidence, and exposes the whole execution as a stream of structured events.
@@ -22,7 +22,7 @@ evidence, and exposes the whole execution as a stream of structured events.
 
 ## Core Thesis
 
-Most agent prototypes start with a prompt and add tools around it. Hermes Agent RS starts
+Most agent prototypes start with a prompt and add tools around it. Crab starts
 from the opposite direction: it treats the agent loop as the product.
 
 The model is only one participant in the system. Around it there is a durable workspace

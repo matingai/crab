@@ -2,8 +2,8 @@ use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
-#[command(name = "hermes-agent-rs")]
-#[command(about = "A minimal Rust port inspired by Hermes Agent")]
+#[command(name = "crab")]
+#[command(about = "Crab, a minimal Rust agent runtime inspired by Hermes Agent")]
 pub struct Cli {
     #[command(flatten)]
     pub global: GlobalOptions,

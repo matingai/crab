@@ -177,10 +177,10 @@
       "description": "Permission identifier",
       "oneOf": [
         {
-          "description": "Allows the desktop frontend to invoke Hermes Agent RS backend commands.",
+          "description": "Allows the desktop frontend to invoke Crab backend commands.",
           "type": "string",
           "const": "hermes-agent-default",
-          "markdownDescription": "Allows the desktop frontend to invoke Hermes Agent RS backend commands."
+          "markdownDescription": "Allows the desktop frontend to invoke Crab backend commands."
         },
         {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",

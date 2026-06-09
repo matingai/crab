@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Hermes Agent RS",
+  "productName": "Crab",
   "version": "0.1.0",
-  "identifier": "com.hermes-agent-rs.desktop",
+  "identifier": "com.matingai.crab.desktop",
   "build": {
     "beforeBuildCommand": "cd .. && npm run build",
     "beforeDevCommand": "cd .. && npm run dev",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Hermes Agent RS",
+        "title": "Crab",
         "width": 1320,
         "height": 900,
         "minWidth": 1280,

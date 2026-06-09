@@ -20,7 +20,8 @@ type StoredWorkspaceListEntry = {
   expanded?: boolean;
 };
 
-const workspaceListStorageKey = "hermes-agent-rs.desktop.workspaces";
+const workspaceListStorageKey = "crab.desktop.workspaces";
+const legacyWorkspaceListStorageKey = "hermes-agent-rs.desktop.workspaces";
 
 export function workspaceEntryKey(workspaceRoot: string, dataDir = ""): string {
   return `${workspaceRoot.trim()}::${dataDir.trim()}`;
@@ -72,7 +73,9 @@ export function loadWorkspaceList(): WorkspaceListEntry[] {
     return [];
   }
   try {
-    const raw = window.localStorage.getItem(workspaceListStorageKey);
+    const raw =
+      window.localStorage.getItem(workspaceListStorageKey) ??
+      window.localStorage.getItem(legacyWorkspaceListStorageKey);
     if (!raw) {
       return [];
     }
@@ -102,4 +105,5 @@ export function storeWorkspaceList(entries: WorkspaceListEntry[]) {
     expanded: entry.expanded,
   }));
   window.localStorage.setItem(workspaceListStorageKey, JSON.stringify(payload));
+  window.localStorage.removeItem(legacyWorkspaceListStorageKey);
 }

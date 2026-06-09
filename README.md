@@ -1,4 +1,4 @@
-# Hermes Agent RS
+# Crab
 
 [简体中文](README.zh-CN.md)
 
@@ -8,11 +8,11 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=matingai/crab&type=Date&theme=dark" />
     <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=matingai/crab&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=matingai/crab&type=Date" />
+    <img alt="Crab Star History Chart" src="https://api.star-history.com/svg?repos=matingai/crab&type=Date" />
   </picture>
 </a>
 
-Hermes Agent RS is an experimental Rust agent runtime and desktop shell inspired by
+Crab (Chinese name: 螃蟹) is an experimental Rust agent runtime and desktop shell inspired by
 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent). It is not a
 line-by-line port. The project focuses on a reusable local agent core, an explicit tool
 registry, persistent workspace state, and desktop integration through Electron or Tauri.
@@ -22,7 +22,7 @@ study, extend, or embed a local coding/research agent in Rust.
 
 ## What Makes It Different
 
-Hermes Agent RS is built around a local runtime rather than a single chat UI. The CLI,
+Crab is built around a local runtime rather than a single chat UI. The CLI,
 desktop shell, tools, memory, skills, and bridge APIs all sit on top of the same Rust core,
 so the project can be used as a standalone assistant, a desktop app backend, or an
 embedding target for other local automation surfaces.
@@ -60,7 +60,8 @@ Key project characteristics:
 - Streaming event model for UI integrations and desktop shells.
 - Tool-calling loop with workspace-scoped file, Git, browser, PDF, Office, memory, skill,
   MCP, cron, and delegation tools.
-- Local session persistence under `.hermes-agent-rs/`.
+- Local session persistence under the current compatibility data directory,
+  `.hermes-agent-rs/`.
 - Project context injection from files such as `AGENTS.md`, `CLAUDE.md`, `.hermes.md`,
   `.cursorrules`, and `.cursor/rules/*.mdc`.
 - Local memory and skills systems designed for per-turn recall instead of dumping the
@@ -104,7 +105,7 @@ flowchart LR
 
 ## Agent Loop Design
 
-The agent loop is the center of the project. Hermes Agent RS treats the main agent as a
+The agent loop is the center of the project. Crab treats the main agent as a
 goal-solving control model rather than a single request-response wrapper around an LLM.
 Its job is to keep track of the user's objective, maintain a compact working state,
 choose the next meaningful action, delegate bounded work when useful, and integrate the
@@ -237,6 +238,8 @@ cargo run -- --enable-shell chat
 
 ## CLI Commands
 
+The installed binary name is `crab`.
+
 ```text
 chat               Run an interactive session or a one-shot prompt
 debug-context      Inspect the assembled prompt context
@@ -258,13 +261,13 @@ passing API keys directly on the command line.
 ## Configuration
 
 The runtime resolves configuration from CLI flags, environment variables, and the local
-data directory. By default the data directory is:
+data directory. In the current 0.1.x compatibility line, the default data directory is:
 
 ```text
 <workspace>/.hermes-agent-rs
 ```
 
-Useful environment variables:
+Useful environment variables currently keep the `HERMES_RS_*` compatibility prefix:
 
 | Variable | Purpose |
 | --- | --- |
@@ -290,7 +293,8 @@ model:
   # Prefer OPENAI_API_KEY instead of storing api_key here.
 ```
 
-The `.hermes-agent-rs/` directory is intentionally ignored by Git.
+The `.hermes-agent-rs/` directory is intentionally ignored by Git. It is a legacy-compatible
+runtime path and may be renamed in a future breaking release.
 
 ## Desktop Shell
 
@@ -382,4 +386,4 @@ from a fresh repository or rewriting history after review.
 
 ## License
 
-Hermes Agent RS is released under the [MIT License](LICENSE).
+Crab is released under the [MIT License](LICENSE).

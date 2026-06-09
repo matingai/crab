@@ -165,7 +165,7 @@ fn init_tracing() {
 }
 
 async fn run_repl(agent: &mut Agent) -> Result<()> {
-    println!("Hermes Agent RS");
+    println!("Crab");
     println!("session: {}", agent.session_id());
     println!("Type /exit to quit, /clear to reset the in-memory conversation.");
 

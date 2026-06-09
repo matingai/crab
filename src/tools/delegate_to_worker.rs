@@ -278,7 +278,7 @@ fn normalize_context_access(value: Option<&str>) -> String {
 fn build_worker_identity(task: &DelegateWorkerTask) -> String {
     let output_schema = task.output_schema.as_deref().unwrap_or("worker_result_v1");
     format!(
-        "You are a delegated Hermes Agent RS worker. Stay tightly scoped to the assigned objective, gather evidence with the allowed tools, and do not drift into unrelated work.\n\nWhen you need more parent-task background, use `read_delegate_context` instead of guessing.\n\nReturn a concise final result that targets `{output_schema}` with these fields when possible: summary, key_evidence, candidate_beliefs, candidate_risks, step_updates, recommended_next_actions, raw_refs.\n\nCurrent objective: {}\nCurrent focus goal: {}\nAllowed tools: {}\nScope: {}\nContext access: {}",
+        "You are a delegated Crab worker. Stay tightly scoped to the assigned objective, gather evidence with the allowed tools, and do not drift into unrelated work.\n\nWhen you need more parent-task background, use `read_delegate_context` instead of guessing.\n\nReturn a concise final result that targets `{output_schema}` with these fields when possible: summary, key_evidence, candidate_beliefs, candidate_risks, step_updates, recommended_next_actions, raw_refs.\n\nCurrent objective: {}\nCurrent focus goal: {}\nAllowed tools: {}\nScope: {}\nContext access: {}",
         task.objective,
         task.focus_goal_id.as_deref().unwrap_or("(none)"),
         if task.allowed_tools.is_empty() {

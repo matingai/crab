@@ -44,5 +44,5 @@ pub fn run() {
             commands::pick_workspace_folder,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running hermes-agent-rs desktop shell");
+        .expect("error while running crab desktop shell");
 }

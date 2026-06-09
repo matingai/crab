@@ -1,4 +1,4 @@
 [[permission]]
 identifier = "hermes-agent-default"
-description = "Allows the desktop frontend to invoke Hermes Agent RS backend commands."
+description = "Allows the desktop frontend to invoke Crab backend commands."
 commands.allow = ["desktop_info", "run_agent", "run_cron_job", "start_cron_scheduler", "stop_cron_scheduler", "cron_scheduler_status", "resume_approval", "clear_session", "stop_session", "list_approvals", "resolve_approval", "list_skills", "view_skill", "view_workspace_file", "open_workspace_file", "browser_stream_endpoint", "list_workspace_tree", "extensions_overview", "list_providers", "resolve_provider_status", "load_shared_provider_config", "save_shared_provider_config", "save_cron_job", "delete_cron_job", "inspect_mcp_server", "list_sessions", "load_session", "list_delegate_runs", "cancel_delegate_run", "retry_delegate_run", "pick_workspace_folder"]

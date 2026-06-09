@@ -1,6 +1,6 @@
 # Future Vision
 
-Hermes Agent RS can grow into a local agent operating environment: a place where coding,
+Crab can grow into a local agent operating environment: a place where coding,
 research, documents, browser workflows, memory, skills, and delegated workers all meet
 around a durable goal state.
 
@@ -90,7 +90,7 @@ The agent should feel like a system the user can inspect, interrupt, and steer.
 
 ## 6. Better Document And Knowledge Work
 
-Hermes Agent RS already has Office, PDF, browser, and Slidev paths. This can become a
+Crab already has Office, PDF, browser, and Slidev paths. This can become a
 major differentiator.
 
 Future workflows could include:
@@ -131,6 +131,6 @@ The larger vision is a local operating layer for agentic work:
 - UI remains inspectable.
 - The user keeps control.
 
-If this works, Hermes Agent RS becomes more than a project. It becomes a practical answer
+If this works, Crab becomes more than a project. It becomes a practical answer
 to a bigger question: what should a serious local agent runtime look like when it is built
 for continuity instead of spectacle?

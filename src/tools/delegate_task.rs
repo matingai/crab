@@ -91,7 +91,7 @@ impl Tool for DelegateTaskTool {
             session_id: Some(session_id.clone()),
             max_iterations,
             system_prompt_override: Some(
-                "You are a delegated Hermes Agent RS subagent. Focus on the requested subtask only and return a concise result for the parent agent.".to_string(),
+                "You are a delegated Crab subagent. Focus on the requested subtask only and return a concise result for the parent agent.".to_string(),
             ),
             tool_allowlist: None,
             enable_shell_tool: ctx.shell_enabled,

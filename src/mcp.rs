@@ -413,7 +413,7 @@ impl StdioMcpClient {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {},
                     "clientInfo": {
-                        "name": "hermes-agent-rs",
+                        "name": "crab",
                         "version": "0.1.0"
                     }
                 }),

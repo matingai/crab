@@ -931,6 +931,49 @@ dependencies = [
 ]
 
 [[package]]
+name = "crab"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "calamine",
+ "chrono",
+ "clap",
+ "cron",
+ "docx-rs",
+ "futures-util",
+ "office2pdf",
+ "regex",
+ "reqwest 0.12.28",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "walkdir",
+ "zip 2.4.2",
+]
+
+[[package]]
+name = "crab-desktop"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "crab",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tokio",
+]
+
+[[package]]
 name = "crc"
 version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2279,49 +2322,6 @@ name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
-
-[[package]]
-name = "hermes-agent-rs"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.22.1",
- "bytes",
- "calamine",
- "chrono",
- "clap",
- "cron",
- "docx-rs",
- "futures-util",
- "office2pdf",
- "regex",
- "reqwest 0.12.28",
- "rusqlite",
- "serde",
- "serde_json",
- "serde_yaml",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "walkdir",
- "zip 2.4.2",
-]
-
-[[package]]
-name = "hermes-agent-rs-desktop"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64 0.22.1",
- "hermes-agent-rs",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tokio",
-]
 
 [[package]]
 name = "hex"

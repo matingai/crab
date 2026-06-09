@@ -1,4 +1,4 @@
-# Hermes Agent RS Desktop Shell
+# Crab Desktop Shell
 
 这个目录现在是 `Next.js App Router + shadcn 风格组件` 的桌面壳前端，当前同时保留：
 
@@ -47,6 +47,8 @@
 
 ## 事件约定
 
+当前事件协议名仍保留 `hermes://` 兼容前缀，便于已有 Electron/Tauri bridge 代码继续工作：
+
 - `hermes://agent/event`
 - `hermes://agent/done`
 - `hermes://agent/cleared`
@@ -58,7 +60,7 @@
 当前前端已经统一走 `lib/desktop.ts` 的桌面桥抽象：
 
 - 在 Tauri 下动态转发到 `@tauri-apps/api`
-- 在 Electron 下转发到 preload 暴露的 `window.hermesDesktop`
+- 在 Electron 下转发到 preload 暴露的 `window.hermesDesktop` 兼容桥对象
 
 这让桌面壳迁移可以分阶段做，而不需要一口气重写页面。
 
@@ -120,7 +122,8 @@ npm run tauri:release
 注意：
 
 - Electron 现在会通过 Rust `desktop-bridge` 子命令转发大部分 agent/session/runtime 命令
-- 开发态默认优先复用 `../target/debug/hermes-agent-rs`，不存在时回退到 `cargo run -- desktop-bridge`
+- 开发态默认优先复用 `../target/debug/crab`，同时兼容旧二进制 `../target/debug/hermes-agent-rs`；
+  二者都不存在时回退到 `cargo run -- desktop-bridge`
 - 可以通过环境变量 `HERMES_RUST_BRIDGE_BIN` 指定自定义 Rust bridge 可执行文件
 - `pick_workspace_folder` 和 `list_workspace_tree` 仍由 Electron 主进程本地实现
 - `view_workspace_file` 现在也会走 Rust bridge，所以 Electron 下可以复用 Office 运行时转 PDF 预览
@@ -129,6 +132,6 @@ npm run tauri:release
 Tauri backend 检查：
 
 ```bash
-cd hermes-agent-rs
+cd crab
 cargo check --manifest-path desktop-shell/src-tauri/Cargo.toml
 ```

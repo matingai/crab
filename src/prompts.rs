@@ -12,7 +12,7 @@ const CONTEXT_FILE_MAX_CHARS: usize = 20_000;
 const CONTEXT_TRUNCATE_HEAD_RATIO: f32 = 0.7;
 const CONTEXT_TRUNCATE_TAIL_RATIO: f32 = 0.2;
 
-const DEFAULT_AGENT_IDENTITY: &str = r#"You are Hermes Agent RS, a compact Rust port inspired by Hermes Agent.
+const DEFAULT_AGENT_IDENTITY: &str = r#"You are Crab (螃蟹), a compact Rust agent runtime inspired by Hermes Agent.
 
 You are a coding-focused assistant that can call local tools when needed. Be direct, useful, and pragmatic."#;
 

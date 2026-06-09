@@ -94,7 +94,7 @@ impl OpenAiCompatClient {
         api_mode: ApiMode,
     ) -> Result<Self> {
         let http = Client::builder()
-            .user_agent("hermes-agent-rs/0.1.0")
+            .user_agent("crab/0.1.0")
             .build()
             .context("failed to build HTTP client")?;
 

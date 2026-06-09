@@ -1,6 +1,6 @@
 # Project Overview
 
-Hermes Agent RS is a Rust-native local agent runtime for coding, research, document work,
+Crab is a Rust-native local agent runtime for coding, research, document work,
 and desktop-assisted automation. It is inspired by Hermes Agent, but its center of gravity
 is different from a direct port: the project focuses on a durable agent loop, local state,
 tool governance, and desktop integration.
@@ -16,12 +16,12 @@ do not reliably preserve the user's goal. They can stream text, but the UI canno
 the underlying execution. They can run commands, but everything collapses into a transcript
 that grows until the model forgets why it started.
 
-Hermes Agent RS is built around the belief that long-running agent work needs more than a
+Crab is built around the belief that long-running agent work needs more than a
 prompt. It needs a runtime.
 
 ## The Project Thesis
 
-Hermes Agent RS treats the main agent as a goal-solving controller:
+Crab treats the main agent as a goal-solving controller:
 
 - It keeps a compact representation of the active goal.
 - It tracks blockers, evidence, confidence, risks, and next actions.
@@ -44,7 +44,8 @@ The current implementation includes:
 - OpenAI-compatible model clients for Responses API and Chat Completions style endpoints.
 - A tool registry covering files, Git, browser actions, PDF, Office, memory, skills, MCP,
   cron, delegation, and optional terminal execution.
-- Session persistence and local runtime data under `.hermes-agent-rs/`.
+- Session persistence and local runtime data under the current compatibility directory
+  `.hermes-agent-rs/`.
 - Goal state, todos, solve traces, memory, archive records, and delegated run records.
 - Context compression and recovery behavior for long sessions.
 - A bridge API that can be used by a desktop UI.
@@ -56,7 +57,7 @@ agent loop. The interesting work is in how the parts compose.
 
 ## What Makes It Worth Opening
 
-Hermes Agent RS is valuable as an open-source project because it is exploring several hard
+Crab is valuable as an open-source project because it is exploring several hard
 problems in the open:
 
 - How should a local agent remember goals without overloading the model context?

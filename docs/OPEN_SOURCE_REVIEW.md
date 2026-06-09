@@ -34,9 +34,10 @@ documents the highest-risk areas and the cleanup already applied.
 - No direct author name, author email, or local absolute author path was found in the
   tracked working-tree text after cleanup. Generic words such as `author` still appear as
   document metadata fields in code.
-- Local runtime data exists under `.hermes-agent-rs/` and `desktop-shell/.hermes-agent-rs/`.
-  These directories are ignored, but they may contain sessions, logs, archives, provider
-  settings, and model outputs. Keep them out of public commits.
+- Local runtime data exists under the current compatibility paths `.hermes-agent-rs/` and
+  `desktop-shell/.hermes-agent-rs/`. These directories are ignored, but they may contain
+  sessions, logs, archives, provider settings, and model outputs. Keep them out of public
+  commits.
 - Generated research and presentation artifacts exist under `desktop-shell/doc/`,
   `desktop-shell/slides/`, and root-level generated document/deck files. The new ignore
   rules prevent accidental future commits, but local files may still remain on disk.

@@ -3,8 +3,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Hermes Agent RS",
-  description: "Desktop shell for Hermes Agent RS",
+  title: "Crab",
+  description: "Desktop shell for Crab",
 };
 
 export default function RootLayout({

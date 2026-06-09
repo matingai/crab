@@ -12,12 +12,13 @@ const __dirname = path.dirname(__filename);
 const appRoot = path.resolve(__dirname, "..");
 const rustRoot = path.resolve(appRoot, "..");
 const rustManifestPath = path.join(rustRoot, "Cargo.toml");
-const rustDebugBinary = path.join(
-  rustRoot,
-  "target",
-  "debug",
-  process.platform === "win32" ? "hermes-agent-rs.exe" : "hermes-agent-rs",
-);
+const rustDebugBinaryName = process.platform === "win32" ? "crab.exe" : "crab";
+const legacyRustDebugBinaryName =
+  process.platform === "win32" ? "hermes-agent-rs.exe" : "hermes-agent-rs";
+const rustDebugBinaries = [
+  path.join(rustRoot, "target", "debug", rustDebugBinaryName),
+  path.join(rustRoot, "target", "debug", legacyRustDebugBinaryName),
+];
 
 const DEV_URL = process.env.HERMES_ELECTRON_DEV_URL || "http://127.0.0.1:1420";
 const PROD_ENTRY = path.join(appRoot, "out", "index.html");
@@ -1527,14 +1528,16 @@ async function resolveRustBridgeProcess() {
     };
   }
 
-  try {
-    await fs.access(rustDebugBinary);
-    return {
-      command: rustDebugBinary,
-      args: ["desktop-bridge"],
-      cwd: rustRoot,
-    };
-  } catch {}
+  for (const candidate of rustDebugBinaries) {
+    try {
+      await fs.access(candidate);
+      return {
+        command: candidate,
+        args: ["desktop-bridge"],
+        cwd: rustRoot,
+      };
+    } catch {}
+  }
 
   return {
     command: "cargo",

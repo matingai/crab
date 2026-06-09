@@ -1,7 +1,10 @@
 [package]
-name = "hermes-agent-rs"
+name = "crab"
 version = "0.1.0"
 edition = "2024"
+
+[lib]
+name = "hermes_agent_rs"
 
 [dependencies]
 anyhow = "1.0"

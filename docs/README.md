@@ -15,6 +15,9 @@ evidence, and exposes the whole execution as a stream of structured events.
   state fit together.
 - [Agent Loop](AGENT_LOOP.md): the core reasoning loop, goal tracking, tool protocol, and
   worker delegation model.
+- [FAQ](FAQ.md): no-key demo path, model gateways, safety notes, and common launch
+  questions.
+- [FAQ 中文版](FAQ.zh-CN.md): Chinese FAQ for first-time users.
 - [Demo Script](DEMO_SCRIPT.md): a short walkthrough for recordings and live demos.
 - [Launch Kit](LAUNCH_KIT.md): positioning, channel plan, public posts, article outlines,
   and launch-day checklist.

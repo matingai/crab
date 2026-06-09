@@ -20,6 +20,7 @@ and uses semantic versioning once stable release boundaries are established.
   and objection handling.
 - An agent-loop feedback issue template and public feedback label for launch-driven design
   discussion.
+- English and Chinese FAQ pages plus README no-key trial sections for first-time visitors.
 
 ### Changed
 

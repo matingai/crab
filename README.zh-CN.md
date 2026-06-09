@@ -106,6 +106,7 @@ flowchart LR
 - [Architecture](docs/ARCHITECTURE.md)：runtime、bridge、tools、桌面壳与本地状态。
 - [Agent Loop](docs/AGENT_LOOP.md)：目标状态推理、委派、工具证据和恢复机制。
 - [Examples](examples/README.md)：可用于演示的 coding、research、browser/PDF 和文档工作流。
+- [FAQ](docs/FAQ.zh-CN.md)：无密钥试用、模型网关、安全边界和常见推广问题。
 - [Demo Script](docs/DEMO_SCRIPT.md)：短视频/直播演示脚本。
 - [Launch Kit](docs/LAUNCH_KIT.md)：项目定位、发帖文案、文章大纲和发布检查清单。
 - [Promotion Playbook](docs/PROMOTION_PLAYBOOK.md)：推广节奏、渠道打法、社交文案、指标和质疑回应。
@@ -193,6 +194,27 @@ agent loop 是这个项目真正的中心。Crab 把主 agent 设计成一个面
 - 一个兼容 OpenAI Responses API 或 Chat Completions API 的模型 provider。
 - 如果运行桌面壳，需要 Node.js 和 npm。
 - 如果开发 Tauri shell，需要准备对应平台的 Tauri 依赖。
+
+## 无密钥试用
+
+你可以先查看 Crab 如何组装上下文，不需要真实请求模型：
+
+```bash
+cargo run -- debug-context --prompt "Explain how Crab tracks goals and delegates work."
+```
+
+这个命令会打印 system prompt、workspace context、goal-state digest、memory snapshot、runtime
+profile 和工具定义。它是配置 provider 之前最快看到 agent loop 形态的方式。
+
+桌面预览可以运行：
+
+```bash
+cd desktop-shell
+npm install
+npm run dev
+```
+
+然后打开 `http://localhost:1420`，查看首次启动的 Agent Loop demo 态。
 
 ## 快速开始
 

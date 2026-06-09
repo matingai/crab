@@ -52,6 +52,7 @@ Keep these assets fresh before a public push:
 - `docs/AGENT_LOOP.md` and `docs/ARCHITECTURE.md`;
 - one no-key CLI demo command;
 - one model-backed demo prompt;
+- FAQ entries for setup, model gateways, safety, and project status;
 - release notes with limitations;
 - GitHub topics from `docs/BADGES_AND_TOPICS.md`;
 - a pinned issue asking for feedback on the agent-loop design.

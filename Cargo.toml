@@ -27,7 +27,7 @@ tokio = { version = "1.48", features = ["io-util", "macros", "process", "rt-mult
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 rusqlite = { version = "0.37", features = ["bundled"] }
-uuid = { version = "1.18", features = ["v4", "serde"] }
+uuid = { version = "1.23", features = ["v4", "serde"] }
 walkdir = "2.5"
 zip = "2.4"
 

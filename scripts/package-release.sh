@@ -23,10 +23,11 @@ binary="target/${target}/release/crab${bin_suffix}"
 cargo build --release --locked --target "${target}"
 
 rm -rf "${package_dir}"
-mkdir -p "${package_dir}"
+mkdir -p "${package_dir}/docs" "${package_dir}/scripts"
 cp "${binary}" "${package_dir}/"
-cp README.md LICENSE "${package_dir}/"
-cp docs/INSTALL.md "${package_dir}/INSTALL.md"
+cp README.md README.zh-CN.md LICENSE "${package_dir}/"
+cp docs/INSTALL.md docs/INSTALL.zh-CN.md docs/QUICKSTART.md docs/QUICKSTART.zh-CN.md "${package_dir}/docs/"
+cp scripts/install.sh scripts/install.ps1 "${package_dir}/scripts/"
 
 if [[ "${archive_ext}" == "zip" ]]; then
   if command -v zip >/dev/null 2>&1; then

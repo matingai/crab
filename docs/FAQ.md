@@ -2,11 +2,12 @@
 
 ## Do I need an API key to try Crab?
 
-Not for the first smoke test. Use `debug-context` to inspect the prompt, runtime profile,
-skills, memory snapshot, goal-state digest, and tool definitions that Crab would send to a
-model:
+Not for the first smoke test. Run `doctor` first to check local setup without exposing
+secrets, then use `debug-context` to inspect the prompt, runtime profile, skills, memory
+snapshot, goal-state digest, and tool definitions that Crab would send to a model:
 
 ```bash
+cargo run -- doctor
 cargo run -- debug-context --prompt "Explain how Crab tracks goals and delegates work."
 ```
 
@@ -21,8 +22,8 @@ Install from GitHub:
 cargo install --git https://github.com/matingai/crab.git --locked
 ```
 
-Then run `crab --help`. See [Installing Crab](INSTALL.md) for local checkout, provider, and
-desktop shell setup.
+Then run `crab doctor`. See [Installing Crab](INSTALL.md) for local checkout, provider,
+and desktop shell setup.
 
 ## Can I use Cockpit, NewAPI, a local gateway, or a local model?
 

@@ -9,7 +9,15 @@ and uses semantic versioning once stable release boundaries are established.
 
 ### Added
 
+- `crab doctor` local diagnostics for workspace, provider, shell-safety, toolchain, and
+  release hygiene checks.
 - One-command release installers for macOS/Linux and Windows PowerShell.
+- English and Chinese quickstart guides for first-time users and demos.
+
+### Changed
+
+- Release archives now include bilingual README/install/quickstart docs and installer
+  scripts alongside the CLI binary.
 
 ## 0.1.2
 

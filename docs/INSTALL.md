@@ -59,7 +59,7 @@ crab --version
 For Windows, download the `.zip`, expand it, and add the extracted directory to `PATH` or
 move `crab.exe` into a directory already on `PATH`.
 
-Each release archive also includes a `.sha256` checksum file.
+Each release asset has a matching `.sha256` checksum file.
 
 ## Install From GitHub Source
 
@@ -76,10 +76,13 @@ Verify the binary:
 
 ```bash
 crab --help
+crab doctor
 crab debug-context --prompt "Explain how Crab tracks goals and delegates work."
 ```
 
-The second command does not call a model. It prints the context Crab would send to a model.
+`doctor` checks the local workspace, runtime, provider configuration, shell safety, release
+scripts, and optional developer tools without printing secrets. `debug-context` does not
+call a model; it prints the context Crab would send to a model.
 
 ## Install From A Local Checkout
 
@@ -96,6 +99,7 @@ Like the GitHub install path, the first local release build can take several min
 You can also run without installing:
 
 ```bash
+cargo run -- doctor
 cargo run -- debug-context --prompt "Explain the runtime architecture."
 cargo run -- chat
 ```

@@ -2,10 +2,12 @@
 
 ## 试用 Crab 一定需要 API key 吗？
 
-不需要。第一次 smoke test 可以用 `debug-context` 查看 Crab 会如何组装 prompt、runtime
-profile、skills、memory snapshot、goal-state digest 和工具定义，不会真实请求模型：
+不需要。第一次 smoke test 可以先用 `doctor` 检查本地环境且不暴露密钥，再用 `debug-context`
+查看 Crab 会如何组装 prompt、runtime profile、skills、memory snapshot、goal-state digest
+和工具定义，不会真实请求模型：
 
 ```bash
+cargo run -- doctor
 cargo run -- debug-context --prompt "Explain how Crab tracks goals and delegates work."
 ```
 
@@ -20,7 +22,7 @@ cargo run -- debug-context --prompt "Explain how Crab tracks goals and delegates
 cargo install --git https://github.com/matingai/crab.git --locked
 ```
 
-然后运行 `crab --help`。本地 checkout、provider 和桌面壳配置见 [安装 Crab](INSTALL.zh-CN.md)。
+然后运行 `crab doctor`。本地 checkout、provider 和桌面壳配置见 [安装 Crab](INSTALL.zh-CN.md)。
 
 ## 可以用 Cockpit、NewAPI、本地网关或本地模型吗？
 

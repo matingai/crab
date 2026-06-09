@@ -40,25 +40,28 @@ The `debug-context` command is useful for showing Crab's workspace-aware context
 without making a model request:
 
 ```bash
+cargo run -- doctor
 cargo run -- debug-context --prompt "Explain how the Crab agent loop tracks goals and delegates work."
 ```
 
-This is a good first command for screenshots, quick talks, and CI-safe smoke checks.
+`doctor` verifies local setup and redacts secrets. `debug-context` is a good first
+command for screenshots, quick talks, and CI-safe smoke checks.
 
 ## Recommended Demo Order
 
 1. Run `cargo test --locked` to show the runtime is currently green.
-2. Run `cargo run -- profile` to show local capability detection.
-3. Run `cargo run -- debug-context --prompt "..."` to show prompt/context assembly without
+2. Run `cargo run -- doctor` to show local setup, provider, and release hygiene.
+3. Run `cargo run -- profile` to show local capability detection.
+4. Run `cargo run -- debug-context --prompt "..."` to show prompt/context assembly without
    spending model tokens.
-4. Start the desktop renderer:
+5. Start the desktop renderer:
 
    ```bash
    cd desktop-shell
    npm run dev
    ```
 
-5. Open `http://localhost:1420` and show the timeline-oriented interface.
-6. Run one live model-backed workflow from the examples below.
+6. Open `http://localhost:1420` and show the timeline-oriented interface.
+7. Run one live model-backed workflow from the examples below.
 
 For public demos, use demo repositories and sanitized documents only.

@@ -63,10 +63,11 @@ jobs:
           package_dir="dist/${package_name}"
           binary="target/${{ matrix.target }}/release/crab${{ matrix.bin_suffix }}"
 
-          mkdir -p "${package_dir}"
+          mkdir -p "${package_dir}/docs" "${package_dir}/scripts"
           cp "${binary}" "${package_dir}/"
-          cp README.md LICENSE "${package_dir}/"
-          cp docs/INSTALL.md "${package_dir}/INSTALL.md"
+          cp README.md README.zh-CN.md LICENSE "${package_dir}/"
+          cp docs/INSTALL.md docs/INSTALL.zh-CN.md docs/QUICKSTART.md docs/QUICKSTART.zh-CN.md "${package_dir}/docs/"
+          cp scripts/install.sh scripts/install.ps1 "${package_dir}/scripts/"
 
           if [[ "${{ matrix.archive }}" == "zip" ]]; then
             powershell -NoProfile -Command "Compress-Archive -Path '${package_dir}/*' -DestinationPath 'dist/${package_name}.zip' -Force"

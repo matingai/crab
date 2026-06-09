@@ -10,7 +10,7 @@ use hermes_agent_rs::{
     Agent, AgentBridge, AppConfig, BridgeEventEnvelope, BridgeEventSink, Cli, Commands,
     RecordingBridgeEventSink, ResolveProviderStatusRequest, RetryDelegateRunRequest,
     RunAgentRequest, RunCronJobRequest, RuntimeProfile, RuntimeStatus as RuntimeStatusView,
-    SaveCronJobRequest, SessionCommandRequest, build_semantic_memory_digest,
+    SaveCronJobRequest, SessionCommandRequest, build_doctor_report, build_semantic_memory_digest,
     load_session_for_semantic_digest,
 };
 use serde::{Deserialize, Serialize};
@@ -65,6 +65,17 @@ async fn main() -> Result<()> {
                 "{}",
                 serde_json::to_string_pretty::<RuntimeStatusView>(&status)?
             );
+        }
+        Some(Commands::Doctor(args)) => {
+            let status =
+                hermes_agent_rs::runtime::inspect_runtime(&tool_context_from_config(&config))
+                    .await?;
+            let report = build_doctor_report(&config, status);
+            if args.json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                print!("{}", report.render_text());
+            }
         }
         Some(Commands::DesktopBridge) => {
             run_desktop_bridge().await?;

@@ -57,7 +57,7 @@ crab --version
 Windows 下载 `.zip` 后解压，把解压目录加入 `PATH`，或者把 `crab.exe` 移到已有的 `PATH`
 目录中。
 
-每个 release 压缩包也会包含对应的 `.sha256` 校验文件。
+每个 release asset 都会有对应的 `.sha256` 校验文件。
 
 ## 从 GitHub 源码安装
 
@@ -73,10 +73,12 @@ cargo install --git https://github.com/matingai/crab.git --locked
 
 ```bash
 crab --help
+crab doctor
 crab debug-context --prompt "Explain how Crab tracks goals and delegates work."
 ```
 
-第二条命令不会请求模型，只会打印 Crab 会发给模型的上下文。
+`doctor` 会检查本地 workspace、runtime、provider 配置、shell 安全开关、release 脚本和可选开发工具，
+不会打印密钥。`debug-context` 不会请求模型，只会打印 Crab 会发给模型的上下文。
 
 ## 从本地 checkout 安装
 
@@ -93,6 +95,7 @@ cargo install --path . --locked
 也可以不安装，直接运行：
 
 ```bash
+cargo run -- doctor
 cargo run -- debug-context --prompt "Explain the runtime architecture."
 cargo run -- chat
 ```

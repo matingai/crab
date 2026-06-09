@@ -7,6 +7,7 @@ walkthrough.
 
 ```bash
 cargo test --locked
+cargo run -- doctor
 cd desktop-shell
 npm run build
 ```
@@ -38,11 +39,14 @@ Point to:
 Run:
 
 ```bash
+cargo run -- doctor
 cargo run -- debug-context --prompt "Explain how Crab tracks goals and delegates work."
 ```
 
 Narrate:
 
+- the local doctor verifies setup, provider presence, shell safety, and release hygiene
+  without exposing secrets;
 - project context is assembled before model execution;
 - skills, memory, todos, runtime profile, and goal state can become prompt inputs;
 - this command is safe for demos because it does not require a model request unless

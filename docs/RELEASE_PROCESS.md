@@ -10,6 +10,7 @@ compatibility risk.
   ```bash
   cargo fmt --check
   cargo test --locked
+  cargo run -- doctor
   cargo metadata --no-deps --format-version 1
   scripts/package-release.sh
   ```
@@ -48,6 +49,15 @@ The release workflow builds these assets:
 - matching `.sha256` checksum files
 
 Use `scripts/package-release.sh` for a local single-platform archive before tagging.
+
+Each archive should contain:
+
+- the `crab` or `crab.exe` binary;
+- `README.md` and `README.zh-CN.md`;
+- `LICENSE`;
+- `docs/INSTALL.md` and `docs/INSTALL.zh-CN.md`;
+- `docs/QUICKSTART.md` and `docs/QUICKSTART.zh-CN.md`;
+- `scripts/install.sh` and `scripts/install.ps1`.
 
 ## Versioning Notes
 

@@ -106,6 +106,7 @@ flowchart LR
 - [Architecture](docs/ARCHITECTURE.md)：runtime、bridge、tools、桌面壳与本地状态。
 - [Agent Loop](docs/AGENT_LOOP.md)：目标状态推理、委派、工具证据和恢复机制。
 - [Install Guide](docs/INSTALL.zh-CN.md)：源码安装、`cargo install`、provider 配置和桌面壳启动。
+- [Quickstart](docs/QUICKSTART.zh-CN.md)：从安装、自检、无密钥 smoke test 到桌面预览的最短路径。
 - [Examples](examples/README.md)：可用于演示的 coding、research、browser/PDF 和文档工作流。
 - [FAQ](docs/FAQ.zh-CN.md)：无密钥试用、模型网关、安全边界和常见推广问题。
 - [Demo Script](docs/DEMO_SCRIPT.md)：短视频/直播演示脚本。
@@ -223,6 +224,7 @@ cargo install --path . --locked
 
 ```bash
 crab --help
+crab doctor
 crab debug-context --prompt "Explain how Crab tracks goals and delegates work."
 ```
 
@@ -233,11 +235,14 @@ Provider 配置、桌面壳启动和排障见 [安装 Crab](docs/INSTALL.zh-CN.m
 你可以先查看 Crab 如何组装上下文，不需要真实请求模型：
 
 ```bash
+cargo run -- doctor
 cargo run -- debug-context --prompt "Explain how Crab tracks goals and delegates work."
 ```
 
-这个命令会打印 system prompt、workspace context、goal-state digest、memory snapshot、runtime
-profile 和工具定义。它是配置 provider 之前最快看到 agent loop 形态的方式。
+`doctor` 会检查本地 workspace、runtime、provider 配置、shell 安全开关、release 脚本和可选工具链，
+并且不会打印密钥。`debug-context` 会打印 system prompt、workspace context、goal-state digest、
+memory snapshot、runtime profile 和工具定义。两者合起来，是配置 provider 之前最快看到 agent loop
+形态的方式。
 
 桌面预览可以运行：
 
@@ -302,6 +307,7 @@ cargo run -- --enable-shell chat
 ```text
 chat               启动交互式会话或执行单次 prompt
 debug-context      查看组装后的 prompt 上下文
+doctor             检查本地配置、provider、安全开关和发布卫生状态
 memory-compress    生成压缩后的 memory/session 摘要
 profile            打印解析后的 runtime profile
 runtime-status     检查本地 runtime 健康状态

@@ -18,6 +18,9 @@ evidence, and exposes the whole execution as a stream of structured events.
 - [Install Guide](INSTALL.md): source installation, `cargo install`, provider setup, and
   desktop shell startup.
 - [Install Guide 中文版](INSTALL.zh-CN.md): Chinese installation guide.
+- [Quickstart](QUICKSTART.md): install, doctor, no-key smoke test, first model-backed
+  prompt, and desktop preview.
+- [Quickstart 中文版](QUICKSTART.zh-CN.md): Chinese quickstart guide.
 - [FAQ](FAQ.md): no-key demo path, model gateways, safety notes, and common launch
   questions.
 - [FAQ 中文版](FAQ.zh-CN.md): Chinese FAQ for first-time users.

@@ -40,6 +40,7 @@ pub struct GlobalOptions {
 pub enum Commands {
     Chat(ChatArgs),
     DebugContext(DebugContextArgs),
+    Doctor(DoctorArgs),
     MemoryCompress(MemoryCompressArgs),
     Profile,
     RuntimeStatus,
@@ -63,6 +64,12 @@ pub struct DebugContextArgs {
     pub prompt: String,
     #[arg(long, default_value_t = false)]
     pub execute: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct DoctorArgs {
+    #[arg(long, default_value_t = false)]
+    pub json: bool,
 }
 
 #[derive(Debug, Clone, Args)]

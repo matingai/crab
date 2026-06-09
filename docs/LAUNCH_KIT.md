@@ -56,6 +56,7 @@ Before recording or posting:
 ```bash
 cargo fmt --check
 cargo test --locked
+cargo run -- doctor
 cd desktop-shell
 npm run build
 ```
@@ -63,6 +64,7 @@ npm run build
 For a no-key smoke demo:
 
 ```bash
+cargo run -- doctor
 cargo run -- debug-context --prompt "Explain Crab's agent loop and worker delegation design."
 ```
 
@@ -82,9 +84,10 @@ Open `http://localhost:1420`.
 2. Say: "Crab is not a chat wrapper. It is a Rust-native local agent runtime."
 3. Show the agent loop diagram or docs and explain goal-state tracking.
 4. Show the desktop timeline UI at `localhost:1420`.
-5. Run a no-key context preview:
+5. Run a local doctor and no-key context preview:
 
    ```bash
+   cargo run -- doctor
    cargo run -- debug-context --prompt "Explain the runtime architecture."
    ```
 

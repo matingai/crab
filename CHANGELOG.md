@@ -7,6 +7,8 @@ and uses semantic versioning once stable release boundaries are established.
 
 ## Unreleased
 
+## 0.1.3
+
 ### Added
 
 - `crab doctor` local diagnostics for workspace, provider, shell-safety, toolchain, and

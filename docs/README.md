@@ -15,6 +15,9 @@ evidence, and exposes the whole execution as a stream of structured events.
   state fit together.
 - [Agent Loop](AGENT_LOOP.md): the core reasoning loop, goal tracking, tool protocol, and
   worker delegation model.
+- [Demo Script](DEMO_SCRIPT.md): a short walkthrough for recordings and live demos.
+- [Launch Kit](LAUNCH_KIT.md): positioning, channel plan, public posts, article outlines,
+  and launch-day checklist.
 - [Future Vision](FUTURE_VISION.md): where the project can go if the current ideas are
   pushed further.
 - [Open-source Privacy Review](OPEN_SOURCE_REVIEW.md): privacy and repository-hygiene notes

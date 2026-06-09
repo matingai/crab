@@ -105,6 +105,9 @@ flowchart LR
 - [Project Overview](docs/PROJECT_OVERVIEW.md)：项目定位与工程主张。
 - [Architecture](docs/ARCHITECTURE.md)：runtime、bridge、tools、桌面壳与本地状态。
 - [Agent Loop](docs/AGENT_LOOP.md)：目标状态推理、委派、工具证据和恢复机制。
+- [Examples](examples/README.md)：可用于演示的 coding、research、browser/PDF 和文档工作流。
+- [Demo Script](docs/DEMO_SCRIPT.md)：短视频/直播演示脚本。
+- [Launch Kit](docs/LAUNCH_KIT.md)：项目定位、发帖文案、文章大纲和发布检查清单。
 - [Future Vision](docs/FUTURE_VISION.md)：长期路线和未来畅想。
 - [Open-source Privacy Review](docs/OPEN_SOURCE_REVIEW.md)：开源前隐私与仓库卫生检查。
 - [Badges And Topics](docs/BADGES_AND_TOPICS.md)：仓库 tags、labels、badges 和社交预览建议。
@@ -177,6 +180,7 @@ agent loop 是这个项目真正的中心。Crab 把主 agent 设计成一个面
 ├── bundled-skills/              随运行时分发的 skills
 ├── desktop-shell/               Next.js + Electron 桌面壳，包含 Tauri 后端脚手架
 ├── docs/                        发布与开源卫生检查说明
+├── examples/                    可直接用于演示的工作流 playbooks
 ├── scripts/                     辅助脚本
 ├── Cargo.toml                   Rust package manifest
 └── README.md                    英文文档
@@ -384,6 +388,7 @@ npm run build
 - [Code of Conduct](CODE_OF_CONDUCT.md)：社区行为规范。
 - [Roadmap](ROADMAP.md)：当前优先级和长期方向。
 - [Changelog](CHANGELOG.md)：公开变更历史。
+- [Launch Kit](docs/LAUNCH_KIT.md)：可复制的公开传播文案和渠道计划。
 - [GitHub issue templates](.github/ISSUE_TEMPLATE)：结构化 bug、feature 和 docs 反馈模板。
 
 ## 开源卫生检查

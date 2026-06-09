@@ -13,6 +13,7 @@ and uses semantic versioning once stable release boundaries are established.
   issue, and pull request templates.
 - CI and dependency update configuration for the public repository.
 - Recommended GitHub labels, topics, and repository presentation guidance.
+- Demo-ready examples, launch copy, and a public demo script for project promotion.
 
 ### Changed
 

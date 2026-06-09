@@ -78,6 +78,18 @@ flowchart LR
     Tools --> State
 ```
 
+## 应用截图
+
+以下截图使用 `scripts/capture-screenshots.mjs` 生成的演示数据。
+
+| Agent 时间线 | 技能和应用 |
+| --- | --- |
+| ![Crab agent 时间线](docs/assets/screenshots/crab-conversation.png) | ![Crab 技能和应用](docs/assets/screenshots/crab-skills.png) |
+
+| 定时任务 | 运行设置 |
+| --- | --- |
+| ![Crab 定时任务](docs/assets/screenshots/crab-activity.png) | ![Crab 运行设置](docs/assets/screenshots/crab-settings.png) |
+
 ## 延伸文档
 
 - [Project Overview](docs/PROJECT_OVERVIEW.md)：项目定位与工程主张。

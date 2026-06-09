@@ -27,12 +27,13 @@ For macOS or Linux, download the matching asset from
 `https://github.com/matingai/crab/releases`, then install the binary:
 
 ```bash
-VERSION=v0.1.1
+VERSION=v0.1.2
 TARGET=aarch64-apple-darwin
 curl -LO "https://github.com/matingai/crab/releases/download/${VERSION}/crab-${VERSION}-${TARGET}.tar.gz"
 tar -xzf "crab-${VERSION}-${TARGET}.tar.gz"
 sudo install -m 0755 "crab-${VERSION}-${TARGET}/crab" /usr/local/bin/crab
 crab --help
+crab --version
 ```
 
 For Windows, download the `.zip`, expand it, and add the extracted directory to `PATH` or

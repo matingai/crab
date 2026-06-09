@@ -99,7 +99,7 @@ Keep these assets fresh before a public push:
 Use a release title like:
 
 ```text
-Crab v0.1.1: Rust-native local agent runtime with goal-state loops
+Crab v0.1.2: Rust-native local agent runtime with goal-state loops
 ```
 
 Release body shape:
@@ -293,6 +293,6 @@ Track more than stars:
 
 1. Record the 60-second demo from `docs/DEMO_SCRIPT.md`.
 2. Add GitHub topics from `docs/BADGES_AND_TOPICS.md`.
-3. Publish a `v0.1.1` GitHub release.
+3. Publish a `v0.1.2` GitHub release.
 4. Post the English and Chinese short launch posts.
 5. Collect the first ten pieces of feedback into issues or roadmap notes.

@@ -7,6 +7,18 @@ and uses semantic versioning once stable release boundaries are established.
 
 ## Unreleased
 
+## 0.1.2
+
+### Changed
+
+- Release publishing now uses the GitHub CLI instead of a Node-based release action.
+
+### Fixed
+
+- Release checksum files now use archive basenames, so users can run `shasum -c` after
+  downloading an archive and its `.sha256` file into the same directory.
+- The CLI now exposes `crab --version` for package smoke tests and user diagnostics.
+
 ## 0.1.1
 
 ### Changed

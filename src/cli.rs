@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 #[command(name = "crab")]
+#[command(version)]
 #[command(
     about = "Crab, a Rust-native local agent runtime with goal-state loops and worker delegation"
 )]

@@ -40,10 +40,12 @@ else
   archive_path="dist/${package_name}.tar.gz"
 fi
 
+archive_dir="$(dirname "${archive_path}")"
+archive_file="$(basename "${archive_path}")"
 if command -v shasum >/dev/null 2>&1; then
-  shasum -a 256 "${archive_path}" > "${archive_path}.sha256"
+  (cd "${archive_dir}" && shasum -a 256 "${archive_file}" > "${archive_file}.sha256")
 else
-  sha256sum "${archive_path}" > "${archive_path}.sha256"
+  (cd "${archive_dir}" && sha256sum "${archive_file}" > "${archive_file}.sha256")
 fi
 
 echo "Created ${archive_path}"

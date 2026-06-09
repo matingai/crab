@@ -2,6 +2,18 @@
 
 [简体中文](README.zh-CN.md)
 
+<p>
+  <a href="https://github.com/matingai/crab/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/matingai/crab?style=for-the-badge&logo=github&color=0f766e" /></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" /></a>
+  <a href="Cargo.toml"><img alt="Rust 2024" src="https://img.shields.io/badge/Rust-2024-f97316?style=for-the-badge&logo=rust&logoColor=white" /></a>
+  <a href="#status"><img alt="Status: active prototype" src="https://img.shields.io/badge/status-active%200.1.x-22c55e?style=for-the-badge" /></a>
+  <a href="docs/AGENT_LOOP.md"><img alt="Agent loop: goal-state controller" src="https://img.shields.io/badge/agent%20loop-goal--state%20controller-7c3aed?style=for-the-badge" /></a>
+  <a href="docs/AGENT_LOOP.md#delegation-model"><img alt="Worker delegation" src="https://img.shields.io/badge/delegation-worker%20runs-0891b2?style=for-the-badge" /></a>
+  <a href="docs/ARCHITECTURE.md#local-state"><img alt="Local-first runtime" src="https://img.shields.io/badge/runtime-local--first-334155?style=for-the-badge" /></a>
+  <a href="#desktop-shell"><img alt="Desktop shell" src="https://img.shields.io/badge/desktop-Electron%20%2B%20Tauri-111827?style=for-the-badge" /></a>
+  <a href="#configuration"><img alt="OpenAI compatible" src="https://img.shields.io/badge/models-OpenAI--compatible-10a37f?style=for-the-badge" /></a>
+</p>
+
 Crab (Chinese name: 螃蟹) is an experimental Rust agent runtime and desktop shell inspired by
 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent). It is not a
 line-by-line port. The project focuses on a reusable local agent core, an explicit tool

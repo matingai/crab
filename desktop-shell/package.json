@@ -1,0 +1,46 @@
+{
+  "name": "hermes-agent-rs-desktop-shell",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --webpack --hostname 0.0.0.0 --port 1420",
+    "build": "next build --webpack",
+    "preview": "next start --hostname 0.0.0.0 --port 1421",
+    "tauri:dev": "./scripts/run-dev.sh",
+    "tauri:release": "./scripts/run-release.sh",
+    "desktop:dev": "npm run electron:dev",
+    "desktop:release": "npm run electron:release",
+    "electron:dev": "node ./electron/dev.mjs",
+    "electron:release": "node ./electron/release.mjs",
+    "slidev": "slidev",
+    "slidev:export": "slidev export"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@slidev/cli": "^52.14.2",
+    "@slidev/theme-default": "^0.25.0",
+    "@tailwindcss/postcss": "^4.2.2",
+    "@tauri-apps/api": "^2.8.0",
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "docx-preview": "^0.3.7",
+    "lucide-react": "^1.8.0",
+    "monaco-editor": "^0.55.1",
+    "next": "^16.2.3",
+    "postcss": "^8.5.9",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "tailwind-merge": "^3.5.0",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^6.0.2"
+  },
+  "devDependencies": {
+    "electron": "^41.2.0"
+  }
+}

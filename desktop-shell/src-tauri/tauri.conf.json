@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Hermes Agent RS",
+  "version": "0.1.0",
+  "identifier": "com.hermes-agent-rs.desktop",
+  "build": {
+    "beforeBuildCommand": "cd .. && npm run build",
+    "beforeDevCommand": "cd .. && npm run dev",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../out"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Hermes Agent RS",
+        "width": 1320,
+        "height": 900,
+        "minWidth": 1280,
+        "minHeight": 720,
+        "resizable": true,
+        "titleBarStyle": "overlay",
+        "hiddenTitle": true
+      }
+    ],
+    "security": {
+      "capabilities": ["default"]
+    }
+  },
+  "bundle": {
+    "active": false
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main Hermes Agent RS desktop window.",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:window:allow-start-dragging", "hermes-agent-default"]
+}

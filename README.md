@@ -1,0 +1,376 @@
+# Hermes Agent RS
+
+[简体中文](README.zh-CN.md)
+
+Hermes Agent RS is an experimental Rust agent runtime and desktop shell inspired by
+[NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent). It is not a
+line-by-line port. The project focuses on a reusable local agent core, an explicit tool
+registry, persistent workspace state, and desktop integration through Electron or Tauri.
+
+The current codebase is best treated as an active 0.1.x prototype for people who want to
+study, extend, or embed a local coding/research agent in Rust.
+
+## What Makes It Different
+
+Hermes Agent RS is built around a local runtime rather than a single chat UI. The CLI,
+desktop shell, tools, memory, skills, and bridge APIs all sit on top of the same Rust core,
+so the project can be used as a standalone assistant, a desktop app backend, or an
+embedding target for other local automation surfaces.
+
+Key project characteristics:
+
+- **Rust-native agent core**: the tool loop, model client, session persistence, event
+  stream, and runtime configuration live in Rust instead of being thin wrappers around a
+  script.
+- **Event-first desktop integration**: agent execution emits structured lifecycle,
+  streaming, tool, approval, and completion events that a UI can subscribe to directly.
+- **Workspace-aware context**: project instructions, subdirectory hints, session state,
+  memories, skills, todos, and local runtime profiles are assembled as first-class prompt
+  inputs.
+- **Goal-state centered reasoning**: the main agent tracks the active goal, blockers,
+  evidence, risks, next actions, and confidence instead of treating each prompt as an
+  isolated chat turn.
+- **Tools as a governed registry**: built-in tools expose schemas, execution boundaries,
+  approval hooks, and condensed model-facing definitions instead of relying on arbitrary
+  shell access.
+- **Delegation-oriented execution**: the main loop can hand bounded research,
+  verification, implementation, and document-generation work to delegated workers or
+  auxiliary models, then merge their findings back into the goal state.
+- **Local knowledge loop**: skills and memory are treated as reusable agent capabilities,
+  not just passive notes or UI-side metadata.
+- **Document and browser workflows**: the runtime includes browser automation, PDF
+  inspection, Office document handling, and Slidev deck support, which makes it useful for
+  research and office-style agent workflows as well as coding.
+- **Desktop shell without lock-in**: Electron is available for the current shell, while the
+  bridge and Tauri scaffolding keep the backend independent from a single frontend runtime.
+
+## Highlights
+
+- OpenAI-compatible model client with Responses API and Chat Completions support.
+- Streaming event model for UI integrations and desktop shells.
+- Tool-calling loop with workspace-scoped file, Git, browser, PDF, Office, memory, skill,
+  MCP, cron, and delegation tools.
+- Local session persistence under `.hermes-agent-rs/`.
+- Project context injection from files such as `AGENTS.md`, `CLAUDE.md`, `.hermes.md`,
+  `.cursorrules`, and `.cursor/rules/*.mdc`.
+- Local memory and skills systems designed for per-turn recall instead of dumping the
+  entire history into every request.
+- Context compression and request recovery paths for long-running sessions.
+- A desktop shell built with Next.js plus Electron, with a Tauri backend skeleton kept in
+  the repository for native integration work.
+- Runtime profile inspection for browser and Office-related capabilities.
+
+## Architecture At A Glance
+
+```mermaid
+flowchart LR
+    CLI["CLI"]
+    Desktop["Desktop Shell\nNext.js + Electron/Tauri"]
+    Bridge["Bridge API\nsession + events"]
+    Agent["Rust Agent Core\ntool loop + prompts"]
+    Tools["Tool Registry\nfiles · git · browser · office · memory · MCP"]
+    State["Local State\nsessions · skills · memory · runtime profile"]
+    Models["OpenAI-compatible Models"]
+
+    CLI --> Agent
+    Desktop --> Bridge
+    Bridge --> Agent
+    Agent --> Tools
+    Agent --> State
+    Agent --> Models
+    Tools --> State
+```
+
+## Further Reading
+
+- [Project Overview](docs/PROJECT_OVERVIEW.md): product and engineering thesis.
+- [Architecture](docs/ARCHITECTURE.md): runtime, bridge, tools, desktop shell, and local
+  state.
+- [Agent Loop](docs/AGENT_LOOP.md): goal-state reasoning, delegation, tool evidence, and
+  recovery.
+- [Future Vision](docs/FUTURE_VISION.md): long-term roadmap and product direction.
+- [Open-source Privacy Review](docs/OPEN_SOURCE_REVIEW.md): privacy and repository hygiene
+  before publication.
+
+## Agent Loop Design
+
+The agent loop is the center of the project. Hermes Agent RS treats the main agent as a
+goal-solving control model rather than a single request-response wrapper around an LLM.
+Its job is to keep track of the user's objective, maintain a compact working state,
+choose the next meaningful action, delegate bounded work when useful, and integrate the
+results back into the active goal.
+
+Each turn is handled as a controlled execution cycle that can assemble context, call
+tools, update local state, recover from model/runtime limits, and stream structured
+progress back to the UI.
+
+The loop is designed around these ideas:
+
+- **Goal tracking first**: the loop maintains goal state, blockers, evidence, confidence,
+  risks, hot data, todos, and solve traces so it can reason about progress across many
+  turns instead of restarting from the latest prompt.
+- **Main agent as orchestrator**: the primary model focuses on task framing, next-step
+  selection, tradeoff judgment, approval boundaries, and result synthesis.
+- **Delegation to submodels/workers**: bounded subtasks such as code exploration,
+  verification, document drafting, browser research, or alternative solution search can be
+  delegated to worker runs or auxiliary models, then read back and reconciled.
+- **Context before action**: each turn rebuilds the model input from project instructions,
+  recent conversation history, recalled memory, active skills, todos, goal state, runtime
+  profile, and optional debug/context modules.
+- **Tool use as a protocol**: tools expose schemas and return observations that are
+  summarized, classified, and folded back into the conversation, goal state, memory, and
+  solve trace instead of being appended as unbounded raw logs.
+- **Stateful progress tracking**: sessions, memory, todos, goal state, solve traces,
+  archive records, approvals, and delegated runs are persisted locally so long tasks can
+  continue across turns and desktop restarts.
+- **Approval-aware execution**: sensitive operations can pause for approval and later
+  resume through the same session/event path.
+- **Context pressure handling**: the loop can detect context overflows, compress older
+  history, adjust output budgets, and retry with a safer prompt shape.
+- **Event streaming as a first-class output**: the loop emits model, tool, approval,
+  delegation, context, and completion events, which lets the desktop shell render a live
+  execution timeline instead of waiting for a final string.
+- **Extensible execution surface**: the built-in registry, MCP tools, plugin hooks,
+  bundled skills, and delegation tools all plug into the same loop instead of living as
+  separate one-off integrations.
+
+## Status
+
+This repository is under active development. Public APIs, desktop shell behavior, tool
+schemas, and local data formats may change before a stable release.
+
+Important safety notes:
+
+- The terminal tool is disabled by default. Enable it explicitly with `--enable-shell` or
+  `HERMES_RS_ENABLE_SHELL=1`.
+- Browser, file, Office, and shell-related tools operate on the local machine. Use a
+  trusted workspace and review model outputs before approving sensitive actions.
+- Local sessions, memory, logs, runtime databases, and provider configuration belong in
+  ignored local directories. Do not commit `.hermes-agent-rs/`, `.env`, generated decks,
+  generated documents, or browser/session artifacts.
+
+## Repository Layout
+
+```text
+.
+├── src/                         Rust agent runtime and CLI
+│   ├── agent.rs                 Tool-calling loop and session execution
+│   ├── bridge.rs                Frontend/desktop bridge API
+│   ├── cli.rs                   Command-line interface definitions
+│   ├── config.rs                Runtime configuration loading
+│   ├── llm.rs                   OpenAI-compatible model client
+│   ├── prompts.rs               System prompt and workspace context assembly
+│   ├── runtime_profile.rs       Local runtime capability resolution
+│   ├── skills.rs                Local skill discovery and storage
+│   └── tools/                   Built-in tool implementations
+├── bundled-skills/              Skills bundled with the runtime
+├── desktop-shell/               Next.js + Electron shell, with Tauri backend scaffolding
+├── docs/                        Release and open-source hygiene notes
+├── scripts/                     Small helper scripts
+├── Cargo.toml                   Rust package manifest
+└── README.zh-CN.md              Chinese documentation
+```
+
+## Requirements
+
+- Rust 1.85 or newer, because the crate uses Rust 2024 edition.
+- A model provider compatible with either the OpenAI Responses API or Chat Completions API.
+- Node.js and npm if you want to run the desktop shell.
+- Platform-specific Tauri dependencies if you want to develop the Tauri shell.
+
+## Quick Start
+
+Set model access through environment variables. The default model can be overridden with
+`HERMES_RS_MODEL` or `--model`.
+
+```bash
+export OPENAI_API_KEY="your-api-key"
+export OPENAI_BASE_URL="https://api.openai.com/v1"
+export HERMES_RS_MODEL="gpt-4.1-mini"
+```
+
+Start an interactive chat session:
+
+```bash
+cargo run -- chat
+```
+
+Run a single prompt:
+
+```bash
+cargo run -- chat --prompt "Read Cargo.toml and summarize this project."
+```
+
+Resume or pin a session id:
+
+```bash
+cargo run -- --session my-session-id chat
+```
+
+Preview the prompt context without calling the model:
+
+```bash
+cargo run -- debug-context --prompt "Explain the runtime architecture."
+```
+
+Preview the context and then execute the request:
+
+```bash
+cargo run -- debug-context --prompt "Explain the runtime architecture." --execute
+```
+
+Enable the terminal tool:
+
+```bash
+cargo run -- --enable-shell chat
+```
+
+## CLI Commands
+
+```text
+chat               Run an interactive session or a one-shot prompt
+debug-context      Inspect the assembled prompt context
+memory-compress    Produce a compressed memory/session summary
+profile            Print the resolved runtime profile
+runtime-status     Inspect local runtime health
+runtime-start      Start or prepare the local runtime
+runtime-repair     Attempt local runtime repair
+runtime-reset      Reset local runtime state
+desktop-bridge     Run the JSON bridge used by the desktop shell
+```
+
+Global options include `--provider`, `--model`, `--base-url`, `--api-key`,
+`--workspace`, `--data-dir`, `--session`, `--max-iterations`, and `--enable-shell`.
+
+For security, prefer environment variables or ignored local configuration files over
+passing API keys directly on the command line.
+
+## Configuration
+
+The runtime resolves configuration from CLI flags, environment variables, and the local
+data directory. By default the data directory is:
+
+```text
+<workspace>/.hermes-agent-rs
+```
+
+Useful environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `OPENAI_API_KEY` | API key for OpenAI-compatible providers. |
+| `OPENAI_BASE_URL` | Base URL for OpenAI-compatible endpoints. |
+| `HERMES_RS_PROVIDER` | Provider id or provider profile to use. |
+| `HERMES_RS_MODEL` | Primary model override. |
+| `HERMES_RS_DATA_DIR` | Override the local data directory. |
+| `HERMES_RS_SESSION_ID` | Resume or pin a session id. |
+| `HERMES_RS_MAX_ITERATIONS` | Tool-calling loop iteration limit. |
+| `HERMES_RS_ENABLE_SHELL` | Enable the terminal tool when set to `1`, `true`, `yes`, or `on`. |
+| `HERMES_RS_DEBUG_CONTEXT` | Write context debug snapshots. |
+| `HERMES_RS_AUX_MODEL` | Optional auxiliary model used by some summarization paths. |
+| `HERMES_RS_BROWSER_BACKEND` | Browser backend selection for local browser tooling. |
+
+You can also store local provider settings in `.hermes-agent-rs/config.yaml`:
+
+```yaml
+model:
+  provider: openai
+  model: gpt-4.1-mini
+  base_url: https://api.openai.com/v1
+  # Prefer OPENAI_API_KEY instead of storing api_key here.
+```
+
+The `.hermes-agent-rs/` directory is intentionally ignored by Git.
+
+## Desktop Shell
+
+The desktop shell lives in `desktop-shell/`. It uses Next.js for the renderer and keeps
+both Electron and Tauri integration paths available.
+
+Install frontend dependencies:
+
+```bash
+cd desktop-shell
+npm install
+```
+
+Run the Electron shell:
+
+```bash
+cd desktop-shell
+npm run electron:dev
+```
+
+Run only the Next.js renderer:
+
+```bash
+cd desktop-shell
+npm run dev
+```
+
+Run the Tauri shell:
+
+```bash
+cd desktop-shell
+npm run tauri:dev
+```
+
+Check the Tauri backend:
+
+```bash
+cargo check --manifest-path desktop-shell/src-tauri/Cargo.toml
+```
+
+## Built-in Tool Areas
+
+The built-in registry currently includes tool groups for:
+
+- Workspace files: list, read, search, write, patch, move, and delete.
+- Git inspection and branch operations.
+- Browser navigation, snapshots, screenshots, interaction, extraction, and image discovery.
+- PDF and Office document inspection, preview, extraction, and generation paths.
+- Session search, archive query, memory query, memory digest, and wiki-style notes.
+- Skills listing, viewing, and management.
+- MCP tool discovery and calls, including cached dynamic MCP tools.
+- Cron job management and delegated worker runs.
+- Slidev deck creation and preview.
+- Optional terminal execution.
+
+Tool availability and behavior are expected to evolve as the runtime stabilizes.
+
+## Development
+
+Common checks:
+
+```bash
+cargo fmt --check
+cargo test
+cargo check --manifest-path desktop-shell/src-tauri/Cargo.toml
+```
+
+Frontend checks:
+
+```bash
+cd desktop-shell
+npm install
+npm run build
+```
+
+The repository currently has substantial desktop/runtime surface area. Keep changes small,
+run the relevant checks for the area you touch, and avoid committing generated local
+artifacts.
+
+## Open-source Hygiene
+
+Before publishing, review [docs/OPEN_SOURCE_REVIEW.md](docs/OPEN_SOURCE_REVIEW.md).
+
+The current ignore rules exclude common secret and local-state files, including `.env`,
+`.hermes-agent-rs/`, desktop session databases, generated reports, generated decks, and
+build outputs. If you keep the existing Git history, remember that historical commits can
+still contain files that were later deleted. For a clean public launch, consider publishing
+from a fresh repository or rewriting history after review.
+
+## License
+
+No open-source license has been selected in this repository yet. Add a `LICENSE` file
+before publishing publicly so downstream users know what they are allowed to do.

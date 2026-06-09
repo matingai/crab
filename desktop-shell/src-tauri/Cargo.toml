@@ -1,0 +1,22 @@
+[package]
+name = "hermes-agent-rs-desktop"
+version = "0.1.0"
+description = "Tauri desktop shell for Hermes Agent RS"
+edition = "2024"
+default-run = "hermes-agent-rs-desktop"
+
+[lib]
+name = "hermes_agent_rs_desktop_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+anyhow = "1.0"
+base64 = "0.22"
+hermes-agent-rs = { path = "../.." }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tauri = { version = "2", features = [] }
+tokio = { version = "1.48", features = ["sync", "time"] }

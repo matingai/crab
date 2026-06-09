@@ -1,4 +1,6 @@
 use anyhow::{Context, Result, anyhow};
+#[cfg(unix)]
+use std::io;
 use std::process::Stdio;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
@@ -12,6 +14,15 @@ use crate::runtime_profile::RuntimeProfile;
 use crate::tools::{ToolContext, emit_tool_stderr, emit_tool_stdout};
 
 const STOP_POLL_MS: u64 = 100;
+
+#[cfg(unix)]
+const SIGKILL: i32 = 9;
+
+#[cfg(unix)]
+unsafe extern "C" {
+    fn kill(pid: i32, sig: i32) -> i32;
+    fn setpgid(pid: i32, pgid: i32) -> i32;
+}
 
 pub struct RuntimeManager<'a> {
     ctx: &'a ToolContext,
@@ -139,8 +150,7 @@ impl<'a> RuntimeManager<'a> {
             .map(|limit| std::time::Instant::now() + limit);
         loop {
             if stop_requested(&self.ctx.data_dir, &self.ctx.current_session_id) {
-                let _ = child.kill().await;
-                let _ = child.wait().await;
+                terminate_child(&mut child).await;
                 return Ok(RuntimeExecOutcome {
                     exit_code: None,
                     timed_out: false,
@@ -153,8 +163,7 @@ impl<'a> RuntimeManager<'a> {
             if let Some(deadline) = deadline {
                 let now = std::time::Instant::now();
                 if now >= deadline {
-                    let _ = child.kill().await;
-                    let _ = child.wait().await;
+                    terminate_child(&mut child).await;
                     return Ok(RuntimeExecOutcome {
                         exit_code: None,
                         timed_out: true,
@@ -213,12 +222,39 @@ fn build_local_command(request: &RuntimeExecRequest) -> Command {
                 .arg("-lc")
                 .arg(command)
                 .current_dir(&request.workdir);
+            prepare_child_process(&mut process);
             process
         }
         RuntimeCommand::Program { program, args } => {
             let mut process = Command::new(program);
             process.args(args).current_dir(&request.workdir);
+            prepare_child_process(&mut process);
             process
         }
     }
+}
+
+fn prepare_child_process(process: &mut Command) {
+    #[cfg(unix)]
+    unsafe {
+        process.pre_exec(|| {
+            if setpgid(0, 0) == 0 {
+                Ok(())
+            } else {
+                Err(io::Error::last_os_error())
+            }
+        });
+    }
+}
+
+async fn terminate_child(child: &mut tokio::process::Child) {
+    #[cfg(unix)]
+    if let Some(pid) = child.id() {
+        unsafe {
+            let _ = kill(-(pid as i32), SIGKILL);
+        }
+    }
+
+    let _ = child.kill().await;
+    let _ = child.wait().await;
 }

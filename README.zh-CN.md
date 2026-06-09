@@ -2,10 +2,6 @@
 
 [English](README.md)
 
-## Star History
-
-[![Star History Chart](https://api.star-history.com/chart?repos=matingai/crab&type=timeline&logscale&legend=top-left)](https://www.star-history.com/?repos=matingai%2Fcrab&type=timeline&logscale=&legend=top-left)
-
 Crab（中文名：螃蟹）是一个受
 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)
 启发的实验性 Rust agent 运行时与桌面壳项目。它不是原项目的逐行移植，而是把可复用的本地
@@ -349,6 +345,10 @@ npm run build
 当前 ignore 规则已经排除常见密钥和本地状态文件，包括 `.env`、`.hermes-agent-rs/`、桌面端 session
 数据库、生成报告、生成幻灯片和构建产物。如果保留现有 Git 历史，要注意历史提交中仍然可能包含后来已经删除的文件。
 为了更干净地公开发布，可以在审查后从全新仓库发布，或在确认后重写历史。
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/chart?repos=matingai/crab&type=timeline&logscale&legend=top-left)](https://www.star-history.com/?repos=matingai%2Fcrab&type=timeline&logscale=&legend=top-left)
 
 ## License
 

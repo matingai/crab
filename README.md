@@ -2,10 +2,6 @@
 
 [简体中文](README.zh-CN.md)
 
-## Star History
-
-[![Star History Chart](https://api.star-history.com/chart?repos=matingai/crab&type=timeline&logscale&legend=top-left)](https://www.star-history.com/?repos=matingai%2Fcrab&type=timeline&logscale=&legend=top-left)
-
 Crab (Chinese name: 螃蟹) is an experimental Rust agent runtime and desktop shell inspired by
 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent). It is not a
 line-by-line port. The project focuses on a reusable local agent core, an explicit tool
@@ -389,6 +385,10 @@ The current ignore rules exclude common secret and local-state files, including 
 build outputs. If you keep the existing Git history, remember that historical commits can
 still contain files that were later deleted. For a clean public launch, consider publishing
 from a fresh repository or rewriting history after review.
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/chart?repos=matingai/crab&type=timeline&logscale&legend=top-left)](https://www.star-history.com/?repos=matingai%2Fcrab&type=timeline&logscale=&legend=top-left)
 
 ## License
 

@@ -1,0 +1,90 @@
+name: Bug report
+description: Report a reproducible problem in Crab
+title: "[Bug]: "
+labels: ["type: bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please remove secrets, API keys, private logs, and personal data before posting.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+      placeholder: Crab did X when I expected Y.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Minimal steps, command, prompt, or workflow that triggers the issue.
+      placeholder: |
+        1. Run ...
+        2. Open ...
+        3. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - agent loop
+        - tool registry
+        - worker delegation
+        - CLI
+        - desktop shell
+        - browser tools
+        - PDF or Office tools
+        - memory or skills
+        - MCP
+        - configuration
+        - documentation
+        - other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: 0.1.0 or commit hash
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Rust version, Node version, model provider, and anything else relevant.
+      placeholder: |
+        OS:
+        Rust:
+        Node:
+        Provider:
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste only sanitized logs. Do not include secrets or private documents.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checklist
+      options:
+        - label: I removed API keys, tokens, private logs, and personal data.
+          required: true
+        - label: I searched existing issues before opening this report.
+          required: false

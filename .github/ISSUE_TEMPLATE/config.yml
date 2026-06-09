@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security reports
+    url: https://github.com/matingai/crab/security/advisories/new
+    about: Report vulnerabilities privately when the issue includes sensitive details.
+  - name: Project documentation
+    url: https://github.com/matingai/crab/tree/main/docs
+    about: Read architecture, agent loop, and future vision documents.

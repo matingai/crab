@@ -1,0 +1,24 @@
+name: Documentation
+description: Report missing, confusing, or outdated documentation
+title: "[Docs]: "
+labels: ["type: docs", "needs triage"]
+body:
+  - type: textarea
+    id: page
+    attributes:
+      label: Page or section
+      placeholder: README.md, docs/AGENT_LOOP.md, docs/ARCHITECTURE.md, etc.
+    validations:
+      required: true
+  - type: textarea
+    id: issue
+    attributes:
+      label: What should change?
+      description: Tell us what is missing, confusing, incorrect, or too thin.
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested wording or structure
+      description: Optional, but very helpful.

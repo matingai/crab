@@ -1,0 +1,32 @@
+<svg width="1280" height="360" viewBox="0 0 1280 360" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Crab project banner</title>
+  <desc id="desc">Rust-native local agent runtime with a goal-state agent loop, worker delegation, and local-first desktop shell.</desc>
+  <rect width="1280" height="360" fill="#0B1020"/>
+  <path d="M0 270C130 222 225 234 348 258C483 285 565 327 723 294C892 259 948 173 1125 170C1190 169 1240 180 1280 194V360H0V270Z" fill="#0F766E" opacity="0.28"/>
+  <path d="M0 98C115 129 198 119 308 85C460 38 546 25 705 66C855 105 922 145 1065 112C1141 94 1205 75 1280 82V0H0V98Z" fill="#7C3AED" opacity="0.22"/>
+  <circle cx="1034" cy="88" r="3" fill="#94A3B8"/>
+  <circle cx="1107" cy="121" r="2" fill="#94A3B8"/>
+  <circle cx="1186" cy="63" r="2" fill="#94A3B8"/>
+  <circle cx="976" cy="144" r="2" fill="#94A3B8"/>
+  <g transform="translate(86 74)">
+    <rect x="0" y="0" width="140" height="140" rx="28" fill="#F97316"/>
+    <path d="M31 77C31 51 49 35 70 35C91 35 109 51 109 77C109 101 92 118 70 118C48 118 31 101 31 77Z" fill="#0B1020"/>
+    <path d="M50 68C50 59 57 52 66 52H74C83 52 90 59 90 68V92C90 101 83 108 74 108H66C57 108 50 101 50 92V68Z" fill="#F8FAFC"/>
+    <circle cx="62" cy="73" r="5" fill="#0B1020"/>
+    <circle cx="78" cy="73" r="5" fill="#0B1020"/>
+    <path d="M42 45L20 25" stroke="#F8FAFC" stroke-width="10" stroke-linecap="round"/>
+    <path d="M98 45L120 25" stroke="#F8FAFC" stroke-width="10" stroke-linecap="round"/>
+    <path d="M30 91L12 105" stroke="#F8FAFC" stroke-width="9" stroke-linecap="round"/>
+    <path d="M110 91L128 105" stroke="#F8FAFC" stroke-width="9" stroke-linecap="round"/>
+  </g>
+  <text x="264" y="137" fill="#F8FAFC" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="74" font-weight="800" letter-spacing="0">Crab</text>
+  <text x="266" y="188" fill="#CBD5E1" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="28" font-weight="500" letter-spacing="0">Rust-native local agent runtime</text>
+  <g transform="translate(266 225)" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="18" font-weight="700">
+    <rect x="0" y="0" width="228" height="42" rx="21" fill="#111827" stroke="#334155"/>
+    <text x="22" y="27" fill="#A7F3D0">goal-state agent loop</text>
+    <rect x="246" y="0" width="202" height="42" rx="21" fill="#111827" stroke="#334155"/>
+    <text x="268" y="27" fill="#BAE6FD">worker delegation</text>
+    <rect x="466" y="0" width="220" height="42" rx="21" fill="#111827" stroke="#334155"/>
+    <text x="488" y="27" fill="#FED7AA">local-first desktop</text>
+  </g>
+</svg>

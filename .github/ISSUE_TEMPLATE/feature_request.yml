@@ -1,0 +1,48 @@
+name: Feature request
+description: Suggest a new capability or improvement
+title: "[Feature]: "
+labels: ["type: feature", "needs triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or developer problem should this solve?
+      placeholder: I want Crab to...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior, command, UI, tool, or agent-loop change.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - agent loop
+        - goal state
+        - worker delegation
+        - tool registry
+        - memory or skills
+        - desktop shell
+        - CLI
+        - browser automation
+        - PDF or Office workflows
+        - MCP or plugins
+        - documentation
+        - release engineering
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches or related projects worth comparing.
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks and tradeoffs
+      description: Safety, complexity, privacy, compatibility, or maintenance concerns.

@@ -19,6 +19,12 @@ evidence, and exposes the whole execution as a stream of structured events.
   pushed further.
 - [Open-source Privacy Review](OPEN_SOURCE_REVIEW.md): privacy and repository-hygiene notes
   for public release.
+- [Badges, Topics, And Repository Packaging](BADGES_AND_TOPICS.md): badges, recommended
+  GitHub topics, label themes, and social-preview guidance.
+- [Release Process](RELEASE_PROCESS.md): pre-release checklist, versioning notes, and
+  release-note shape.
+- [Maintainer Guide](MAINTAINER_GUIDE.md): triage priorities, labels, positioning, and
+  public hygiene.
 
 ## Core Thesis
 

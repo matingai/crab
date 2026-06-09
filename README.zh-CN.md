@@ -2,9 +2,15 @@
 
 [English](README.md)
 
+![Crab project banner](docs/assets/crab-banner.svg)
+
 <p>
   <a href="https://github.com/matingai/crab/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/matingai/crab?style=for-the-badge&logo=github&color=0f766e" /></a>
+  <a href=".github/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/matingai/crab/ci.yml?branch=main&style=for-the-badge&label=CI&logo=githubactions&logoColor=white" /></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" /></a>
+  <a href="https://github.com/matingai/crab/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/matingai/crab?style=for-the-badge&color=64748b" /></a>
+  <a href="https://github.com/matingai/crab/issues"><img alt="GitHub issues" src="https://img.shields.io/github/issues/matingai/crab?style=for-the-badge&color=0891b2" /></a>
+  <a href="CONTRIBUTING.md"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-22c55e?style=for-the-badge" /></a>
   <a href="Cargo.toml"><img alt="Rust 2024" src="https://img.shields.io/badge/Rust-2024-f97316?style=for-the-badge&logo=rust&logoColor=white" /></a>
   <a href="#项目状态"><img alt="Status: active prototype" src="https://img.shields.io/badge/status-active%200.1.x-22c55e?style=for-the-badge" /></a>
   <a href="docs/AGENT_LOOP.md"><img alt="Agent loop: goal-state controller" src="https://img.shields.io/badge/agent%20loop-goal--state%20controller-7c3aed?style=for-the-badge" /></a>
@@ -12,6 +18,8 @@
   <a href="docs/ARCHITECTURE.md#local-state"><img alt="Local-first runtime" src="https://img.shields.io/badge/runtime-local--first-334155?style=for-the-badge" /></a>
   <a href="#桌面壳"><img alt="Desktop shell" src="https://img.shields.io/badge/desktop-Electron%20%2B%20Tauri-111827?style=for-the-badge" /></a>
   <a href="#配置"><img alt="OpenAI compatible" src="https://img.shields.io/badge/models-OpenAI--compatible-10a37f?style=for-the-badge" /></a>
+  <a href="SECURITY.md"><img alt="Security policy" src="https://img.shields.io/badge/security-policy-b91c1c?style=for-the-badge" /></a>
+  <a href="ROADMAP.md"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-public-0f766e?style=for-the-badge" /></a>
 </p>
 
 Crab（中文名：螃蟹）是一个受
@@ -99,6 +107,17 @@ flowchart LR
 - [Agent Loop](docs/AGENT_LOOP.md)：目标状态推理、委派、工具证据和恢复机制。
 - [Future Vision](docs/FUTURE_VISION.md)：长期路线和未来畅想。
 - [Open-source Privacy Review](docs/OPEN_SOURCE_REVIEW.md)：开源前隐私与仓库卫生检查。
+- [Badges And Topics](docs/BADGES_AND_TOPICS.md)：仓库 tags、labels、badges 和社交预览建议。
+- [Release Process](docs/RELEASE_PROCESS.md)：发布检查清单和版本策略。
+- [Maintainer Guide](docs/MAINTAINER_GUIDE.md)：项目定位、issue triage、labels 和公开仓库卫生。
+
+## 仓库标签
+
+推荐 GitHub topics：
+
+`rust` · `ai-agent` · `agent-runtime` · `agent-loop` · `tool-calling` · `local-first` ·
+`desktop-agent` · `electron` · `tauri` · `openai-compatible` · `mcp` · `automation` ·
+`developer-tools`
 
 ## Agent Loop 特色
 
@@ -349,6 +368,16 @@ npm run build
 ```
 
 当前仓库包含较多桌面端和运行时能力。建议保持改动聚焦，并针对触碰的模块运行对应检查，避免提交生成产物。
+
+## 社区与项目健康度
+
+- [Contributing Guide](CONTRIBUTING.md)：开发环境、PR 要求和隐私注意事项。
+- [Security Policy](SECURITY.md)：安全问题私密报告方式和支持版本。
+- [Support Guide](SUPPORT.md)：如何提问，以及什么样的报告更有帮助。
+- [Code of Conduct](CODE_OF_CONDUCT.md)：社区行为规范。
+- [Roadmap](ROADMAP.md)：当前优先级和长期方向。
+- [Changelog](CHANGELOG.md)：公开变更历史。
+- [GitHub issue templates](.github/ISSUE_TEMPLATE)：结构化 bug、feature 和 docs 反馈模板。
 
 ## 开源卫生检查
 

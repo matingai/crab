@@ -77,11 +77,17 @@ fn run_helper(action: &str, payload: &Value) -> Result<Value> {
     }
 
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if stderr.contains("no such module 'PDFKit'") {
+        bail!(
+            "PDF features require Apple's PDFKit framework; this helper currently works on macOS with Swift"
+        );
+    }
     let helper_output =
         serde_json::from_str::<Value>(&stdout).unwrap_or_else(|_| json!({ "error": stdout }));
     let helper_error = helper_output
         .get("error")
         .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
         .unwrap_or("PDF helper failed");
     if stderr.is_empty() {
         bail!("{helper_error}");
@@ -129,9 +135,10 @@ mod tests {
     use std::fs;
     use std::process::Command;
 
-    fn swift_available() -> bool {
+    fn pdfkit_available() -> bool {
         Command::new("swift")
-            .arg("--version")
+            .arg("-e")
+            .arg("import PDFKit")
             .output()
             .map(|output| output.status.success())
             .unwrap_or(false)
@@ -181,8 +188,8 @@ mod tests {
 
     #[test]
     fn inspects_and_extracts_pdf_text() {
-        if !swift_available() {
-            eprintln!("skipping PDF helper test because Swift is not available");
+        if !pdfkit_available() {
+            eprintln!("skipping PDF helper test because Swift PDFKit is not available");
             return;
         }
 

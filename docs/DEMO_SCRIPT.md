@@ -62,6 +62,7 @@ Open `http://localhost:1420`.
 Show:
 
 - sidebar navigation;
+- first-run Agent Loop demo state;
 - workspace area;
 - timeline panel;
 - model selector;
@@ -73,6 +74,10 @@ Say:
 The desktop shell is not the runtime. It is one surface over the Rust core and bridge
 event stream.
 ```
+
+If no session is loaded, use the built-in demo prompt button first. It frames Crab as a
+goal-tracking controller: the main model keeps the launch objective, tools produce local
+evidence, and bounded worker runs handle delegated subtasks.
 
 ## Scene 4: Model-Backed Workflow
 

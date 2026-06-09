@@ -562,6 +562,47 @@ type CronJobFormState = {
 const storageKey = "crab.desktop.preferences";
 const legacyStorageKey = "hermes-agent-rs.desktop.preferences";
 const defaultCronTickIntervalSeconds = 60;
+const demoLaunchPrompt =
+  "Inspect README.md and docs/AGENT_LOOP.md. Summarize Crab's strongest positioning angles, risky claims to avoid, and one demo workflow.";
+
+const demoLoopSteps = [
+  {
+    kind: "goal",
+    label: "Goal state",
+    title: "Public launch objective locked",
+    detail: "Main model keeps the goal, evidence, risks, and next moves in one visible loop.",
+    meta: "controller",
+  },
+  {
+    kind: "tool",
+    label: "Tools",
+    title: "Repository scan completed",
+    detail: "README, docs, examples, tests, and privacy surfaces are checked before claims are made.",
+    meta: "local runtime",
+  },
+  {
+    kind: "delegate",
+    label: "Delegation",
+    title: "Worker run reviews bounded subtasks",
+    detail: "Focused worker context handles docs and launch evidence while the main loop tracks direction.",
+    meta: "sub-model",
+  },
+  {
+    kind: "answer",
+    label: "Answer",
+    title: "Launch-ready response assembled",
+    detail: "Final output cites concrete project artifacts instead of vague agent marketing language.",
+    meta: "evidence first",
+  },
+] as const;
+
+const demoRuntimeSignals = [
+  "Goal-state controller",
+  "Worker delegation",
+  "Governed local tools",
+  "Inspectable timeline",
+  "Rust core + desktop shell",
+] as const;
 
 function emptyCronJobFormState(): CronJobFormState {
   return {
@@ -1286,6 +1327,105 @@ function WorkspaceFileListSection({
             </button>
           );
         })}
+      </div>
+    </section>
+  );
+}
+
+function DemoTimelineShowcase({ onUsePrompt }: { onUsePrompt: () => void }) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white/90 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
+      <div className="border-b border-slate-100 bg-[linear-gradient(180deg,rgba(248,250,252,0.92)_0%,rgba(255,255,255,0.92)_100%)] px-4 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex size-8 items-center justify-center rounded-lg bg-slate-900 text-white">
+                <Bot className="size-4" />
+              </span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-[15px] font-semibold leading-6 text-slate-900">Agent Loop Demo</h3>
+                  <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                    螃蟹 / Crab
+                  </Badge>
+                </div>
+                <p className="mt-0.5 max-w-2xl text-[12px] leading-5 text-slate-500">
+                  主模型负责目标追踪和思维控制，工具与子模型负责可观察的执行片段。
+                </p>
+              </div>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            className="h-8 shrink-0 gap-1.5 rounded-lg px-3 text-[12px]"
+            onClick={onUsePrompt}
+          >
+            <Play className="size-3.5" />
+            填入演示任务
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_260px]">
+        <div className="space-y-0 divide-y divide-slate-100">
+          {demoLoopSteps.map((step, index) => {
+            const Icon =
+              step.kind === "goal"
+                ? Sparkles
+                : step.kind === "tool"
+                  ? Wrench
+                  : step.kind === "delegate"
+                    ? Bot
+                    : Check;
+            const iconClass =
+              step.kind === "goal"
+                ? "bg-sky-50 text-sky-700"
+                : step.kind === "tool"
+                  ? "bg-amber-50 text-amber-700"
+                  : step.kind === "delegate"
+                    ? "bg-violet-50 text-violet-700"
+                    : "bg-emerald-50 text-emerald-700";
+
+            return (
+              <div key={step.title} className="grid grid-cols-[34px_minmax(0,1fr)] gap-3 px-4 py-3">
+                <div className="flex flex-col items-center">
+                  <span className={cn("inline-flex size-7 items-center justify-center rounded-lg", iconClass)}>
+                    <Icon className="size-3.5" />
+                  </span>
+                  {index < demoLoopSteps.length - 1 ? <span className="mt-2 h-full w-px bg-slate-100" /> : null}
+                </div>
+                <div className="min-w-0 pb-0.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-400">
+                      {step.label}
+                    </span>
+                    <span className="text-[11px] text-slate-300">/</span>
+                    <span className="font-mono text-[11px] text-slate-500">{step.meta}</span>
+                  </div>
+                  <div className="mt-1 text-[13px] font-semibold leading-5 text-slate-900">{step.title}</div>
+                  <p className="mt-1 max-w-2xl text-[12px] leading-5 text-slate-600">{step.detail}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <aside className="border-t border-slate-100 bg-slate-50/70 px-4 py-3 lg:border-l lg:border-t-0">
+          <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">Runtime Signals</div>
+          <div className="mt-3 space-y-2">
+            {demoRuntimeSignals.map((item) => (
+              <div key={item} className="flex min-w-0 items-center gap-2 rounded-lg bg-white/80 px-2.5 py-2">
+                <Check className="size-3.5 shrink-0 text-emerald-600" />
+                <span className="min-w-0 truncate text-[12px] text-slate-700">{item}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 rounded-lg border border-slate-200 bg-white/80 px-3 py-2">
+            <div className="text-[11px] font-medium text-slate-500">Demo prompt</div>
+            <p className="mt-1 line-clamp-3 text-[12px] leading-5 text-slate-700">{demoLaunchPrompt}</p>
+          </div>
+        </aside>
       </div>
     </section>
   );
@@ -6449,12 +6589,14 @@ export default function Page() {
                             );
                           })
                         ) : (
-                          <div className="rounded-xl border border-dashed border-slate-200 bg-white/80 px-6 py-10 text-center">
-                            <h3 className="text-[17px] font-semibold text-slate-800">这里会生成完整时间线</h3>
-                            <p className="mt-1.5 text-[13px] leading-[1.5] text-slate-500">
-                              运行后会按顺序展示用户输入、工具调用、审批节点和助手输出。
-                            </p>
-                          </div>
+                          <DemoTimelineShowcase
+                            onUsePrompt={() => {
+                              setConfig((prev) => ({ ...prev, prompt: demoLaunchPrompt }));
+                              window.setTimeout(() => {
+                                promptTextareaRef.current?.focus();
+                              }, 0);
+                            }}
+                          />
                         )}
                         {showAssistantLoading ? (
                           <article className="min-w-0 w-full max-w-full self-start">

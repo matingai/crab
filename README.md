@@ -4,13 +4,7 @@
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=matingai%2Fcrab&type=timeline&logscale=&legend=top-left">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=matingai/crab&type=timeline&theme=dark&logscale&legend=top-left" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=matingai/crab&type=timeline&logscale&legend=top-left" />
-    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=matingai/crab&type=timeline&logscale&legend=top-left" />
-  </picture>
-</a>
+[![Star History Chart](https://api.star-history.com/chart?repos=matingai/crab&type=timeline&logscale&legend=top-left)](https://www.star-history.com/?repos=matingai%2Fcrab&type=timeline&logscale=&legend=top-left)
 
 Crab (Chinese name: 螃蟹) is an experimental Rust agent runtime and desktop shell inspired by
 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent). It is not a

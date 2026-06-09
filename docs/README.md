@@ -15,6 +15,9 @@ evidence, and exposes the whole execution as a stream of structured events.
   state fit together.
 - [Agent Loop](AGENT_LOOP.md): the core reasoning loop, goal tracking, tool protocol, and
   worker delegation model.
+- [Install Guide](INSTALL.md): source installation, `cargo install`, provider setup, and
+  desktop shell startup.
+- [Install Guide 中文版](INSTALL.zh-CN.md): Chinese installation guide.
 - [FAQ](FAQ.md): no-key demo path, model gateways, safety notes, and common launch
   questions.
 - [FAQ 中文版](FAQ.zh-CN.md): Chinese FAQ for first-time users.

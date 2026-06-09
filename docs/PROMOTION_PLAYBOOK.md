@@ -47,6 +47,7 @@ Use this order when writing posts, talks, or release notes.
 Keep these assets fresh before a public push:
 
 - README banner and badges;
+- install command and no-key smoke test;
 - four desktop screenshots in `docs/assets/screenshots/`;
 - one 30-60 second screen recording or GIF;
 - `docs/AGENT_LOOP.md` and `docs/ARCHITECTURE.md`;

@@ -3,7 +3,9 @@ use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 #[command(name = "crab")]
-#[command(about = "Crab, a minimal Rust agent runtime inspired by Hermes Agent")]
+#[command(
+    about = "Crab, a Rust-native local agent runtime with goal-state loops and worker delegation"
+)]
 pub struct Cli {
     #[command(flatten)]
     pub global: GlobalOptions,

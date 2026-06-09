@@ -10,6 +10,7 @@ compatibility risk.
   ```bash
   cargo fmt --check
   cargo test --locked
+  cargo metadata --no-deps --format-version 1
   ```
 
 - Run desktop checks when the desktop shell changed:
@@ -30,6 +31,7 @@ compatibility risk.
 - Update `CHANGELOG.md`.
 - Update screenshots if the visible desktop shell changed.
 - Confirm README quick-start commands still match the CLI.
+- Confirm `docs/INSTALL.md` still matches the current binary name and install path.
 - Tag the release only after the release commit is pushed.
 
 ## Versioning Notes

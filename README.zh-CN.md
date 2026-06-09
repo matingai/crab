@@ -105,6 +105,7 @@ flowchart LR
 - [Project Overview](docs/PROJECT_OVERVIEW.md)：项目定位与工程主张。
 - [Architecture](docs/ARCHITECTURE.md)：runtime、bridge、tools、桌面壳与本地状态。
 - [Agent Loop](docs/AGENT_LOOP.md)：目标状态推理、委派、工具证据和恢复机制。
+- [Install Guide](docs/INSTALL.zh-CN.md)：源码安装、`cargo install`、provider 配置和桌面壳启动。
 - [Examples](examples/README.md)：可用于演示的 coding、research、browser/PDF 和文档工作流。
 - [FAQ](docs/FAQ.zh-CN.md)：无密钥试用、模型网关、安全边界和常见推广问题。
 - [Demo Script](docs/DEMO_SCRIPT.md)：短视频/直播演示脚本。
@@ -194,6 +195,29 @@ agent loop 是这个项目真正的中心。Crab 把主 agent 设计成一个面
 - 一个兼容 OpenAI Responses API 或 Chat Completions API 的模型 provider。
 - 如果运行桌面壳，需要 Node.js 和 npm。
 - 如果开发 Tauri shell，需要准备对应平台的 Tauri 依赖。
+
+## 安装
+
+从 GitHub 安装 CLI：
+
+```bash
+cargo install --git https://github.com/matingai/crab.git --locked
+```
+
+或者从本地 checkout 安装：
+
+```bash
+cargo install --path . --locked
+```
+
+验证安装：
+
+```bash
+crab --help
+crab debug-context --prompt "Explain how Crab tracks goals and delegates work."
+```
+
+Provider 配置、桌面壳启动和排障见 [安装 Crab](docs/INSTALL.zh-CN.md)。
 
 ## 无密钥试用
 

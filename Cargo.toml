@@ -2,6 +2,14 @@
 name = "crab"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
+description = "Rust-native local agent runtime with goal-state loops, worker delegation, and an inspectable desktop shell."
+license = "MIT"
+repository = "https://github.com/matingai/crab"
+homepage = "https://github.com/matingai/crab"
+readme = "README.md"
+keywords = ["ai-agent", "agent-runtime", "llm", "rust", "automation"]
+categories = ["command-line-utilities", "development-tools"]
 
 [lib]
 name = "hermes_agent_rs"

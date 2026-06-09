@@ -13,6 +13,17 @@ cargo run -- debug-context --prompt "Explain how Crab tracks goals and delegates
 You need a model provider only when you want Crab to execute a real model-backed response,
 for example `cargo run -- chat --prompt "..."` or `debug-context --execute`.
 
+## How do I install Crab?
+
+Install from GitHub:
+
+```bash
+cargo install --git https://github.com/matingai/crab.git --locked
+```
+
+Then run `crab --help`. See [Installing Crab](INSTALL.md) for local checkout, provider, and
+desktop shell setup.
+
 ## Can I use Cockpit, NewAPI, a local gateway, or a local model?
 
 Yes, if the gateway exposes an OpenAI-compatible API. Configure the endpoint and model with

@@ -21,6 +21,7 @@ and uses semantic versioning once stable release boundaries are established.
 - An agent-loop feedback issue template and public feedback label for launch-driven design
   discussion.
 - English and Chinese FAQ pages plus README no-key trial sections for first-time visitors.
+- English and Chinese install guides plus package metadata for public source installs.
 
 ### Changed
 

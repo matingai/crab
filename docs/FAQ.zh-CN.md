@@ -12,6 +12,16 @@ cargo run -- debug-context --prompt "Explain how Crab tracks goals and delegates
 只有在执行真实模型回复时才需要 provider，例如 `cargo run -- chat --prompt "..."`
 或 `debug-context --execute`。
 
+## 如何安装 Crab？
+
+从 GitHub 安装：
+
+```bash
+cargo install --git https://github.com/matingai/crab.git --locked
+```
+
+然后运行 `crab --help`。本地 checkout、provider 和桌面壳配置见 [安装 Crab](INSTALL.zh-CN.md)。
+
 ## 可以用 Cockpit、NewAPI、本地网关或本地模型吗？
 
 可以，只要它暴露 OpenAI-compatible API。用环境变量配置 endpoint 和模型：

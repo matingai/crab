@@ -242,6 +242,12 @@ Downloadable CLI archives are produced by tagged GitHub releases for macOS Apple
 macOS Intel, Linux x64, and Windows x64. See [Installing Crab](docs/INSTALL.md) for the
 asset names and direct install commands.
 
+Install the latest macOS/Linux CLI release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/matingai/crab/main/scripts/install.sh | bash
+```
+
 Install the CLI from GitHub:
 
 ```bash

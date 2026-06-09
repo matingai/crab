@@ -7,6 +7,10 @@ and uses semantic versioning once stable release boundaries are established.
 
 ## Unreleased
 
+### Added
+
+- One-command release installers for macOS/Linux and Windows PowerShell.
+
 ## 0.1.2
 
 ### Changed

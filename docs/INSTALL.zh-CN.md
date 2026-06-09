@@ -22,6 +22,25 @@ tagged release 可以发布这些 CLI 压缩包：
 | Linux x64 | `crab-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz` |
 | Windows x64 | `crab-vX.Y.Z-x86_64-pc-windows-msvc.zip` |
 
+### 一条命令安装
+
+macOS 或 Linux：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/matingai/crab/main/scripts/install.sh | bash
+```
+
+Windows PowerShell：
+
+```powershell
+irm https://raw.githubusercontent.com/matingai/crab/main/scripts/install.ps1 | iex
+```
+
+安装脚本会跟随最新 GitHub release，包括 0.1.x 阶段的 pre-release。可以用
+`CRAB_VERSION` 指定 release tag，用 `CRAB_INSTALL_DIR` 指定安装目录。
+
+### 手动安装
+
 macOS 或 Linux 可以从 `https://github.com/matingai/crab/releases` 下载匹配的 asset，
 然后安装二进制：
 

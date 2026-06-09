@@ -23,6 +23,26 @@ Tagged releases can publish these CLI archives:
 | Linux x64 | `crab-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz` |
 | Windows x64 | `crab-vX.Y.Z-x86_64-pc-windows-msvc.zip` |
 
+### One-command install
+
+For macOS or Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/matingai/crab/main/scripts/install.sh | bash
+```
+
+For Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/matingai/crab/main/scripts/install.ps1 | iex
+```
+
+The installer tracks the newest GitHub release, including pre-releases in the 0.1.x line.
+Set `CRAB_VERSION` to install a specific release tag, or `CRAB_INSTALL_DIR` to choose the
+binary directory.
+
+### Manual install
+
 For macOS or Linux, download the matching asset from
 `https://github.com/matingai/crab/releases`, then install the binary:
 

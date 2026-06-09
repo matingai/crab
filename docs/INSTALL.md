@@ -10,6 +10,7 @@ the long first compile.
 - Git.
 - A model provider only for model-backed runs. The no-key smoke test works without one.
 - Node.js and npm only if you want to run the desktop shell.
+- Swift on `PATH` only if you want to use the current PDF inspection and extraction tools.
 
 ## Install From A GitHub Release
 
@@ -136,6 +137,7 @@ configuration, and model outputs. Do not commit it.
 
 - If `cargo install` fails, check `rustc --version` and upgrade to Rust 1.85 or newer.
 - If model calls fail, confirm `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and `HERMES_RS_MODEL`.
+- If PDF inspection or extraction fails, confirm `swift --version` works in the same terminal.
 - If the desktop shell fails to start, run `npm install` inside `desktop-shell/` and check
   that Node.js is available.
 - Keep the terminal tool disabled unless you intentionally need it. Use `--enable-shell`

@@ -9,6 +9,7 @@ Crab 可以从源码安装，也可以从 GitHub Release CLI 压缩包安装。0
 - Git。
 - 只有执行真实模型请求时才需要模型 provider。无密钥 smoke test 不需要。
 - 只有运行桌面壳时才需要 Node.js 和 npm。
+- 只有使用当前 PDF 检查和抽取工具时才需要 `PATH` 中有 Swift。
 
 ## 从 GitHub Release 安装
 
@@ -133,5 +134,6 @@ Crab 当前会把本地 runtime 状态存到：
 
 - 如果 `cargo install` 失败，先检查 `rustc --version`，并升级到 Rust 1.85 或更新版本。
 - 如果模型请求失败，检查 `OPENAI_API_KEY`、`OPENAI_BASE_URL` 和 `HERMES_RS_MODEL`。
+- 如果 PDF 检查或抽取失败，确认同一个终端里 `swift --version` 可以正常运行。
 - 如果桌面壳启动失败，在 `desktop-shell/` 里重新运行 `npm install`，并确认 Node.js 可用。
 - 除非明确需要，否则保持 terminal 工具关闭。只在可信工作区使用 `--enable-shell`。

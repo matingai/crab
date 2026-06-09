@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Value, json};
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -42,7 +43,7 @@ fn run_helper(action: &str, payload: &Value) -> Result<Value> {
     fs::create_dir_all(&module_cache_path)
         .with_context(|| format!("failed to create {}", module_cache_path.display()))?;
 
-    let mut child = Command::new("swift")
+    let mut child = match Command::new("swift")
         .arg("-module-cache-path")
         .arg(&module_cache_path)
         .arg(&script_path)
@@ -51,7 +52,13 @@ fn run_helper(action: &str, payload: &Value) -> Result<Value> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .context("failed to launch swift for PDF helper")?;
+    {
+        Ok(child) => child,
+        Err(error) if error.kind() == ErrorKind::NotFound => {
+            bail!("PDF features require Swift to be installed and available on PATH");
+        }
+        Err(error) => return Err(error).context("failed to launch swift for PDF helper"),
+    };
 
     if let Some(mut stdin) = child.stdin.take() {
         let body = serde_json::to_vec(payload)?;
@@ -120,6 +127,15 @@ mod tests {
     use super::{extract_ir, inspect_document, preview_pdf};
     use serde_json::json;
     use std::fs;
+    use std::process::Command;
+
+    fn swift_available() -> bool {
+        Command::new("swift")
+            .arg("--version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
 
     fn build_test_pdf(text: &str) -> Vec<u8> {
         let escaped = text
@@ -165,6 +181,11 @@ mod tests {
 
     #[test]
     fn inspects_and_extracts_pdf_text() {
+        if !swift_available() {
+            eprintln!("skipping PDF helper test because Swift is not available");
+            return;
+        }
+
         let tmp = tempfile::tempdir().expect("tempdir");
         let path = tmp.path().join("sample.pdf");
         fs::write(&path, build_test_pdf("Hello PDF from test")).expect("write pdf");

@@ -2,6 +2,16 @@
 
 [English](README.md)
 
+## Star History
+
+<a href="https://star-history.com/#matingai/crab&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=matingai/crab&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=matingai/crab&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=matingai/crab&type=Date" />
+  </picture>
+</a>
+
 Hermes Agent RS 是一个受
 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)
 启发的实验性 Rust agent 运行时与桌面壳项目。它不是原项目的逐行移植，而是把可复用的本地
@@ -332,4 +342,4 @@ npm run build
 
 ## License
 
-仓库目前还没有选择开源许可证。公开发布前请添加 `LICENSE` 文件，让下游用户明确知道授权范围。
+Hermes Agent RS 使用 [MIT License](LICENSE) 发布。

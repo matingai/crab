@@ -20,6 +20,7 @@ documents the highest-risk areas and the cleanup already applied.
   reports, generated decks, and generated document files.
 - Rewrote the root README as a professional English open-source README.
 - Added a professional Chinese README at `README.zh-CN.md`.
+- Added the MIT license.
 - Rebuilt the repository into a single clean root commit with neutral author and committer
   metadata.
 - Removed the previous local `origin` remote because it pointed at a personal account path.
@@ -46,13 +47,12 @@ documents the highest-risk areas and the cleanup already applied.
 
 ## Recommended Pre-release Checklist
 
-1. Choose an open-source license and add a `LICENSE` file.
-2. Add a new public remote and push only the rebuilt clean history.
-3. Run a dedicated scanner such as `gitleaks` or `trufflehog` against the final repository.
-4. Run `cargo fmt --check`, `cargo test`, and the relevant desktop-shell checks.
-5. Review all untracked files with `git status --short --untracked-files=all` before the
+1. Add a new public remote and push only the rebuilt clean history.
+2. Run a dedicated scanner such as `gitleaks` or `trufflehog` against the final repository.
+3. Run `cargo fmt --check`, `cargo test`, and the relevant desktop-shell checks.
+4. Review all untracked files with `git status --short --untracked-files=all` before the
    first public commit.
-6. Do not commit local `.env` files, `.hermes-agent-rs/`, desktop shell runtime state,
+5. Do not commit local `.env` files, `.hermes-agent-rs/`, desktop shell runtime state,
    generated documents, generated slides, or model outputs.
 
 ## Commands Used During This Review

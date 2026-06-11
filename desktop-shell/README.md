@@ -119,6 +119,17 @@ cd desktop-shell
 npm run tauri:release
 ```
 
+生成指定平台安装包：
+
+```bash
+cd desktop-shell
+npm run tauri:release -- --bundles dmg
+```
+
+Windows 下使用 `--bundles nsis` 生成 setup `.exe`。GitHub Release 会自动上传稳定命名的
+`crab-desktop-vX.Y.Z-*.dmg` 和 `crab-desktop-vX.Y.Z-*-setup.exe`，并附带 `.sha256` 校验文件。
+0.1.x 阶段这些安装包还未签名，macOS Gatekeeper 或 Windows SmartScreen 可能提示风险。
+
 注意：
 
 - Electron 现在会通过 Rust `desktop-bridge` 子命令转发大部分 agent/session/runtime 命令

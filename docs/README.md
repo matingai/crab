@@ -16,8 +16,10 @@ evidence, and exposes the whole execution as a stream of structured events.
 - [Agent Loop](AGENT_LOOP.md): the core reasoning loop, goal tracking, tool protocol, and
   worker delegation model.
 - [Install Guide](INSTALL.md): source installation, `cargo install`, provider setup, and
-  desktop shell startup.
+  desktop installer / CLI archive setup.
 - [Install Guide 中文版](INSTALL.zh-CN.md): Chinese installation guide.
+- [Desktop Packaging](DESKTOP_PACKAGING.md): DMG and Windows setup packaging, asset names,
+  signing expectations, and CI behavior.
 - [Quickstart](QUICKSTART.md): install, doctor, no-key smoke test, first model-backed
   prompt, and desktop preview.
 - [Quickstart 中文版](QUICKSTART.zh-CN.md): Chinese quickstart guide.

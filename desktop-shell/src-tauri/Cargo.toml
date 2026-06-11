@@ -1,6 +1,6 @@
 [package]
 name = "crab-desktop"
-version = "0.1.0"
+version = "0.1.4"
 description = "Tauri desktop shell for Crab"
 edition = "2024"
 default-run = "crab-desktop"

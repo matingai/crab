@@ -932,7 +932,7 @@ dependencies = [
 
 [[package]]
 name = "crab"
-version = "0.1.0"
+version = "0.1.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -961,7 +961,7 @@ dependencies = [
 
 [[package]]
 name = "crab-desktop"
-version = "0.1.0"
+version = "0.1.4"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

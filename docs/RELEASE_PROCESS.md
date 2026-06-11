@@ -21,6 +21,7 @@ compatibility risk.
   cd desktop-shell
   npm ci
   npm run build
+  npm run tauri:release -- --bundles dmg
   ```
 
 - Review open-source hygiene:
@@ -36,11 +37,21 @@ compatibility risk.
 - Confirm `docs/INSTALL.md` still matches the current binary name and install path.
 - Tag the release only after the release commit is pushed. Tags matching `v*` trigger
   `.github/workflows/release.yml`, which builds CLI archives for macOS arm64, macOS Intel,
-  Linux x64, and Windows x64, then publishes a prerelease with assets attached.
+  Linux x64, and Windows x64, plus desktop installers for macOS and Windows, then
+  publishes a prerelease with assets attached.
 
 ## Release Archives
 
 The release workflow builds these assets:
+
+Desktop installers:
+
+- `crab-desktop-vX.Y.Z-aarch64-apple-darwin.dmg`
+- `crab-desktop-vX.Y.Z-x86_64-apple-darwin.dmg`
+- `crab-desktop-vX.Y.Z-x86_64-pc-windows-msvc-setup.exe`
+- matching `.sha256` checksum files
+
+CLI archives:
 
 - `crab-vX.Y.Z-aarch64-apple-darwin.tar.gz`
 - `crab-vX.Y.Z-x86_64-apple-darwin.tar.gz`
@@ -58,6 +69,18 @@ Each archive should contain:
 - `docs/INSTALL.md` and `docs/INSTALL.zh-CN.md`;
 - `docs/QUICKSTART.md` and `docs/QUICKSTART.zh-CN.md`;
 - `scripts/install.sh` and `scripts/install.ps1`.
+
+## Desktop Installer Notes
+
+Desktop installers are built from `desktop-shell/src-tauri` with Tauri:
+
+- macOS builds publish unsigned DMGs for Apple Silicon and Intel.
+- Windows builds publish an unsigned NSIS setup `.exe`.
+- The 0.1.x installers are preview builds; expect Gatekeeper or SmartScreen warnings until
+  Apple Developer ID, notarization, and Windows Authenticode signing are wired into CI.
+
+Keep desktop versions aligned across root `Cargo.toml`, `desktop-shell/package.json`,
+`desktop-shell/src-tauri/Cargo.toml`, and `desktop-shell/src-tauri/tauri.conf.json`.
 
 ## Versioning Notes
 

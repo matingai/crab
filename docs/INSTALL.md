@@ -1,18 +1,34 @@
 # Installing Crab
 
-Crab can be installed from source or from GitHub Release CLI archives. Source installation
-is still the most reliable path during early 0.1.x development, but release archives avoid
-the long first compile.
+Crab can be installed as a desktop app, as a standalone CLI binary, or from source. During
+early 0.1.x development, source installation remains the most transparent path for
+contributors, while release installers and archives are better for first-time users.
 
 ## Requirements
 
 - Rust 1.85 or newer.
 - Git.
 - A model provider only for model-backed runs. The no-key smoke test works without one.
-- Node.js and npm only if you want to run the desktop shell.
+- Node.js and npm only if you want to develop or locally package the desktop shell.
 - Swift on `PATH` only if you want to use the current PDF inspection and extraction tools.
 
-## Install From A GitHub Release
+## Install The Desktop App
+
+Download the matching installer from `https://github.com/matingai/crab/releases`:
+
+| Platform | Asset |
+| --- | --- |
+| macOS Apple Silicon | `crab-desktop-vX.Y.Z-aarch64-apple-darwin.dmg` |
+| macOS Intel | `crab-desktop-vX.Y.Z-x86_64-apple-darwin.dmg` |
+| Windows x64 | `crab-desktop-vX.Y.Z-x86_64-pc-windows-msvc-setup.exe` |
+
+Open the DMG on macOS and drag Crab into Applications. On Windows, run the setup `.exe`.
+
+The current 0.1.x desktop installers are unsigned preview builds. macOS Gatekeeper or
+Windows SmartScreen may warn before launch. Verify the matching `.sha256` checksum when
+testing release builds from GitHub.
+
+## Install The CLI From A GitHub Release
 
 Tagged releases can publish these CLI archives:
 
@@ -47,7 +63,7 @@ For macOS or Linux, download the matching asset from
 `https://github.com/matingai/crab/releases`, then install the binary:
 
 ```bash
-VERSION=v0.1.2
+VERSION=v0.1.4
 TARGET=aarch64-apple-darwin
 curl -LO "https://github.com/matingai/crab/releases/download/${VERSION}/crab-${VERSION}-${TARGET}.tar.gz"
 tar -xzf "crab-${VERSION}-${TARGET}.tar.gz"
@@ -128,9 +144,9 @@ export HERMES_RS_MODEL="gpt-4.1-mini"
 For Cockpit, NewAPI, or a local gateway, point `OPENAI_BASE_URL` at the gateway's
 OpenAI-compatible `/v1` endpoint and set `HERMES_RS_MODEL` to the routed model name.
 
-## Run The Desktop Shell
+## Run Or Package The Desktop Shell From Source
 
-The desktop shell is not distributed as a packaged app yet. Run it from source:
+Run the desktop shell from source:
 
 ```bash
 cd desktop-shell
@@ -146,6 +162,16 @@ npm run dev
 ```
 
 Open `http://localhost:1420`.
+
+To build a local Tauri installer:
+
+```bash
+cd desktop-shell
+npm run tauri:release -- --bundles dmg
+```
+
+Use `--bundles nsis` on Windows to build the setup `.exe`. See
+[Desktop Packaging](DESKTOP_PACKAGING.md) for CI asset names and signing notes.
 
 ## Local State
 

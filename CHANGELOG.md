@@ -7,6 +7,20 @@ and uses semantic versioning once stable release boundaries are established.
 
 ## Unreleased
 
+## 0.1.4
+
+### Added
+
+- Tauri desktop installer packaging for macOS DMG and Windows NSIS setup `.exe` release
+  assets.
+- Desktop packaging documentation covering release asset names, CI behavior, checksums,
+  and unsigned preview-build limitations.
+
+### Changed
+
+- The desktop shell package, Tauri crate, and Tauri bundle metadata now align with the root
+  Crab version.
+
 ## 0.1.3
 
 ### Added

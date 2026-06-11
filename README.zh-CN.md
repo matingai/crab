@@ -199,8 +199,12 @@ agent loop 是这个项目真正的中心。Crab 把主 agent 设计成一个面
 
 ## 安装
 
-tagged GitHub releases 会为 macOS Apple Silicon、macOS Intel、Linux x64 和 Windows x64
-生成可下载 CLI 压缩包。asset 名称和直接安装命令见 [安装 Crab](docs/INSTALL.zh-CN.md)。
+tagged GitHub releases 会生成两类下载文件：
+
+- 面向普通用户的桌面安装包：macOS `.dmg` 和 Windows NSIS setup `.exe`。
+- 面向开发者和自动化环境的 CLI 压缩包：macOS/Linux `.tar.gz` 和 Windows `.zip`。
+
+asset 名称、校验说明和直接安装命令见 [安装 Crab](docs/INSTALL.zh-CN.md)。
 
 安装最新版 macOS/Linux CLI：
 
@@ -398,6 +402,16 @@ npm run dev
 cd desktop-shell
 npm run tauri:dev
 ```
+
+构建本地 Tauri 安装包：
+
+```bash
+cd desktop-shell
+npm run tauri:release -- --bundles dmg
+```
+
+Windows 下使用 `--bundles nsis` 生成 setup `.exe`。release asset 命名、签名说明和 CI 行为见
+[桌面安装包文档](docs/DESKTOP_PACKAGING.md)。
 
 检查 Tauri backend：
 

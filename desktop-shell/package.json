@@ -1,6 +1,6 @@
 {
   "name": "crab-desktop-shell",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,6 +13,7 @@
     "desktop:release": "npm run electron:release",
     "electron:dev": "node ./electron/dev.mjs",
     "electron:release": "node ./electron/release.mjs",
+    "tauri:bundle": "tauri build",
     "slidev": "slidev",
     "slidev:export": "slidev export"
   },
@@ -41,6 +42,7 @@
     "typescript": "^6.0.2"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.2",
     "electron": "^41.2.0"
   }
 }

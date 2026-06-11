@@ -240,9 +240,14 @@ Important safety notes:
 
 ## Installation
 
-Downloadable CLI archives are produced by tagged GitHub releases for macOS Apple Silicon,
-macOS Intel, Linux x64, and Windows x64. See [Installing Crab](docs/INSTALL.md) for the
-asset names and direct install commands.
+Tagged GitHub releases produce two kinds of downloads:
+
+- Desktop installers for end users: `.dmg` on macOS and an NSIS setup `.exe` on Windows.
+- CLI archives for developers and automation: `.tar.gz` on macOS/Linux and `.zip` on
+  Windows.
+
+See [Installing Crab](docs/INSTALL.md) for asset names, checksum notes, and direct install
+commands.
 
 Install the latest macOS/Linux CLI release:
 
@@ -446,6 +451,17 @@ Run the Tauri shell:
 cd desktop-shell
 npm run tauri:dev
 ```
+
+Build a local Tauri installer:
+
+```bash
+cd desktop-shell
+npm run tauri:release -- --bundles dmg
+```
+
+Use `--bundles nsis` on Windows to create the setup `.exe`. See
+[Desktop Packaging](docs/DESKTOP_PACKAGING.md) for release asset names, signing notes, and
+CI behavior.
 
 Check the Tauri backend:
 

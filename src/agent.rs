@@ -7497,10 +7497,10 @@ fn parse_approval_required(value: &str) -> Option<ApprovalRequiredPayload> {
 mod tests {
     use super::{
         APPROVAL_PENDING_RESPONSE, Agent, ContextInjection, ContextInjectionStats,
-        PROMPT_HISTORY_MAX_USER_TURNS, TurnModelRuntime, apply_goal_state_reconcile_patch,
-        assemble_turn_messages, classify_tool_cognition_kind, classify_tool_result_status,
-        continuation_prefix_digest, finalize_context_injections, latest_turn_transcript,
-        needs_goal_state_compaction, parse_goal_state_compaction_response,
+        PROMPT_HISTORY_MAX_USER_TURNS, TurnModelRuntime, TurnProgress,
+        apply_goal_state_reconcile_patch, assemble_turn_messages, classify_tool_cognition_kind,
+        classify_tool_result_status, continuation_prefix_digest, finalize_context_injections,
+        latest_turn_transcript, needs_goal_state_compaction, parse_goal_state_compaction_response,
         parse_goal_state_delta_response, parse_goal_state_execution_brief_response,
         parse_goal_state_reconcile_response, parse_tool_result_summary_response,
         render_context_budget_nudge, render_goal_execution_brief_block,
@@ -7515,6 +7515,7 @@ mod tests {
     use crate::approval::{request_approval, resolve_request, save_pending_approval};
     use crate::config::{AppConfig, AuxiliaryModelConfig};
     use crate::events::{AgentEvent, RecordingEventHandler};
+    use crate::experience_store::{ExperienceRecord, ExperienceState};
     use crate::goal_state::{CognitionItem, GoalItem, GoalState, HotDataItem};
     use crate::llm::ApiMode;
     use crate::meta_pattern_store::{MetaPatternRecord, MetaPatternState};
@@ -10100,6 +10101,105 @@ mod tests {
             AgentEvent::Nudge { kind, message, .. }
             if kind == "context" && message.contains("输出上限")
         )));
+    }
+
+    #[tokio::test]
+    async fn injects_learning_context_when_available() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut config = build_test_config("mock://final-response", tmp.path());
+        config.enable_meta_pattern_context = true;
+        config.enable_experience_context = true;
+        let mut agent = Agent::new(config).expect("agent");
+        let session_id = agent.session.session_id.clone();
+
+        agent
+            .experience_store
+            .save(
+                &session_id,
+                &ExperienceState {
+                    records: vec![ExperienceRecord {
+                        id: "exp:turn-1".to_string(),
+                        source_episode_id: "turn-1".to_string(),
+                        kind: "build_fix".to_string(),
+                        problem_frame: "Fix trait build failure".to_string(),
+                        signals: vec!["trait errors across modules".to_string()],
+                        successful_strategy: vec![
+                            "compare shared trait signature with implementors".to_string(),
+                        ],
+                        failure_patterns: vec!["patching symptoms first".to_string()],
+                        outcome: "build errors narrowed to shared trait change".to_string(),
+                        confidence: 0.82,
+                        created_at_unix: 1,
+                        updated_at_unix: 1,
+                    }],
+                },
+            )
+            .expect("save experience");
+        agent
+            .meta_pattern_store
+            .save(
+                &session_id,
+                &MetaPatternState {
+                    patterns: vec![MetaPatternRecord {
+                        id: "pattern:build".to_string(),
+                        kind: "build_fix".to_string(),
+                        problem_cluster: "Fix trait build failure".to_string(),
+                        source_experience_ids: vec!["exp:turn-1".to_string()],
+                        signal_patterns: vec!["trait errors across modules".to_string()],
+                        recommended_strategies: vec![
+                            "compare shared trait signature with implementors".to_string(),
+                        ],
+                        failure_patterns: vec!["patching symptoms first".to_string()],
+                        representative_outcomes: vec![
+                            "build errors narrowed to shared trait change".to_string(),
+                        ],
+                        sample_count: 1,
+                        confidence: 0.82,
+                        model_summary: Some(
+                            "Trait build failures often point back to a shared signature change."
+                                .to_string(),
+                        ),
+                        match_hints: vec!["trait build failure".to_string()],
+                        strategy_template: None,
+                        created_at_unix: 1,
+                        updated_at_unix: 1,
+                    }],
+                },
+            )
+            .expect("save meta patterns");
+
+        let mut handler = RecordingEventHandler::new();
+        let mut progress = TurnProgress {
+            turn_tool_calls: 0,
+            skill_manage_used: false,
+            turn_tool_names: Vec::new(),
+            turn_skill_matches: Vec::new(),
+        };
+        let (injections, _matched_skills) = agent
+            .collect_turn_context_injections(
+                &mut handler,
+                1,
+                "Fix this trait build failure",
+                &mut progress,
+            )
+            .await;
+
+        let meta_pattern = injections
+            .iter()
+            .find(|injection| injection.label == "meta_pattern")
+            .expect("meta pattern context");
+        assert!(meta_pattern.content.contains("<meta-pattern-context>"));
+        assert!(meta_pattern.content.contains("Trait build failures"));
+        let experience = injections
+            .iter()
+            .find(|injection| injection.label == "experience")
+            .expect("experience context");
+        assert!(experience.content.contains("<experience-context>"));
+        assert!(
+            experience
+                .content
+                .contains("compare shared trait signature")
+        );
     }
 
     #[test]

@@ -147,6 +147,25 @@ which parts of the loop are doing work, waiting on tools, or worth optimizing.
 
 The point is to preserve meaning, not just bytes.
 
+## Learning Context
+
+Crab can feed distilled experience back into later turns. After a solve episode ends, the
+loop derives compact experience records and rebuilds aggregated meta-patterns. When a new
+request matches those records, the prompt can receive small `<experience-context>` and
+`<meta-pattern-context>` blocks with signals, recommended strategies, failure patterns,
+and model-refined strategy templates.
+
+This learning context is enabled by default for CLI and desktop runs when matching records
+exist. It can be disabled with `HERMES_RS_DISABLE_LEARNING_CONTEXT=1`, or controlled more
+granularly with `HERMES_RS_DISABLE_EXPERIENCE_CONTEXT=1` and
+`HERMES_RS_DISABLE_META_PATTERN_CONTEXT=1`. The older
+`HERMES_RS_ENABLE_EXPERIENCE_CONTEXT` and `HERMES_RS_ENABLE_META_PATTERN_CONTEXT` flags
+still force those blocks on when a workspace wants explicit opt-in behavior.
+
+The intent is Codex-like reuse without turning memory into a bag of stale instructions:
+learning blocks are clipped, optional, redacted in event previews, and framed as
+heuristics that should be ignored when the current evidence does not fit.
+
 ## Context Pressure And Recovery
 
 Long-running agent sessions eventually hit context pressure. The loop includes recovery

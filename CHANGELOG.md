@@ -69,6 +69,9 @@ and uses semantic versioning once stable release boundaries are established.
 - Experience and meta-pattern writes now emit `learning_state_updated` events for episode
   distillation, pattern rebuilds, and model-assisted pattern summaries so the learning
   loop is visible without exposing full memory records.
+- Distilled experience and meta-pattern context are now enabled by default for CLI and
+  desktop runs when matching records exist, with `HERMES_RS_DISABLE_LEARNING_CONTEXT` and
+  granular disable flags for workspaces that want to opt out.
 - Context compression now emits a structured `context_compacted` event with before/after
   message counts, estimated tokens, summary usage, trigger reason, and pruned-tool-output
   counts without exposing the compacted summary body.

@@ -116,8 +116,8 @@ impl AppConfig {
             enable_shell_tool: cli.enable_shell || env_flag("HERMES_RS_ENABLE_SHELL"),
             debug_context: env_flag("HERMES_RS_DEBUG_CONTEXT"),
             enable_solve_trace_context: env_flag("HERMES_RS_ENABLE_SOLVE_TRACE_CONTEXT"),
-            enable_meta_pattern_context: env_flag("HERMES_RS_ENABLE_META_PATTERN_CONTEXT"),
-            enable_experience_context: env_flag("HERMES_RS_ENABLE_EXPERIENCE_CONTEXT"),
+            enable_meta_pattern_context: meta_pattern_context_enabled(),
+            enable_experience_context: experience_context_enabled(),
             auxiliary_model,
             smart_model_routing,
             runtime_profile,
@@ -196,4 +196,16 @@ pub fn env_flag(name: &str) -> bool {
         Ok(value) => matches!(value.trim(), "1" | "true" | "TRUE" | "yes" | "on"),
         Err(_) => false,
     }
+}
+
+pub fn meta_pattern_context_enabled() -> bool {
+    env_flag("HERMES_RS_ENABLE_META_PATTERN_CONTEXT")
+        || (!env_flag("HERMES_RS_DISABLE_LEARNING_CONTEXT")
+            && !env_flag("HERMES_RS_DISABLE_META_PATTERN_CONTEXT"))
+}
+
+pub fn experience_context_enabled() -> bool {
+    env_flag("HERMES_RS_ENABLE_EXPERIENCE_CONTEXT")
+        || (!env_flag("HERMES_RS_DISABLE_LEARNING_CONTEXT")
+            && !env_flag("HERMES_RS_DISABLE_EXPERIENCE_CONTEXT"))
 }

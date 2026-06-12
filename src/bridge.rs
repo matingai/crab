@@ -8,7 +8,10 @@ use uuid::Uuid;
 
 use crate::agent::Agent;
 use crate::approval::ApprovalRequest;
-use crate::config::{AppConfig, env_flag, resolve_auxiliary_model};
+use crate::config::{
+    AppConfig, env_flag, experience_context_enabled, meta_pattern_context_enabled,
+    resolve_auxiliary_model,
+};
 use crate::cron::{
     CronJobDefinition, CronJobSummary, delete_cron_job_definition, finalize_run_record,
     find_cron_job, load_cron_job_summaries, new_running_record, save_cron_job_definition,
@@ -910,8 +913,8 @@ fn build_run_config(request: &RunAgentRequest) -> Result<AppConfig> {
         enable_shell_tool: request.enable_shell_tool,
         debug_context: env_flag("HERMES_RS_DEBUG_CONTEXT"),
         enable_solve_trace_context: env_flag("HERMES_RS_ENABLE_SOLVE_TRACE_CONTEXT"),
-        enable_meta_pattern_context: env_flag("HERMES_RS_ENABLE_META_PATTERN_CONTEXT"),
-        enable_experience_context: env_flag("HERMES_RS_ENABLE_EXPERIENCE_CONTEXT"),
+        enable_meta_pattern_context: meta_pattern_context_enabled(),
+        enable_experience_context: experience_context_enabled(),
         auxiliary_model,
         smart_model_routing,
         runtime_profile,
@@ -960,8 +963,8 @@ fn build_session_config(request: &SessionCommandRequest) -> Result<AppConfig> {
         enable_shell_tool: request.enable_shell_tool,
         debug_context: env_flag("HERMES_RS_DEBUG_CONTEXT"),
         enable_solve_trace_context: env_flag("HERMES_RS_ENABLE_SOLVE_TRACE_CONTEXT"),
-        enable_meta_pattern_context: env_flag("HERMES_RS_ENABLE_META_PATTERN_CONTEXT"),
-        enable_experience_context: env_flag("HERMES_RS_ENABLE_EXPERIENCE_CONTEXT"),
+        enable_meta_pattern_context: meta_pattern_context_enabled(),
+        enable_experience_context: experience_context_enabled(),
         auxiliary_model,
         smart_model_routing,
         runtime_profile,
@@ -1010,8 +1013,8 @@ fn build_cron_run_config(request: &RunCronJobRequest) -> Result<AppConfig> {
         enable_shell_tool: request.enable_shell_tool,
         debug_context: env_flag("HERMES_RS_DEBUG_CONTEXT"),
         enable_solve_trace_context: env_flag("HERMES_RS_ENABLE_SOLVE_TRACE_CONTEXT"),
-        enable_meta_pattern_context: env_flag("HERMES_RS_ENABLE_META_PATTERN_CONTEXT"),
-        enable_experience_context: env_flag("HERMES_RS_ENABLE_EXPERIENCE_CONTEXT"),
+        enable_meta_pattern_context: meta_pattern_context_enabled(),
+        enable_experience_context: experience_context_enabled(),
         auxiliary_model,
         smart_model_routing,
         runtime_profile,
@@ -1067,8 +1070,8 @@ fn build_retry_delegate_config(
         enable_shell_tool: request.enable_shell_tool,
         debug_context: env_flag("HERMES_RS_DEBUG_CONTEXT"),
         enable_solve_trace_context: env_flag("HERMES_RS_ENABLE_SOLVE_TRACE_CONTEXT"),
-        enable_meta_pattern_context: env_flag("HERMES_RS_ENABLE_META_PATTERN_CONTEXT"),
-        enable_experience_context: env_flag("HERMES_RS_ENABLE_EXPERIENCE_CONTEXT"),
+        enable_meta_pattern_context: meta_pattern_context_enabled(),
+        enable_experience_context: experience_context_enabled(),
         auxiliary_model,
         smart_model_routing,
         runtime_profile,

@@ -10,6 +10,8 @@ The current implementation is deliberately conservative:
 - A permission-prompt path for first-time setup.
 - A shallow frontmost-app Accessibility UI tree when permission is granted, with stable
   element references such as `@u1`.
+- Read-only searching across a fresh Accessibility snapshot to locate candidate refs by
+  text, role, and compact state.
 - Read-only waiting for text to appear or for the frontmost Accessibility tree to settle.
 - Approval-gated focus support for a current `@u` ref.
 - Approval-gated click support for a current `@u` ref.
@@ -25,13 +27,14 @@ side effect of ordinary chat.
 
 ## Tool Surface
 
-The built-in `computer_use` tool supports eight actions:
+The built-in `computer_use` tool supports nine actions:
 
 | Action | Behavior |
 | --- | --- |
 | `status` | Reports platform support, Accessibility trust, prompt support, and setup guidance. |
 | `request_permission` | Calls the macOS Accessibility prompt API and reports the resulting state. |
 | `snapshot` | Reads a compact Accessibility UI tree for the frontmost application and its windows. |
+| `find` | Searches a fresh snapshot for candidate UI refs by query, role, or state, and returns matching element lines. |
 | `wait` | Polls snapshots until target text appears or the UI tree settles, then returns the latest snapshot. |
 | `focus` | Sets keyboard focus to a snapshot ref such as `@u2`, then returns a post-focus snapshot. |
 | `click` | Activates a snapshot ref such as `@u2`, then returns a post-click snapshot. |
@@ -74,6 +77,27 @@ approval-gated actions can target a concrete element without guessing coordinate
 Snapshot state flags are intentionally sparse: `focused=true` and `selected=true` are
 shown only when present, and `enabled=false` marks unavailable controls without adding
 noise to every enabled element.
+
+`find` is the lightweight targeting step for native UI work. It takes a fresh snapshot,
+saves a new `snapshot_id`, and returns only matching element lines. Use it when the agent
+knows what it wants but should avoid dumping the entire UI tree again:
+
+```json
+{
+  "action": "find",
+  "query": "Continue",
+  "role": "button",
+  "state": "enabled",
+  "max_results": 12,
+  "max_items": 40,
+  "max_depth": 3
+}
+```
+
+At least one of `query`, `role`, or `state` is required. `state` accepts `focused`,
+`selected`, `enabled`, and `disabled`; `enabled` means the snapshot line does not include
+`enabled=false`. The returned `snapshot_id` can be used immediately by approval-gated
+`focus`, `click`, `set_text`, or `press_key` calls.
 
 `wait` is the read-only observation loop for native UI work. It returns a fresh
 `snapshot_id` and the latest snapshot whether the condition matched or timed out, so the
@@ -151,9 +175,9 @@ action fails and the agent must observe the desktop again.
 
 `focus`, `click`, `set_text`, and `press_key` are write actions. Crab's default tool
 policy requires approval before they run, even if the user has not configured a custom
-`tool_policy`. `status`, `snapshot`, and `wait` stay available without approval. `set_text`
-does not send global keystrokes; it attempts to set the target Accessibility element's
-value directly, so it is mainly for text fields and similar controls.
+`tool_policy`. `status`, `snapshot`, `find`, and `wait` stay available without approval.
+`set_text` does not send global keystrokes; it attempts to set the target Accessibility
+element's value directly, so it is mainly for text fields and similar controls.
 
 `press_key` intentionally accepts only a small whitelist: `enter`, `escape`, `tab`,
 `space`, `backspace`, `forward_delete`, `arrow_up`, `arrow_down`, `arrow_left`,
@@ -188,6 +212,7 @@ actions on observed refs. It lets the agent know whether native automation is po
 gives it a bounded, inspectable desktop UI tree. Future write actions should stay gated by:
 
 - explicit tool names and arguments;
+- read-only find steps before choosing an observed ref;
 - read-only waits after actions before choosing the next ref;
 - snapshot-bound refs instead of coordinate guessing;
 - focused UI targets before key-driven navigation;

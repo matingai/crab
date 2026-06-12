@@ -35,6 +35,11 @@ struct ComputerUseArgs {
     wait_until: Option<String>,
     #[serde(alias = "containsText")]
     contains_text: Option<String>,
+    query: Option<String>,
+    role: Option<String>,
+    state: Option<String>,
+    #[serde(alias = "maxResults")]
+    max_results: Option<usize>,
     #[serde(alias = "caseSensitive")]
     case_sensitive: Option<bool>,
     #[serde(alias = "timeoutSeconds")]
@@ -46,6 +51,10 @@ struct ComputerUseArgs {
 
 const MAX_SET_TEXT_CHARS: usize = 4_000;
 const MAX_WAIT_TEXT_CHARS: usize = 1_000;
+const MAX_FIND_QUERY_CHARS: usize = 1_000;
+const MAX_FIND_ROLE_CHARS: usize = 120;
+const DEFAULT_FIND_MAX_RESULTS: usize = 12;
+const MAX_FIND_RESULTS: usize = 50;
 const DEFAULT_WAIT_TIMEOUT_SECONDS: u64 = 10;
 const MAX_WAIT_TIMEOUT_SECONDS: u64 = 30;
 const DEFAULT_WAIT_POLL_INTERVAL_MS: u64 = 250;
@@ -67,13 +76,13 @@ impl Tool for ComputerUseTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::function(
             "computer_use",
-            "Inspect and prepare native computer-use automation. On macOS, this checks Accessibility trust, can request the permission prompt, can return a shallow Accessibility UI tree for the frontmost app, can focus or click a UI ref after tool-policy approval, can set text on a UI ref after approval, and can press a small whitelist of non-text keys after approval. Broad keyboard and app-control actions are intentionally not enabled yet.",
+            "Inspect and prepare native computer-use automation. On macOS, this checks Accessibility trust, can request the permission prompt, can return or search a shallow Accessibility UI tree for the frontmost app, can focus or click a UI ref after tool-policy approval, can set text on a UI ref after approval, and can press a small whitelist of non-text keys after approval. Broad keyboard and app-control actions are intentionally not enabled yet.",
             object_schema(
                 json!({
                     "action": {
                         "type": "string",
-                        "enum": ["status", "request_permission", "snapshot", "wait", "focus", "click", "set_text", "press_key"],
-                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; wait polls snapshots until text appears or the UI settles; focus sets keyboard focus to a snapshot ref such as @u2 after approval; click activates a snapshot ref after approval; set_text sets the Accessibility value for a ref after approval; press_key sends one whitelisted non-text key to the frontmost app after approval."
+                        "enum": ["status", "request_permission", "snapshot", "find", "wait", "focus", "click", "set_text", "press_key"],
+                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; find searches a fresh snapshot for candidate UI refs; wait polls snapshots until text appears or the UI settles; focus sets keyboard focus to a snapshot ref such as @u2 after approval; click activates a snapshot ref after approval; set_text sets the Accessibility value for a ref after approval; press_key sends one whitelisted non-text key to the frontmost app after approval."
                     },
                     "max_items": {
                         "type": "integer",
@@ -115,9 +124,30 @@ impl Tool for ComputerUseTool {
                         "maxLength": 1000,
                         "description": "Substring to wait for in the rendered Accessibility snapshot when wait_until=text_present."
                     },
+                    "query": {
+                        "type": "string",
+                        "maxLength": 1000,
+                        "description": "Text to search for in frontmost Accessibility element lines when action=find."
+                    },
+                    "role": {
+                        "type": "string",
+                        "maxLength": 120,
+                        "description": "Optional role filter for action=find, such as button, text field, menu item, or window."
+                    },
+                    "state": {
+                        "type": "string",
+                        "enum": ["focused", "selected", "enabled", "disabled"],
+                        "description": "Optional state filter for action=find. enabled means no enabled=false flag is present in the snapshot line."
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 50,
+                        "description": "Maximum matching Accessibility element lines to return for action=find. Defaults to 12."
+                    },
                     "case_sensitive": {
                         "type": "boolean",
-                        "description": "Whether contains_text matching is case-sensitive. Defaults to false."
+                        "description": "Whether contains_text or find query matching is case-sensitive. Defaults to false."
                     },
                     "timeout_seconds": {
                         "type": "integer",
@@ -182,6 +212,26 @@ impl Tool for ComputerUseTool {
                     outcome.elapsed_ms,
                     render_status(false),
                     outcome.snapshot.trim()
+                ))
+            }
+            "find" => {
+                let request = args.find_request()?;
+                let status = inspect_computer_use(false);
+                if !status.ready() {
+                    bail!("{}", status.guidance);
+                }
+                let max_items = args.max_items.clamp(1, 50);
+                let max_depth = args.max_depth.clamp(1, 6);
+                let snapshot = frontmost_app_snapshot(max_items, max_depth)?;
+                let record = save_snapshot_record(ctx, max_items, max_depth, &snapshot)?;
+                let outcome = find_snapshot_lines(&snapshot, &request);
+                Ok(format!(
+                    "snapshot_id: {}\nfind_result_count: {}\nfind_truncated: {}\n{}\n\n{}",
+                    record.snapshot_id,
+                    outcome.matches.len(),
+                    outcome.truncated,
+                    render_status(false),
+                    render_find_matches(&outcome)
                 ))
             }
             "click" => {
@@ -254,7 +304,7 @@ impl Tool for ComputerUseTool {
                 ))
             }
             other => bail!(
-                "unsupported computer_use action `{other}`; use status, request_permission, snapshot, wait, focus, click, set_text, or press_key"
+                "unsupported computer_use action `{other}`; use status, request_permission, snapshot, find, wait, focus, click, set_text, or press_key"
             ),
         }
     }
@@ -341,6 +391,56 @@ impl ComputerUseArgs {
                 .clamp(100, 2_000),
         })
     }
+
+    fn find_request(&self) -> Result<ComputerUseFindRequest> {
+        let query = self
+            .query
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        if let Some(query) = &query
+            && query.chars().count() > MAX_FIND_QUERY_CHARS
+        {
+            bail!(
+                "computer_use find query is too long; maximum is {MAX_FIND_QUERY_CHARS} characters"
+            );
+        }
+
+        let role = self
+            .role
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        if let Some(role) = &role
+            && role.chars().count() > MAX_FIND_ROLE_CHARS
+        {
+            bail!(
+                "computer_use find role is too long; maximum is {MAX_FIND_ROLE_CHARS} characters"
+            );
+        }
+
+        let state = self
+            .state
+            .as_deref()
+            .map(ComputerUseFindState::parse)
+            .transpose()?;
+        if query.is_none() && role.is_none() && state.is_none() {
+            bail!("computer_use find requires at least one of `query`, `role`, or `state`");
+        }
+
+        Ok(ComputerUseFindRequest {
+            query,
+            role,
+            state,
+            case_sensitive: self.case_sensitive.unwrap_or(false),
+            max_results: self
+                .max_results
+                .unwrap_or(DEFAULT_FIND_MAX_RESULTS)
+                .clamp(1, MAX_FIND_RESULTS),
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -374,6 +474,49 @@ struct ComputerUseWaitOutcome {
     snapshot: String,
     attempts: usize,
     elapsed_ms: u128,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ComputerUseFindRequest {
+    query: Option<String>,
+    role: Option<String>,
+    state: Option<ComputerUseFindState>,
+    case_sensitive: bool,
+    max_results: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ComputerUseFindState {
+    Focused,
+    Selected,
+    Enabled,
+    Disabled,
+}
+
+impl ComputerUseFindState {
+    fn parse(state: &str) -> Result<Self> {
+        match state
+            .trim()
+            .to_ascii_lowercase()
+            .replace([' ', '-'], "_")
+            .as_str()
+        {
+            "focused" | "focus" => Ok(Self::Focused),
+            "selected" | "select" => Ok(Self::Selected),
+            "enabled" | "available" => Ok(Self::Enabled),
+            "disabled" | "not_enabled" | "unavailable" => Ok(Self::Disabled),
+            "" => bail!("computer_use find state cannot be empty"),
+            other => bail!(
+                "unsupported computer_use find state `{other}`; use focused, selected, enabled, or disabled"
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ComputerUseFindOutcome {
+    matches: Vec<String>,
+    truncated: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -550,6 +693,93 @@ fn snapshot_contains_text(snapshot: &str, contains_text: &str, case_sensitive: b
     }
 }
 
+fn find_snapshot_lines(snapshot: &str, request: &ComputerUseFindRequest) -> ComputerUseFindOutcome {
+    let mut matches = Vec::new();
+    let mut truncated = false;
+
+    for line in snapshot.lines() {
+        let trimmed = line.trim_start();
+        if !trimmed.starts_with("- @u") || !matches_find_request(trimmed, request) {
+            continue;
+        }
+        if matches.len() >= request.max_results {
+            truncated = true;
+            break;
+        }
+        matches.push(line.trim_end().to_string());
+    }
+
+    ComputerUseFindOutcome { matches, truncated }
+}
+
+fn matches_find_request(line: &str, request: &ComputerUseFindRequest) -> bool {
+    if let Some(query) = &request.query
+        && !contains_match(line, query, request.case_sensitive)
+    {
+        return false;
+    }
+    if let Some(role) = &request.role
+        && !role_matches(line, role)
+    {
+        return false;
+    }
+    if let Some(state) = request.state
+        && !state_matches(line, state)
+    {
+        return false;
+    }
+    true
+}
+
+fn contains_match(value: &str, query: &str, case_sensitive: bool) -> bool {
+    if case_sensitive {
+        value.contains(query)
+    } else {
+        value.to_lowercase().contains(&query.to_lowercase())
+    }
+}
+
+fn role_matches(line: &str, expected_role: &str) -> bool {
+    let Some(role) = quoted_field_value(line, "role") else {
+        return false;
+    };
+    normalize_role(&role) == normalize_role(expected_role)
+}
+
+fn quoted_field_value(line: &str, field: &str) -> Option<String> {
+    let prefix = format!("{field}='");
+    let start = line.find(&prefix)? + prefix.len();
+    let rest = &line[start..];
+    let end = rest.find('\'')?;
+    Some(rest[..end].to_string())
+}
+
+fn normalize_role(role: &str) -> String {
+    role.trim()
+        .to_lowercase()
+        .replace(['_', '-'], " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn state_matches(line: &str, state: ComputerUseFindState) -> bool {
+    match state {
+        ComputerUseFindState::Focused => line.contains("focused=true"),
+        ComputerUseFindState::Selected => line.contains("selected=true"),
+        ComputerUseFindState::Disabled => line.contains("enabled=false"),
+        ComputerUseFindState::Enabled => !line.contains("enabled=false"),
+    }
+}
+
+fn render_find_matches(outcome: &ComputerUseFindOutcome) -> String {
+    if outcome.matches.is_empty() {
+        "matches:\n(no matches)".to_string()
+    } else {
+        format!("matches:\n{}", outcome.matches.join("\n"))
+    }
+}
+
 fn render_status(prompt: bool) -> String {
     let status = inspect_computer_use(prompt);
     format!(
@@ -566,9 +796,9 @@ fn render_status(prompt: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        ComputerUseTool, ComputerUseWaitMode, MAX_SET_TEXT_CHARS, load_snapshot_record,
-        resolve_snapshot_record, save_snapshot_record, snapshot_contains_text,
-        snapshot_record_path,
+        ComputerUseFindRequest, ComputerUseFindState, ComputerUseTool, ComputerUseWaitMode,
+        MAX_SET_TEXT_CHARS, find_snapshot_lines, load_snapshot_record, resolve_snapshot_record,
+        save_snapshot_record, snapshot_contains_text, snapshot_record_path,
     };
     use crate::tools::{Tool, ToolContext};
     use serde_json::json;
@@ -728,6 +958,18 @@ mod tests {
         assert!(format!("{error:#}").contains("unsupported computer_use wait_until"));
     }
 
+    #[tokio::test]
+    async fn find_requires_filter() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tool = ComputerUseTool;
+        let error = tool
+            .execute(json!({ "action": "find" }), &ctx(tmp.path()))
+            .await
+            .expect_err("missing filter");
+
+        assert!(format!("{error:#}").contains("requires at least one"));
+    }
+
     #[test]
     fn wait_request_defaults_to_settled_and_clamps_bounds() {
         let args: super::ComputerUseArgs = serde_json::from_value(json!({
@@ -763,11 +1005,135 @@ mod tests {
     }
 
     #[test]
+    fn find_request_clamps_results_and_normalizes_state() {
+        let args: super::ComputerUseArgs = serde_json::from_value(json!({
+            "action": "find",
+            "query": "Continue",
+            "state": "not-enabled",
+            "max_results": 500
+        }))
+        .expect("args");
+        let request = args.find_request().expect("find request");
+
+        assert_eq!(request.query.as_deref(), Some("Continue"));
+        assert_eq!(request.state, Some(ComputerUseFindState::Disabled));
+        assert_eq!(request.max_results, super::MAX_FIND_RESULTS);
+    }
+
+    #[test]
+    fn find_request_rejects_unsupported_state() {
+        let args: super::ComputerUseArgs = serde_json::from_value(json!({
+            "action": "find",
+            "state": "hidden"
+        }))
+        .expect("args");
+        let error = args.find_request().expect_err("unsupported state");
+
+        assert!(format!("{error:#}").contains("unsupported computer_use find state"));
+    }
+
+    #[test]
     fn snapshot_text_matching_can_ignore_case() {
         let snapshot = "frontmost_app: Notes\n- @u1 role='button' name='Continue'";
 
         assert!(snapshot_contains_text(snapshot, "continue", false));
         assert!(!snapshot_contains_text(snapshot, "continue", true));
+    }
+
+    #[test]
+    fn find_snapshot_lines_matches_query_role_and_state() {
+        let snapshot = r#"
+frontmost_app: Notes
+pid: 123
+ui_tree:
+- @u1 role='window' name='Notes' bounds=(0,0,900x700)
+  - @u2 role='button' name='Continue' bounds=(20,20,80x28)
+  - @u3 role='button' name='Continue' bounds=(20,58,80x28) enabled=false
+  - @u4 role='text field' value='Continue draft' bounds=(20,96,240x28) focused=true
+"#;
+        let request = ComputerUseFindRequest {
+            query: Some("continue".to_string()),
+            role: Some("button".to_string()),
+            state: Some(ComputerUseFindState::Disabled),
+            case_sensitive: false,
+            max_results: 12,
+        };
+        let outcome = find_snapshot_lines(snapshot, &request);
+
+        assert_eq!(outcome.matches.len(), 1);
+        assert!(outcome.matches[0].contains("@u3"));
+        assert!(!outcome.truncated);
+    }
+
+    #[test]
+    fn find_snapshot_lines_respects_case_sensitive_query() {
+        let snapshot = "frontmost_app: Notes\n- @u1 role='button' name='Continue'";
+        let case_insensitive = ComputerUseFindRequest {
+            query: Some("continue".to_string()),
+            role: None,
+            state: None,
+            case_sensitive: false,
+            max_results: 12,
+        };
+        let case_sensitive = ComputerUseFindRequest {
+            case_sensitive: true,
+            ..case_insensitive.clone()
+        };
+
+        assert_eq!(
+            find_snapshot_lines(snapshot, &case_insensitive)
+                .matches
+                .len(),
+            1
+        );
+        assert!(
+            find_snapshot_lines(snapshot, &case_sensitive)
+                .matches
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn find_snapshot_lines_supports_role_aliases_and_enabled_state() {
+        let snapshot = r#"
+frontmost_app: App
+ui_tree:
+- @u1 role='text field' name='Search'
+- @u2 role='text-field' name='Disabled search' enabled=false
+"#;
+        let request = ComputerUseFindRequest {
+            query: None,
+            role: Some("text_field".to_string()),
+            state: Some(ComputerUseFindState::Enabled),
+            case_sensitive: false,
+            max_results: 12,
+        };
+        let outcome = find_snapshot_lines(snapshot, &request);
+
+        assert_eq!(outcome.matches.len(), 1);
+        assert!(outcome.matches[0].contains("@u1"));
+    }
+
+    #[test]
+    fn find_snapshot_lines_reports_truncation() {
+        let snapshot = r#"
+frontmost_app: App
+ui_tree:
+- @u1 role='button' name='A'
+- @u2 role='button' name='B'
+- @u3 role='button' name='C'
+"#;
+        let request = ComputerUseFindRequest {
+            query: None,
+            role: Some("button".to_string()),
+            state: None,
+            case_sensitive: false,
+            max_results: 2,
+        };
+        let outcome = find_snapshot_lines(snapshot, &request);
+
+        assert_eq!(outcome.matches.len(), 2);
+        assert!(outcome.truncated);
     }
 
     #[test]
@@ -779,6 +1145,7 @@ mod tests {
         assert!(schema.contains("\"max_items\""));
         assert!(schema.contains("\"max_depth\""));
         assert!(schema.contains("\"snapshot\""));
+        assert!(schema.contains("\"find\""));
         assert!(schema.contains("\"wait\""));
         assert!(schema.contains("\"focus\""));
         assert!(schema.contains("\"click\""));
@@ -789,6 +1156,10 @@ mod tests {
         assert!(schema.contains("\"key\""));
         assert!(schema.contains("\"wait_until\""));
         assert!(schema.contains("\"contains_text\""));
+        assert!(schema.contains("\"query\""));
+        assert!(schema.contains("\"role\""));
+        assert!(schema.contains("\"state\""));
+        assert!(schema.contains("\"max_results\""));
         assert!(schema.contains("\"timeout_seconds\""));
         assert!(schema.contains("\"poll_interval_ms\""));
         assert!(schema.contains("\"snapshot_id\""));

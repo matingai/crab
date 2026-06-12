@@ -11,7 +11,7 @@ and uses semantic versioning once stable release boundaries are established.
 
 - Added a conservative `computer_use` foundation for macOS Accessibility-backed native
   desktop automation: status checks, permission prompting, frontmost-app UI tree
-  snapshots with compact state flags, read-only wait polling, snapshot-bound
+  snapshots with compact state flags, read-only ref search and wait polling, snapshot-bound
   approval-gated focus/click/text actions, whitelisted non-text key pressing, docs, and
   `doctor` visibility. Arbitrary keyboard typing and broad app-control write actions
   remain intentionally disabled.

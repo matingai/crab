@@ -505,7 +505,7 @@ cargo check --manifest-path desktop-shell/src-tauri/Cargo.toml
 - Git 状态、diff、日志和分支操作。
 - 浏览器导航、快照、截图、交互、抽取和图片发现。
 - 原生 computer-use 准备能力：macOS Accessibility 状态、授权弹窗、带紧凑状态标记的前台应用 UI tree
-  快照、只读 UI wait、绑定 snapshot 的 focus/click/text 动作和白名单按键。
+  快照、只读 ref 搜索和 UI wait、绑定 snapshot 的 focus/click/text 动作和白名单按键。
 - PDF 与 Office 文档的检查、预览、抽取和生成路径。
 - session 搜索、archive 查询、memory 查询、memory digest 和 wiki-style notes。
 - skills 列表、查看和管理。

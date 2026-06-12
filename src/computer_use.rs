@@ -24,6 +24,12 @@ pub struct ComputerUseKey {
     pub key_code: u16,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ComputerUseScrollDirection {
+    pub label: &'static str,
+    pub ax_action: &'static str,
+}
+
 pub fn inspect_computer_use(prompt: bool) -> ComputerUseStatus {
     platform::inspect_computer_use(prompt)
 }
@@ -59,6 +65,22 @@ pub fn set_frontmost_app_ref_text(
 
 pub fn press_frontmost_app_key(key: &str, max_items: usize, max_depth: usize) -> Result<String> {
     platform::press_frontmost_app_key(normalize_computer_use_key(key)?, max_items, max_depth)
+}
+
+pub fn scroll_frontmost_app_ref(
+    reference: &str,
+    direction: &str,
+    steps: usize,
+    max_items: usize,
+    max_depth: usize,
+) -> Result<String> {
+    platform::scroll_frontmost_app_ref(
+        reference,
+        normalize_computer_use_scroll_direction(direction)?,
+        steps,
+        max_items,
+        max_depth,
+    )
 }
 
 pub fn parse_ui_ref(reference: &str) -> Result<usize> {
@@ -143,9 +165,42 @@ pub fn normalize_computer_use_key(key: &str) -> Result<ComputerUseKey> {
     }
 }
 
+pub fn normalize_computer_use_scroll_direction(
+    direction: &str,
+) -> Result<ComputerUseScrollDirection> {
+    let normalized = direction
+        .trim()
+        .to_ascii_lowercase()
+        .replace([' ', '-'], "_");
+    match normalized.as_str() {
+        "up" | "scroll_up" => Ok(ComputerUseScrollDirection {
+            label: "up",
+            ax_action: "AXScrollUp",
+        }),
+        "down" | "scroll_down" => Ok(ComputerUseScrollDirection {
+            label: "down",
+            ax_action: "AXScrollDown",
+        }),
+        "left" | "scroll_left" => Ok(ComputerUseScrollDirection {
+            label: "left",
+            ax_action: "AXScrollLeft",
+        }),
+        "right" | "scroll_right" => Ok(ComputerUseScrollDirection {
+            label: "right",
+            ax_action: "AXScrollRight",
+        }),
+        "" => anyhow::bail!("computer_use scroll requires a non-empty `direction`"),
+        other => anyhow::bail!(
+            "unsupported computer_use scroll direction `{other}`; allowed directions are up, down, left, and right"
+        ),
+    }
+}
+
 #[cfg(target_os = "macos")]
 mod platform {
-    use super::{ComputerUseKey, ComputerUseStatus, Result, parse_ui_ref};
+    use super::{
+        ComputerUseKey, ComputerUseScrollDirection, ComputerUseStatus, Result, parse_ui_ref,
+    };
     use anyhow::{Context, bail};
     use std::ffi::c_void;
     use std::process::Command;
@@ -240,6 +295,52 @@ mod platform {
         let post_snapshot = frontmost_app_snapshot(max_items, max_depth)?;
         Ok(format!(
             "{}\n\npost_key_snapshot:\n{}",
+            stdout.trim(),
+            post_snapshot
+        ))
+    }
+
+    pub fn scroll_frontmost_app_ref(
+        reference: &str,
+        direction: ComputerUseScrollDirection,
+        steps: usize,
+        max_items: usize,
+        max_depth: usize,
+    ) -> Result<String> {
+        if !accessibility_trusted(false) {
+            bail!(
+                "computer_use scroll requires macOS Accessibility permission. Run action=request_permission, then enable Crab or the launching terminal in System Settings > Privacy & Security > Accessibility."
+            );
+        }
+
+        let target_index = parse_ui_ref(reference)?;
+        let max_items = max_items.clamp(1, 50);
+        if target_index > max_items {
+            bail!(
+                "computer_use ref @u{target_index} is outside max_items={max_items}; use a ref from the latest bounded snapshot or increase max_items up to 50"
+            );
+        }
+        let max_depth = max_depth.clamp(1, 6);
+        let steps = steps.clamp(1, 10);
+        let script = frontmost_scroll_script(target_index, direction, steps, max_items, max_depth);
+        let mut command = Command::new("osascript");
+        for line in &script {
+            command.arg("-e").arg(line);
+        }
+        let output = command
+            .output()
+            .context("failed to run osascript for Accessibility scroll")?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!(
+                "Accessibility scroll failed: {}",
+                stderr.trim().trim_end_matches('.')
+            );
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let post_snapshot = frontmost_app_snapshot(max_items, max_depth)?;
+        Ok(format!(
+            "{}\n\npost_scroll_snapshot:\n{}",
             stdout.trim(),
             post_snapshot
         ))
@@ -680,6 +781,71 @@ mod platform {
         .collect()
     }
 
+    fn frontmost_scroll_script(
+        target_index: usize,
+        direction: ComputerUseScrollDirection,
+        steps: usize,
+        max_items: usize,
+        max_depth: usize,
+    ) -> Vec<String> {
+        [
+            "global itemIndex, maxItems, maxDepth, targetIndex, didScroll, scrollAction, scrollSteps",
+            &format!("set targetIndex to {target_index}"),
+            &format!("set maxItems to {max_items}"),
+            &format!("set maxDepth to {max_depth}"),
+            &format!("set scrollAction to \"{}\"", direction.ax_action),
+            &format!("set scrollSteps to {steps}"),
+            "set itemIndex to 0",
+            "set didScroll to false",
+            "on visitElement(elementRef, depth)",
+            "global itemIndex, maxItems, maxDepth, targetIndex, didScroll, scrollAction, scrollSteps",
+            "if itemIndex is greater than or equal to maxItems then return false",
+            "tell application \"System Events\"",
+            "set itemIndex to itemIndex + 1",
+            "if itemIndex is targetIndex then",
+            "try",
+            "repeat scrollSteps times",
+            "perform action scrollAction of elementRef",
+            "delay 0.05",
+            "end repeat",
+            "delay 0.15",
+            "set didScroll to true",
+            "return true",
+            "on error errMsg",
+            "error \"failed to scroll @u\" & targetIndex & \": \" & errMsg",
+            "end try",
+            "end if",
+            "if depth is less than maxDepth then",
+            "try",
+            "set childElements to UI elements of elementRef",
+            "repeat with childElement in childElements",
+            "if itemIndex is greater than or equal to maxItems then exit repeat",
+            "if my visitElement(childElement, depth + 1) then return true",
+            "end repeat",
+            "end try",
+            "end if",
+            "end tell",
+            "return false",
+            "end visitElement",
+            "tell application \"System Events\"",
+            "set frontApp to first application process whose frontmost is true",
+            "set appName to name of frontApp",
+            "repeat with windowRef in windows of frontApp",
+            "if itemIndex is greater than or equal to maxItems then exit repeat",
+            "if my visitElement(windowRef, 0) then exit repeat",
+            "end repeat",
+            "if didScroll is false then error \"UI ref @u\" & targetIndex & \" was not found in the current Accessibility snapshot\"",
+            &format!(
+                "return \"scrolled_ref: @u\" & targetIndex & linefeed & \"scroll_direction: {}\" & linefeed & \"scroll_steps: \" & scrollSteps & linefeed & \"frontmost_app_before_scroll: \" & appName",
+                direction.label
+            ),
+            "end tell",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+    }
+
     fn frontmost_press_key_script(key: ComputerUseKey) -> Vec<String> {
         [
             "tell application \"System Events\"",
@@ -733,9 +899,11 @@ mod platform {
     mod tests {
         use super::{
             frontmost_click_script, frontmost_focus_script, frontmost_press_key_script,
-            frontmost_set_text_script, frontmost_snapshot_script,
+            frontmost_scroll_script, frontmost_set_text_script, frontmost_snapshot_script,
         };
-        use crate::computer_use::normalize_computer_use_key;
+        use crate::computer_use::{
+            normalize_computer_use_key, normalize_computer_use_scroll_direction,
+        };
         use std::process::Command;
 
         #[test]
@@ -852,12 +1020,33 @@ mod platform {
                 String::from_utf8_lossy(&output.stderr)
             );
         }
+
+        #[test]
+        fn scroll_script_compiles() {
+            let direction = normalize_computer_use_scroll_direction("down").expect("direction");
+            let script = frontmost_scroll_script(2, direction, 2, 8, 2);
+            let tmp = tempfile::tempdir().expect("tempdir");
+            let output_path = tmp.path().join("computer-use-scroll.scpt");
+            let mut command = Command::new("osacompile");
+            command.arg("-o").arg(&output_path);
+            for line in script {
+                command.arg("-e").arg(line);
+            }
+
+            let output = command.output().expect("run osacompile");
+            assert!(
+                output.status.success(),
+                "osacompile failed\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
     }
 }
 
 #[cfg(not(target_os = "macos"))]
 mod platform {
-    use super::{ComputerUseKey, ComputerUseStatus, Result};
+    use super::{ComputerUseKey, ComputerUseScrollDirection, ComputerUseStatus, Result};
     use anyhow::bail;
 
     pub fn inspect_computer_use(prompt: bool) -> ComputerUseStatus {
@@ -908,11 +1097,24 @@ mod platform {
     ) -> Result<String> {
         bail!("native Accessibility-backed computer use currently supports macOS only")
     }
+
+    pub fn scroll_frontmost_app_ref(
+        _reference: &str,
+        _direction: ComputerUseScrollDirection,
+        _steps: usize,
+        _max_items: usize,
+        _max_depth: usize,
+    ) -> Result<String> {
+        bail!("native Accessibility-backed computer use currently supports macOS only")
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{inspect_computer_use, normalize_computer_use_key, parse_ui_ref};
+    use super::{
+        inspect_computer_use, normalize_computer_use_key, normalize_computer_use_scroll_direction,
+        parse_ui_ref,
+    };
 
     #[test]
     fn status_reports_current_platform_without_prompt() {
@@ -956,5 +1158,28 @@ mod tests {
     fn rejects_unsupported_computer_use_keys() {
         let error = normalize_computer_use_key("a").expect_err("unsupported key");
         assert!(format!("{error:#}").contains("unsupported computer_use key"));
+    }
+
+    #[test]
+    fn normalizes_computer_use_scroll_directions() {
+        assert_eq!(
+            normalize_computer_use_scroll_direction("scroll-down")
+                .expect("direction")
+                .ax_action,
+            "AXScrollDown"
+        );
+        assert_eq!(
+            normalize_computer_use_scroll_direction("LEFT")
+                .expect("direction")
+                .label,
+            "left"
+        );
+    }
+
+    #[test]
+    fn rejects_unsupported_computer_use_scroll_directions() {
+        let error =
+            normalize_computer_use_scroll_direction("diagonal").expect_err("unsupported direction");
+        assert!(format!("{error:#}").contains("unsupported computer_use scroll direction"));
     }
 }

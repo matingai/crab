@@ -9,9 +9,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::{Duration, Instant, sleep};
 
 use crate::computer_use::{
-    ComputerUseKey, click_frontmost_app_ref, focus_frontmost_app_ref, frontmost_app_snapshot,
-    inspect_computer_use, normalize_computer_use_key, parse_ui_ref, press_frontmost_app_key,
-    set_frontmost_app_ref_text,
+    ComputerUseKey, ComputerUseScrollDirection, click_frontmost_app_ref, focus_frontmost_app_ref,
+    frontmost_app_snapshot, inspect_computer_use, normalize_computer_use_key,
+    normalize_computer_use_scroll_direction, parse_ui_ref, press_frontmost_app_key,
+    scroll_frontmost_app_ref, set_frontmost_app_ref_text,
 };
 use crate::tools::{Tool, ToolContext};
 use crate::types::{ToolDefinition, object_schema};
@@ -31,6 +32,9 @@ struct ComputerUseArgs {
     ref_alias: Option<String>,
     text: Option<String>,
     key: Option<String>,
+    direction: Option<String>,
+    #[serde(alias = "scrollSteps", alias = "steps")]
+    scroll_steps: Option<usize>,
     #[serde(alias = "waitUntil")]
     wait_until: Option<String>,
     #[serde(alias = "containsText")]
@@ -61,6 +65,8 @@ const MAX_FIND_QUERY_CHARS: usize = 1_000;
 const MAX_FIND_ROLE_CHARS: usize = 120;
 const MAX_EXPECT_TEXT_CHARS: usize = 1_000;
 const MAX_EXPECT_ROLE_CHARS: usize = 120;
+const DEFAULT_SCROLL_STEPS: usize = 1;
+const MAX_SCROLL_STEPS: usize = 10;
 const DEFAULT_FIND_MAX_RESULTS: usize = 12;
 const MAX_FIND_RESULTS: usize = 50;
 const DEFAULT_WAIT_TIMEOUT_SECONDS: u64 = 10;
@@ -84,13 +90,13 @@ impl Tool for ComputerUseTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::function(
             "computer_use",
-            "Inspect and prepare native computer-use automation. On macOS, this checks Accessibility trust, can request the permission prompt, can return or search a shallow Accessibility UI tree for the frontmost app, can focus or click a UI ref after tool-policy approval, can set text on a UI ref after approval, and can press a small whitelist of non-text keys after approval. Broad keyboard and app-control actions are intentionally not enabled yet.",
+            "Inspect and prepare native computer-use automation. On macOS, this checks Accessibility trust, can request the permission prompt, can return or search a shallow Accessibility UI tree for the frontmost app, can focus, click, scroll, or set text on a UI ref after tool-policy approval, and can press a small whitelist of non-text keys after approval. Broad keyboard and app-control actions are intentionally not enabled yet.",
             object_schema(
                 json!({
                     "action": {
                         "type": "string",
-                        "enum": ["status", "request_permission", "snapshot", "find", "wait", "focus", "click", "set_text", "press_key"],
-                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; find searches a fresh snapshot for candidate UI refs; wait polls snapshots until text appears or the UI settles; focus sets keyboard focus to a snapshot ref such as @u2 after approval; click activates a snapshot ref after approval; set_text sets the Accessibility value for a ref after approval; press_key sends one whitelisted non-text key to the frontmost app after approval."
+                        "enum": ["status", "request_permission", "snapshot", "find", "wait", "focus", "click", "set_text", "scroll", "press_key"],
+                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; find searches a fresh snapshot for candidate UI refs; wait polls snapshots until text appears or the UI settles; focus sets keyboard focus to a snapshot ref such as @u2 after approval; click activates a snapshot ref after approval; set_text sets the Accessibility value for a ref after approval; scroll performs a small Accessibility scroll action on a snapshot ref after approval; press_key sends one whitelisted non-text key to the frontmost app after approval."
                     },
                     "max_items": {
                         "type": "integer",
@@ -106,7 +112,7 @@ impl Tool for ComputerUseTool {
                     },
                     "reference": {
                         "type": "string",
-                        "description": "UI ref from the latest computer_use snapshot, such as @u2. Required for focus, click, and set_text."
+                        "description": "UI ref from the latest computer_use snapshot, such as @u2. Required for focus, click, set_text, and scroll."
                     },
                     "ref": {
                         "type": "string",
@@ -121,6 +127,17 @@ impl Tool for ComputerUseTool {
                         "type": "string",
                         "enum": ["enter", "escape", "tab", "space", "backspace", "forward_delete", "arrow_up", "arrow_down", "arrow_left", "arrow_right", "page_up", "page_down", "home", "end"],
                         "description": "Whitelisted key to press in the frontmost app. Required for press_key. Aliases such as return, esc, left, right, up, down, delete, and page-down are also accepted."
+                    },
+                    "direction": {
+                        "type": "string",
+                        "enum": ["up", "down", "left", "right"],
+                        "description": "Direction for action=scroll. Aliases such as scroll_down are also accepted."
+                    },
+                    "scroll_steps": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10,
+                        "description": "Small number of repeated Accessibility scroll actions for action=scroll. Defaults to 1."
                     },
                     "wait_until": {
                         "type": "string",
@@ -156,17 +173,17 @@ impl Tool for ComputerUseTool {
                     "expect_role": {
                         "type": "string",
                         "maxLength": 120,
-                        "description": "Optional pre-action guard for focus, click, and set_text. When set, the current ref line must still have this role before the write action runs."
+                        "description": "Optional pre-action guard for focus, click, set_text, and scroll. When set, the current ref line must still have this role before the write action runs."
                     },
                     "expect_text": {
                         "type": "string",
                         "maxLength": 1000,
-                        "description": "Optional pre-action guard for focus, click, and set_text. When set, the current ref line must still contain this text before the write action runs."
+                        "description": "Optional pre-action guard for focus, click, set_text, and scroll. When set, the current ref line must still contain this text before the write action runs."
                     },
                     "expect_state": {
                         "type": "string",
                         "enum": ["focused", "selected", "enabled", "disabled"],
-                        "description": "Optional pre-action guard for focus, click, and set_text. When set, the current ref line must still match this compact state before the write action runs."
+                        "description": "Optional pre-action guard for focus, click, set_text, and scroll. When set, the current ref line must still match this compact state before the write action runs."
                     },
                     "case_sensitive": {
                         "type": "boolean",
@@ -315,6 +332,32 @@ impl Tool for ComputerUseTool {
                     &result,
                 ))
             }
+            "scroll" => {
+                let reference = args.reference()?;
+                let request = args.scroll_request()?;
+                let max_items = args.max_items.clamp(1, 50);
+                let max_depth = args.max_depth.clamp(1, 6);
+                let snapshot_record = resolve_snapshot_record(ctx, args.snapshot_id.as_deref())?;
+                let ref_guard_request = args.ref_guard_request()?;
+                let status = inspect_computer_use(false);
+                if !status.ready() {
+                    bail!("{}", status.guidance);
+                }
+                let ref_guard =
+                    run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
+                let result = scroll_frontmost_app_ref(
+                    reference,
+                    request.direction.label,
+                    request.steps,
+                    max_items,
+                    max_depth,
+                )?;
+                Ok(render_write_result(
+                    &snapshot_record.snapshot_id,
+                    ref_guard.as_ref(),
+                    &result,
+                ))
+            }
             "press_key" => {
                 let key = args.key()?;
                 let max_items = args.max_items.clamp(1, 50);
@@ -333,7 +376,7 @@ impl Tool for ComputerUseTool {
                 ))
             }
             other => bail!(
-                "unsupported computer_use action `{other}`; use status, request_permission, snapshot, find, wait, focus, click, set_text, or press_key"
+                "unsupported computer_use action `{other}`; use status, request_permission, snapshot, find, wait, focus, click, set_text, scroll, or press_key"
             ),
         }
     }
@@ -368,6 +411,19 @@ impl ComputerUseArgs {
             bail!("computer_use press_key requires a `key` value");
         };
         normalize_computer_use_key(key)
+    }
+
+    fn scroll_request(&self) -> Result<ComputerUseScrollRequest> {
+        let Some(direction) = self.direction.as_deref() else {
+            bail!("computer_use scroll requires a `direction` value");
+        };
+        Ok(ComputerUseScrollRequest {
+            direction: normalize_computer_use_scroll_direction(direction)?,
+            steps: self
+                .scroll_steps
+                .unwrap_or(DEFAULT_SCROLL_STEPS)
+                .clamp(1, MAX_SCROLL_STEPS),
+        })
     }
 
     fn wait_request(&self) -> Result<ComputerUseWaitRequest> {
@@ -549,6 +605,12 @@ struct ComputerUseWaitOutcome {
     snapshot: String,
     attempts: usize,
     elapsed_ms: u128,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ComputerUseScrollRequest {
+    direction: ComputerUseScrollDirection,
+    steps: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1121,6 +1183,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn scroll_requires_direction() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tool = ComputerUseTool;
+        let error = tool
+            .execute(
+                json!({ "action": "scroll", "ref": "@u1" }),
+                &ctx(tmp.path()),
+            )
+            .await
+            .expect_err("missing direction");
+
+        assert!(format!("{error:#}").contains("requires a `direction` value"));
+    }
+
+    #[tokio::test]
+    async fn scroll_rejects_unsupported_direction() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tool = ComputerUseTool;
+        let error = tool
+            .execute(
+                json!({ "action": "scroll", "ref": "@u1", "direction": "diagonal" }),
+                &ctx(tmp.path()),
+            )
+            .await
+            .expect_err("unsupported direction");
+
+        assert!(format!("{error:#}").contains("unsupported computer_use scroll direction"));
+    }
+
+    #[tokio::test]
     async fn wait_text_present_requires_contains_text() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let tool = ComputerUseTool;
@@ -1194,6 +1286,22 @@ mod tests {
                 case_sensitive: true,
             }
         );
+    }
+
+    #[test]
+    fn scroll_request_normalizes_direction_and_clamps_steps() {
+        let args: super::ComputerUseArgs = serde_json::from_value(json!({
+            "action": "scroll",
+            "ref": "@u2",
+            "direction": "scroll-down",
+            "scroll_steps": 500
+        }))
+        .expect("args");
+        let request = args.scroll_request().expect("scroll request");
+
+        assert_eq!(request.direction.label, "down");
+        assert_eq!(request.direction.ax_action, "AXScrollDown");
+        assert_eq!(request.steps, super::MAX_SCROLL_STEPS);
     }
 
     #[test]
@@ -1426,10 +1534,13 @@ ui_tree:
         assert!(schema.contains("\"focus\""));
         assert!(schema.contains("\"click\""));
         assert!(schema.contains("\"set_text\""));
+        assert!(schema.contains("\"scroll\""));
         assert!(schema.contains("\"press_key\""));
         assert!(schema.contains("\"reference\""));
         assert!(schema.contains("\"text\""));
         assert!(schema.contains("\"key\""));
+        assert!(schema.contains("\"direction\""));
+        assert!(schema.contains("\"scroll_steps\""));
         assert!(schema.contains("\"wait_until\""));
         assert!(schema.contains("\"contains_text\""));
         assert!(schema.contains("\"query\""));

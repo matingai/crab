@@ -19,6 +19,8 @@ The current implementation is deliberately conservative:
 - Approval-gated click support for a current `@u` ref.
 - Approval-gated text setting for a current `@u` ref when the target Accessibility element
   supports a writable value.
+- Approval-gated small-step scrolling for a current `@u` ref through native
+  Accessibility scroll actions.
 - Approval-gated key pressing for a small non-text whitelist such as Enter, Escape, Tab,
   arrows, and paging keys.
 - No arbitrary global keyboard typing, file, or broad app-control write actions yet.
@@ -29,7 +31,7 @@ side effect of ordinary chat.
 
 ## Tool Surface
 
-The built-in `computer_use` tool supports nine actions:
+The built-in `computer_use` tool supports ten actions:
 
 | Action | Behavior |
 | --- | --- |
@@ -41,6 +43,7 @@ The built-in `computer_use` tool supports nine actions:
 | `focus` | Sets keyboard focus to a snapshot ref such as `@u2`, then returns a post-focus snapshot. |
 | `click` | Activates a snapshot ref such as `@u2`, then returns a post-click snapshot. |
 | `set_text` | Sets the Accessibility value for a snapshot ref, then returns a post-action snapshot. |
+| `scroll` | Performs a small Accessibility scroll action on a snapshot ref, then returns a post-action snapshot. |
 | `press_key` | Presses one whitelisted non-text key in the frontmost app, then returns a post-action snapshot. |
 
 Example tool arguments:
@@ -176,6 +179,19 @@ guard fails, the write action is not attempted and the agent should run `snapsho
 
 ```json
 {
+  "action": "scroll",
+  "ref": "@u8",
+  "snapshot_id": "cu_7d3c0a5d21a9e472",
+  "direction": "down",
+  "scroll_steps": 2,
+  "expect_role": "scroll area",
+  "max_items": 40,
+  "max_depth": 3
+}
+```
+
+```json
+{
   "action": "press_key",
   "key": "enter",
   "snapshot_id": "cu_7d3c0a5d21a9e472",
@@ -184,11 +200,16 @@ guard fails, the write action is not attempted and the agent should run `snapsho
 }
 ```
 
-`focus`, `click`, `set_text`, and `press_key` are write actions. Crab's default tool
+`focus`, `click`, `set_text`, `scroll`, and `press_key` are write actions. Crab's default tool
 policy requires approval before they run, even if the user has not configured a custom
 `tool_policy`. `status`, `snapshot`, `find`, and `wait` stay available without approval.
 `set_text` does not send global keystrokes; it attempts to set the target Accessibility
 element's value directly, so it is mainly for text fields and similar controls.
+
+`scroll` intentionally acts on a specific observed ref and accepts only `up`, `down`,
+`left`, or `right`, with `scroll_steps` clamped to `1..=10`. It is for moving within
+lists, scroll areas, tables, and panels after observation, not for arbitrary global mouse
+wheel injection.
 
 `press_key` intentionally accepts only a small whitelist: `enter`, `escape`, `tab`,
 `space`, `backspace`, `forward_delete`, `arrow_up`, `arrow_down`, `arrow_left`,
@@ -227,6 +248,7 @@ gives it a bounded, inspectable desktop UI tree. Future write actions should sta
 - pre-action ref guards for role, text, and state when the target is important;
 - read-only waits after actions before choosing the next ref;
 - snapshot-bound refs instead of coordinate guessing;
+- small, ref-bound scrolling instead of global wheel injection;
 - focused UI targets before key-driven navigation;
 - a narrow key whitelist instead of arbitrary keyboard injection;
 - local `tool_policy` approval rules;

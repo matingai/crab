@@ -234,7 +234,10 @@ fn default_tool_call_requires_approval(tool_name: &str, raw_arguments: &str) -> 
         .and_then(Value::as_str)
         .unwrap_or("status")
         .trim();
-    matches!(action, "focus" | "click" | "set_text" | "press_key")
+    matches!(
+        action,
+        "focus" | "click" | "set_text" | "scroll" | "press_key"
+    )
 }
 
 pub fn tool_policy_approval_command(tool_name: &str, raw_arguments: &str) -> String {
@@ -727,6 +730,27 @@ tool_policy:
         assert!(approval.reason.contains("computer_use"));
         assert!(approval.command.contains("args_hash="));
         assert!(!approval.command.contains("enter"));
+    }
+
+    #[test]
+    fn computer_use_scroll_requires_approval_by_default_without_leaking_ref() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+
+        let decision = evaluate_tool_policy(
+            tmp.path(),
+            "session-1",
+            "computer_use",
+            r#"{"action":"scroll","ref":"@u2","direction":"down"}"#,
+        )
+        .expect("policy");
+        let ToolPolicyPreflight::ApprovalRequired(approval) = decision else {
+            panic!("expected approval");
+        };
+
+        assert!(approval.reason.contains("computer_use"));
+        assert!(approval.command.contains("args_hash="));
+        assert!(!approval.command.contains("@u2"));
+        assert!(!approval.command.contains("down"));
     }
 
     #[test]

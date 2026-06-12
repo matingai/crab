@@ -53,6 +53,10 @@ struct ComputerUseArgs {
     expect_text: Option<String>,
     #[serde(alias = "expectedState", alias = "expectState")]
     expect_state: Option<String>,
+    #[serde(alias = "expectedApp", alias = "expectApp")]
+    expect_app: Option<String>,
+    #[serde(alias = "expectedPid", alias = "expectPid")]
+    expect_pid: Option<u32>,
     #[serde(alias = "caseSensitive")]
     case_sensitive: Option<bool>,
     #[serde(alias = "timeoutSeconds")]
@@ -68,6 +72,7 @@ const MAX_FIND_QUERY_CHARS: usize = 1_000;
 const MAX_FIND_ROLE_CHARS: usize = 120;
 const MAX_EXPECT_TEXT_CHARS: usize = 1_000;
 const MAX_EXPECT_ROLE_CHARS: usize = 120;
+const MAX_EXPECT_APP_CHARS: usize = 240;
 const DEFAULT_SCROLL_STEPS: usize = 1;
 const MAX_SCROLL_STEPS: usize = 10;
 const DEFAULT_FIND_MAX_RESULTS: usize = 12;
@@ -193,9 +198,19 @@ impl Tool for ComputerUseTool {
                         "enum": ["focused", "selected", "enabled", "disabled"],
                         "description": "Optional expectation for wait_ref and optional pre-action guard for focus, click, perform_action, set_text, and scroll. When set, the current ref line must still match this compact state."
                     },
+                    "expect_app": {
+                        "type": "string",
+                        "maxLength": 240,
+                        "description": "Optional pre-action guard for focus, click, perform_action, set_text, scroll, and press_key. When set, the current frontmost app name must match before the write action runs."
+                    },
+                    "expect_pid": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Optional pre-action guard for focus, click, perform_action, set_text, scroll, and press_key. When set, the current frontmost process id must match before the write action runs."
+                    },
                     "case_sensitive": {
                         "type": "boolean",
-                        "description": "Whether contains_text, find query, or expect_text matching is case-sensitive. Defaults to false."
+                        "description": "Whether contains_text, find query, expect_text, or expect_app matching is case-sensitive. Defaults to false."
                     },
                     "timeout_seconds": {
                         "type": "integer",
@@ -327,10 +342,12 @@ impl Tool for ComputerUseTool {
                 let max_depth = args.max_depth.clamp(1, 6);
                 let snapshot_record = resolve_snapshot_record(ctx, args.snapshot_id.as_deref())?;
                 let ref_guard_request = args.ref_guard_request()?;
+                let app_guard_request = args.app_guard_request()?;
                 let status = inspect_computer_use(false);
                 if !status.ready() {
                     bail!("{}", status.guidance);
                 }
+                let app_guard = run_app_guard(max_items, max_depth, app_guard_request.as_ref())?;
                 let ref_guard =
                     run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
                 let result = click_frontmost_app_ref(reference, max_items, max_depth)?;
@@ -339,6 +356,7 @@ impl Tool for ComputerUseTool {
                     &snapshot_record.snapshot_id,
                     &post_record.snapshot_id,
                     ref_guard.as_ref(),
+                    app_guard.as_ref(),
                     None,
                     &result,
                 ))
@@ -350,10 +368,12 @@ impl Tool for ComputerUseTool {
                 let max_depth = args.max_depth.clamp(1, 6);
                 let snapshot_record = resolve_snapshot_record(ctx, args.snapshot_id.as_deref())?;
                 let ref_guard_request = args.ref_guard_request()?;
+                let app_guard_request = args.app_guard_request()?;
                 let status = inspect_computer_use(false);
                 if !status.ready() {
                     bail!("{}", status.guidance);
                 }
+                let app_guard = run_app_guard(max_items, max_depth, app_guard_request.as_ref())?;
                 let ref_guard =
                     run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
                 let native_action_guard = run_native_action_guard(
@@ -373,6 +393,7 @@ impl Tool for ComputerUseTool {
                     &snapshot_record.snapshot_id,
                     &post_record.snapshot_id,
                     ref_guard.as_ref(),
+                    app_guard.as_ref(),
                     Some(&native_action_guard),
                     &result,
                 ))
@@ -383,10 +404,12 @@ impl Tool for ComputerUseTool {
                 let max_depth = args.max_depth.clamp(1, 6);
                 let snapshot_record = resolve_snapshot_record(ctx, args.snapshot_id.as_deref())?;
                 let ref_guard_request = args.ref_guard_request()?;
+                let app_guard_request = args.app_guard_request()?;
                 let status = inspect_computer_use(false);
                 if !status.ready() {
                     bail!("{}", status.guidance);
                 }
+                let app_guard = run_app_guard(max_items, max_depth, app_guard_request.as_ref())?;
                 let ref_guard =
                     run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
                 let result = focus_frontmost_app_ref(reference, max_items, max_depth)?;
@@ -395,6 +418,7 @@ impl Tool for ComputerUseTool {
                     &snapshot_record.snapshot_id,
                     &post_record.snapshot_id,
                     ref_guard.as_ref(),
+                    app_guard.as_ref(),
                     None,
                     &result,
                 ))
@@ -406,10 +430,12 @@ impl Tool for ComputerUseTool {
                 let max_depth = args.max_depth.clamp(1, 6);
                 let snapshot_record = resolve_snapshot_record(ctx, args.snapshot_id.as_deref())?;
                 let ref_guard_request = args.ref_guard_request()?;
+                let app_guard_request = args.app_guard_request()?;
                 let status = inspect_computer_use(false);
                 if !status.ready() {
                     bail!("{}", status.guidance);
                 }
+                let app_guard = run_app_guard(max_items, max_depth, app_guard_request.as_ref())?;
                 let ref_guard =
                     run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
                 let result = set_frontmost_app_ref_text(reference, text, max_items, max_depth)?;
@@ -418,6 +444,7 @@ impl Tool for ComputerUseTool {
                     &snapshot_record.snapshot_id,
                     &post_record.snapshot_id,
                     ref_guard.as_ref(),
+                    app_guard.as_ref(),
                     None,
                     &result,
                 ))
@@ -429,10 +456,12 @@ impl Tool for ComputerUseTool {
                 let max_depth = args.max_depth.clamp(1, 6);
                 let snapshot_record = resolve_snapshot_record(ctx, args.snapshot_id.as_deref())?;
                 let ref_guard_request = args.ref_guard_request()?;
+                let app_guard_request = args.app_guard_request()?;
                 let status = inspect_computer_use(false);
                 if !status.ready() {
                     bail!("{}", status.guidance);
                 }
+                let app_guard = run_app_guard(max_items, max_depth, app_guard_request.as_ref())?;
                 let ref_guard =
                     run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
                 let result = scroll_frontmost_app_ref(
@@ -447,6 +476,7 @@ impl Tool for ComputerUseTool {
                     &snapshot_record.snapshot_id,
                     &post_record.snapshot_id,
                     ref_guard.as_ref(),
+                    app_guard.as_ref(),
                     None,
                     &result,
                 ))
@@ -456,16 +486,19 @@ impl Tool for ComputerUseTool {
                 let max_items = args.max_items.clamp(1, 50);
                 let max_depth = args.max_depth.clamp(1, 6);
                 let snapshot_record = resolve_snapshot_record(ctx, args.snapshot_id.as_deref())?;
+                let app_guard_request = args.app_guard_request()?;
                 let status = inspect_computer_use(false);
                 if !status.ready() {
                     bail!("{}", status.guidance);
                 }
+                let app_guard = run_app_guard(max_items, max_depth, app_guard_request.as_ref())?;
                 let result = press_frontmost_app_key(key.label, max_items, max_depth)?;
                 let post_record = save_snapshot_record(ctx, max_items, max_depth, &result)?;
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
                     &post_record.snapshot_id,
                     None,
+                    app_guard.as_ref(),
                     None,
                     &result,
                 ))
@@ -725,6 +758,30 @@ impl ComputerUseArgs {
             case_sensitive: self.case_sensitive.unwrap_or(false),
         }))
     }
+
+    fn app_guard_request(&self) -> Result<Option<ComputerUseAppGuardRequest>> {
+        let app = self
+            .expect_app
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        if let Some(app) = &app
+            && app.chars().count() > MAX_EXPECT_APP_CHARS
+        {
+            bail!(
+                "computer_use expect_app is too long; maximum is {MAX_EXPECT_APP_CHARS} characters"
+            );
+        }
+        if app.is_none() && self.expect_pid.is_none() {
+            return Ok(None);
+        }
+        Ok(Some(ComputerUseAppGuardRequest {
+            app,
+            pid: self.expect_pid,
+            case_sensitive: self.case_sensitive.unwrap_or(false),
+        }))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -865,6 +922,20 @@ struct ComputerUseRefGuardRequest {
 struct ComputerUseRefGuardOutcome {
     reference: String,
     line_sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ComputerUseAppGuardRequest {
+    app: Option<String>,
+    pid: Option<u32>,
+    case_sensitive: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ComputerUseAppGuardOutcome {
+    app_line_sha256: String,
+    pid: Option<u32>,
+    snapshot_sha256: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1238,6 +1309,14 @@ fn contains_match(value: &str, query: &str, case_sensitive: bool) -> bool {
     }
 }
 
+fn equals_match(value: &str, query: &str, case_sensitive: bool) -> bool {
+    if case_sensitive {
+        value == query
+    } else {
+        value.eq_ignore_ascii_case(query)
+    }
+}
+
 fn role_matches(line: &str, expected_role: &str) -> bool {
     let Some(role) = quoted_field_value(line, "role") else {
         return false;
@@ -1277,6 +1356,73 @@ fn render_find_matches(outcome: &ComputerUseFindOutcome) -> String {
     } else {
         format!("matches:\n{}", outcome.matches.join("\n"))
     }
+}
+
+fn run_app_guard(
+    max_items: usize,
+    max_depth: usize,
+    request: Option<&ComputerUseAppGuardRequest>,
+) -> Result<Option<ComputerUseAppGuardOutcome>> {
+    let Some(request) = request else {
+        return Ok(None);
+    };
+    let snapshot = frontmost_app_snapshot(max_items, max_depth)?;
+    check_app_guard_snapshot(&snapshot, request).map(Some)
+}
+
+fn check_app_guard_snapshot(
+    snapshot: &str,
+    request: &ComputerUseAppGuardRequest,
+) -> Result<ComputerUseAppGuardOutcome> {
+    let app_line = snapshot_frontmost_app_line(snapshot).ok_or_else(|| {
+        anyhow::anyhow!(
+            "computer_use app guard could not read the current frontmost app (snapshot_sha256: {}). call snapshot again",
+            sha256_hex(snapshot.as_bytes())
+        )
+    })?;
+    let app_name = app_line
+        .trim_start()
+        .strip_prefix("frontmost_app:")
+        .map(str::trim)
+        .unwrap_or("");
+    let app_line_sha256 = sha256_hex(app_line.as_bytes());
+    if let Some(expected_app) = &request.app
+        && !equals_match(app_name, expected_app, request.case_sensitive)
+    {
+        bail!(
+            "computer_use app guard failed: expected frontmost app did not match (app_line_sha256: {app_line_sha256}). call snapshot again"
+        );
+    }
+
+    let current_pid = snapshot_pid(snapshot);
+    if let Some(expected_pid) = request.pid
+        && current_pid != Some(expected_pid)
+    {
+        bail!(
+            "computer_use app guard failed: expected frontmost pid `{expected_pid}` did not match (app_line_sha256: {app_line_sha256}). call snapshot again"
+        );
+    }
+
+    Ok(ComputerUseAppGuardOutcome {
+        app_line_sha256,
+        pid: current_pid,
+        snapshot_sha256: sha256_hex(snapshot.as_bytes()),
+    })
+}
+
+fn snapshot_frontmost_app_line(snapshot: &str) -> Option<&str> {
+    snapshot
+        .lines()
+        .find(|line| line.trim_start().starts_with("frontmost_app:"))
+}
+
+fn snapshot_pid(snapshot: &str) -> Option<u32> {
+    snapshot.lines().find_map(|line| {
+        line.trim_start()
+            .strip_prefix("pid:")
+            .map(str::trim)
+            .and_then(|pid| pid.parse::<u32>().ok())
+    })
 }
 
 fn run_ref_guard(
@@ -1385,6 +1531,7 @@ fn render_write_result(
     snapshot_id: &str,
     post_snapshot_id: &str,
     ref_guard: Option<&ComputerUseRefGuardOutcome>,
+    app_guard: Option<&ComputerUseAppGuardOutcome>,
     native_action_guard: Option<&ComputerUseNativeActionGuardOutcome>,
     result: &str,
 ) -> String {
@@ -1394,6 +1541,17 @@ fn render_write_result(
         output.push_str(&format!(
             "ref_guard: passed\nref_guard_ref: {}\nref_guard_line_sha256: {}\n",
             ref_guard.reference, ref_guard.line_sha256
+        ));
+    }
+    if let Some(app_guard) = app_guard {
+        output.push_str(&format!(
+            "app_guard: passed\napp_guard_app_line_sha256: {}\napp_guard_pid: {}\napp_guard_snapshot_sha256: {}\n",
+            app_guard.app_line_sha256,
+            app_guard
+                .pid
+                .map(|pid| pid.to_string())
+                .unwrap_or_else(|| "unknown".to_string()),
+            app_guard.snapshot_sha256
         ));
     }
     if let Some(native_action_guard) = native_action_guard {
@@ -1426,13 +1584,14 @@ fn render_status(prompt: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        ComputerUseFindRequest, ComputerUseFindState, ComputerUseRefGuardRequest, ComputerUseTool,
-        ComputerUseWaitMode, ComputerUseWaitRefRequest, MAX_SET_TEXT_CHARS,
+        ComputerUseAppGuardRequest, ComputerUseFindRequest, ComputerUseFindState,
+        ComputerUseRefGuardRequest, ComputerUseTool, ComputerUseWaitMode,
+        ComputerUseWaitRefRequest, MAX_SET_TEXT_CHARS, check_app_guard_snapshot,
         check_native_action_guard_details, check_ref_guard_line, details_have_native_action,
         details_match_wait_ref, find_snapshot_lines, load_snapshot_record, ref_line_from_details,
         render_wait_ref_unavailable, render_write_result, resolve_snapshot_record,
-        save_snapshot_record, snapshot_contains_text, snapshot_line_for_ref, snapshot_record_path,
-        ui_ref_from_snapshot_line,
+        save_snapshot_record, snapshot_contains_text, snapshot_frontmost_app_line,
+        snapshot_line_for_ref, snapshot_pid, snapshot_record_path, ui_ref_from_snapshot_line,
     };
     use crate::computer_use::normalize_computer_use_native_action;
     use crate::tools::{Tool, ToolContext};
@@ -1922,6 +2081,37 @@ mod tests {
     }
 
     #[test]
+    fn app_guard_request_trims_expectations() {
+        let args: super::ComputerUseArgs = serde_json::from_value(json!({
+            "action": "click",
+            "ref": "@u2",
+            "expect_app": " Finder ",
+            "expect_pid": 42,
+            "case_sensitive": true
+        }))
+        .expect("args");
+        let request = args
+            .app_guard_request()
+            .expect("app guard request")
+            .expect("guard exists");
+
+        assert_eq!(request.app.as_deref(), Some("Finder"));
+        assert_eq!(request.pid, Some(42));
+        assert!(request.case_sensitive);
+    }
+
+    #[test]
+    fn app_guard_request_returns_none_without_expectations() {
+        let args: super::ComputerUseArgs = serde_json::from_value(json!({
+            "action": "press_key",
+            "key": "enter"
+        }))
+        .expect("args");
+
+        assert_eq!(args.app_guard_request().expect("request"), None);
+    }
+
+    #[test]
     fn snapshot_text_matching_can_ignore_case() {
         let snapshot = "frontmost_app: Notes\n- @u1 role='button' name='Continue'";
 
@@ -2093,6 +2283,48 @@ ui_tree:
     }
 
     #[test]
+    fn app_guard_snapshot_matches_app_and_pid() {
+        let snapshot = "frontmost_app: Finder\npid: 42\nui_tree:\n- @u1 role='window'";
+        let request = ComputerUseAppGuardRequest {
+            app: Some("finder".to_string()),
+            pid: Some(42),
+            case_sensitive: false,
+        };
+        let outcome = check_app_guard_snapshot(snapshot, &request).expect("app guard");
+
+        assert_eq!(
+            snapshot_frontmost_app_line(snapshot).expect("app line"),
+            "frontmost_app: Finder"
+        );
+        assert_eq!(snapshot_pid(snapshot), Some(42));
+        assert_eq!(
+            outcome.app_line_sha256,
+            super::sha256_hex("frontmost_app: Finder".as_bytes())
+        );
+        assert_eq!(outcome.pid, Some(42));
+        assert_eq!(
+            outcome.snapshot_sha256,
+            super::sha256_hex(snapshot.as_bytes())
+        );
+    }
+
+    #[test]
+    fn app_guard_snapshot_rejects_mismatch_without_echoing_current_app() {
+        let snapshot = "frontmost_app: Private Customer Console\npid: 42";
+        let request = ComputerUseAppGuardRequest {
+            app: Some("Finder".to_string()),
+            pid: None,
+            case_sensitive: false,
+        };
+        let error = check_app_guard_snapshot(snapshot, &request).expect_err("app mismatch");
+        let error = format!("{error:#}");
+
+        assert!(error.contains("app guard failed"));
+        assert!(error.contains("app_line_sha256:"));
+        assert!(!error.contains("Private Customer Console"));
+    }
+
+    #[test]
     fn wait_ref_details_match_guard_and_native_action() {
         let details = r#"
 ref: @u3
@@ -2180,16 +2412,31 @@ available_actions: AXPress
         let action = normalize_computer_use_native_action("press").expect("action");
         let guard =
             check_native_action_guard_details("@u3", details, action).expect("native guard");
+        let app_snapshot = "frontmost_app: Finder\npid: 42";
+        let app_guard = check_app_guard_snapshot(
+            app_snapshot,
+            &ComputerUseAppGuardRequest {
+                app: Some("Finder".to_string()),
+                pid: Some(42),
+                case_sensitive: true,
+            },
+        )
+        .expect("app guard");
         let rendered = render_write_result(
             "cu_test_before",
             "cu_test_after",
             None,
+            Some(&app_guard),
             Some(&guard),
             "frontmost_app: TestApp",
         );
 
         assert!(rendered.contains("using_snapshot_id: cu_test_before"));
         assert!(rendered.contains("post_snapshot_id: cu_test_after"));
+        assert!(rendered.contains("app_guard: passed"));
+        assert!(rendered.contains("app_guard_app_line_sha256:"));
+        assert!(rendered.contains("app_guard_pid: 42"));
+        assert!(rendered.contains("app_guard_snapshot_sha256:"));
         assert!(rendered.contains("native_action_guard: passed"));
         assert!(rendered.contains("native_action_guard_ref: @u3"));
         assert!(rendered.contains("native_action_guard_action: AXPress"));
@@ -2241,6 +2488,8 @@ available_actions: AXPress
         assert!(schema.contains("\"expect_role\""));
         assert!(schema.contains("\"expect_text\""));
         assert!(schema.contains("\"expect_state\""));
+        assert!(schema.contains("\"expect_app\""));
+        assert!(schema.contains("\"expect_pid\""));
         assert!(schema.contains("\"timeout_seconds\""));
         assert!(schema.contains("\"poll_interval_ms\""));
         assert!(schema.contains("\"snapshot_id\""));

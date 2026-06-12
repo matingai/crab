@@ -573,9 +573,9 @@ The built-in registry currently includes tool groups for:
 - Native computer-use preparation through macOS Accessibility status, permission prompt,
   frontmost-app UI tree snapshots with compact state flags, read-only ref inspection,
   native-action-aware ref search, text appear/disappear UI waits, ref readiness waits,
-  pre-action ref guards, native action availability guards, snapshot-bound
-  focus/click/text/scroll actions with post-action snapshot ids, whitelisted native
-  Accessibility actions, and whitelisted key presses.
+  pre-action ref and frontmost-app guards, native action availability guards,
+  snapshot-bound focus/click/text/scroll actions with post-action snapshot ids,
+  whitelisted native Accessibility actions, and whitelisted key presses.
 - PDF and Office document inspection, preview, extraction, and generation paths.
 - Session search, archive query, memory query, memory digest, and wiki-style notes.
 - Skills listing, viewing, and management.

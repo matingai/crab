@@ -215,6 +215,13 @@ write action and verify that the chosen ref still looks like the observed contro
 guard fails, the write action is not attempted and the agent should run `snapshot` or
 `find` again.
 
+Write actions can also include `expect_app` and `expect_pid` frontmost-app guards. These
+make Crab verify the active application before the write action runs. This is useful when
+the user may have changed focus between observation and action, and it is especially
+important for `press_key`, which acts on the frontmost app rather than a specific ref.
+Guard output contains hashed evidence for the current app line instead of echoing the raw
+frontmost app text.
+
 ```json
 {
   "action": "click",
@@ -223,6 +230,8 @@ guard fails, the write action is not attempted and the agent should run `snapsho
   "expect_role": "button",
   "expect_text": "Continue",
   "expect_state": "enabled",
+  "expect_app": "Finder",
+  "expect_pid": 123,
   "max_items": 40,
   "max_depth": 3
 }
@@ -280,6 +289,7 @@ guard fails, the write action is not attempted and the agent should run `snapsho
   "action": "press_key",
   "key": "enter",
   "snapshot_id": "cu_7d3c0a5d21a9e472",
+  "expect_app": "Finder",
   "max_items": 40,
   "max_depth": 3
 }
@@ -343,6 +353,7 @@ gives it a bounded, inspectable desktop UI tree. Future write actions should sta
 - read-only find steps before choosing an observed ref;
 - read-only ref readiness waits before requesting a write action;
 - pre-action ref guards for role, text, and state when the target is important;
+- pre-action frontmost-app guards for app name or pid;
 - a small native action allowlist instead of arbitrary AX action execution;
 - pre-action native action guards for `perform_action`;
 - read-only waits after actions before choosing the next ref;

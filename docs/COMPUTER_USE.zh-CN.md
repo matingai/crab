@@ -187,6 +187,11 @@ post-action 观察结果保存为新的 latest snapshot record，并返回 `post
 `expect_state` 会让 Crab 在写动作前再读一次 snapshot，并验证选中的 ref 仍然像刚才观察到的控件。
 如果 guard 失败，写动作不会执行，agent 应该重新调用 `snapshot` 或 `find`。
 
+写动作也可以带上 `expect_app` 和 `expect_pid` 这类前台应用 guard。Crab 会在真正执行写动作前确认当前
+前台应用仍然匹配预期。这个 guard 适合用户可能在观察和执行之间切换焦点的场景，尤其适合 `press_key`
+这种作用在前台应用、而不是某个具体 ref 上的动作。guard 输出只包含当前 app line 的 hash 证据，不会回显
+原始前台 app 文本。
+
 ```json
 {
   "action": "click",
@@ -195,6 +200,8 @@ post-action 观察结果保存为新的 latest snapshot record，并返回 `post
   "expect_role": "button",
   "expect_text": "Continue",
   "expect_state": "enabled",
+  "expect_app": "Finder",
+  "expect_pid": 123,
   "max_items": 40,
   "max_depth": 3
 }
@@ -252,6 +259,7 @@ post-action 观察结果保存为新的 latest snapshot record，并返回 `post
   "action": "press_key",
   "key": "enter",
   "snapshot_id": "cu_7d3c0a5d21a9e472",
+  "expect_app": "Finder",
   "max_items": 40,
   "max_depth": 3
 }
@@ -305,6 +313,7 @@ Electron/Tauri 桌面应用；正式打包后一般会显示为 Crab。
 - 写操作前先只读 find，定位 observed ref；
 - 请求写动作前先只读等待 ref 就绪；
 - 对关键目标使用写动作前 ref guard，检查 role、文本和状态；
+- 写动作前检查前台 app 名称或 pid；
 - 小范围原生 action 白名单，而不是任意 AX action 执行；
 - `perform_action` 执行前先检查 native action 仍然可用；
 - 动作之后先只读等待，再选择下一个 ref；

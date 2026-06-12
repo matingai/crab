@@ -13,9 +13,9 @@ and uses semantic versioning once stable release boundaries are established.
   desktop automation: status checks, permission prompting, frontmost-app UI tree
   snapshots with compact state flags, read-only ref inspection, native-action-aware ref
   search, text appear/disappear wait polling, read-only ref readiness waits, pre-action
-  ref guards, native action availability guards, snapshot-bound approval-gated
-  focus/click/text/scroll actions with post-action snapshot ids, whitelisted native
-  Accessibility actions, whitelisted non-text key pressing, docs, and `doctor`
+  ref guards, frontmost-app guards, native action availability guards, snapshot-bound
+  approval-gated focus/click/text/scroll actions with post-action snapshot ids,
+  whitelisted native Accessibility actions, whitelisted non-text key pressing, docs, and `doctor`
   visibility. Arbitrary keyboard typing and broad app-control write actions remain
   intentionally disabled.
 - Tool calls now pass through a local `tool_policy` preflight that protects common

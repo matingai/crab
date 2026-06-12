@@ -4,6 +4,26 @@ Crab ships both a CLI and a desktop shell. The CLI archives are still the best f
 developers, servers, and scripted workflows. The desktop installers are for users who want
 to download an app, open it, choose a workspace, and inspect the agent loop visually.
 
+Chinese version: [桌面安装包](DESKTOP_PACKAGING.zh-CN.md).
+
+## User Install Path
+
+Most users should not build Crab from source. For a tagged release, send them to
+[GitHub Releases](https://github.com/matingai/crab/releases) and have them download one
+of the desktop assets:
+
+- macOS Apple Silicon: `crab-desktop-vX.Y.Z-aarch64-apple-darwin.dmg`
+- macOS Intel: `crab-desktop-vX.Y.Z-x86_64-apple-darwin.dmg`
+- Windows x64: `crab-desktop-vX.Y.Z-x86_64-pc-windows-msvc-setup.exe`
+
+The intended install experience is deliberately ordinary:
+
+- macOS: open the DMG and drag Crab into Applications.
+- Windows: run the setup `.exe`.
+
+The current 0.1.x installers are unsigned preview builds. Keep that note visible in
+release notes until macOS notarization and Windows Authenticode signing are wired in.
+
 ## Release Assets
 
 Tagged releases build these desktop installer assets:
@@ -29,18 +49,25 @@ cd desktop-shell
 npm install
 ```
 
-Build a macOS DMG:
+Build the installer for the current platform:
 
 ```bash
-cd ..
-scripts/package-desktop.sh
+cd desktop-shell
+npm run package:desktop
+```
+
+Build a macOS DMG on macOS:
+
+```bash
+cd desktop-shell
+npm run package:dmg
 ```
 
 Build a Windows setup installer from Windows:
 
-```powershell
-cd ..
-bash scripts/package-desktop.sh
+```bash
+cd desktop-shell
+npm run package:exe
 ```
 
 The helper writes release-ready assets into `dist/`, for example
@@ -53,6 +80,12 @@ asset with that target triple:
 
 ```bash
 CRAB_TARGET=aarch64-apple-darwin scripts/package-desktop.sh
+```
+
+The helper also accepts explicit flags:
+
+```bash
+scripts/package-desktop.sh --target aarch64-apple-darwin --bundle dmg --version v0.1.4
 ```
 
 CI uses this mode for every desktop matrix entry. Explicit targets write Tauri output

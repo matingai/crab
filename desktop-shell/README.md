@@ -119,14 +119,28 @@ cd desktop-shell
 npm run tauri:release
 ```
 
-生成指定平台安装包：
+生成当前平台安装包：
 
 ```bash
 cd desktop-shell
-npm run tauri:release -- --bundles dmg
+npm run package:desktop
 ```
 
-Windows 下使用 `--bundles nsis` 生成 setup `.exe`。GitHub Release 会自动上传稳定命名的
+macOS 生成 DMG：
+
+```bash
+cd desktop-shell
+npm run package:dmg
+```
+
+Windows 生成 NSIS setup `.exe`：
+
+```bash
+cd desktop-shell
+npm run package:exe
+```
+
+GitHub Release 会自动上传稳定命名的
 `crab-desktop-vX.Y.Z-*.dmg` 和 `crab-desktop-vX.Y.Z-*-setup.exe`，并附带 `.sha256` 校验文件。
 0.1.x 阶段这些安装包还未签名，macOS Gatekeeper 或 Windows SmartScreen 可能提示风险。
 

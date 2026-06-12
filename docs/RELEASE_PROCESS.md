@@ -20,8 +20,8 @@ compatibility risk.
   ```bash
   cd desktop-shell
   npm ci
+  npm run package:desktop
   cd ..
-  scripts/package-desktop.sh
   ```
 
 - Review open-source hygiene:
@@ -61,7 +61,8 @@ CLI archives:
 - matching `.sha256` checksum files
 
 Use `scripts/package-release.sh` for a local single-platform CLI archive and
-`scripts/package-desktop.sh` for a local single-platform desktop installer before tagging.
+`npm run package:desktop` from `desktop-shell/` for a local single-platform desktop
+installer before tagging.
 
 Each archive should contain:
 

@@ -178,18 +178,19 @@ npm run dev
 构建本地 Tauri 安装包：
 
 ```bash
-scripts/package-desktop.sh
+cd desktop-shell
+npm run package:desktop
 ```
 
-macOS 下会把 DMG 写入 `dist/`。Windows 下可以在 Git Bash 中运行同一脚本生成 NSIS setup `.exe`。
-脚本也会生成同名 `.sha256` 校验文件和 `.json` manifest。需要显式指定 Tauri target 时可以设置
-`CRAB_TARGET`，例如：
+macOS 下可以用 `npm run package:dmg` 把 DMG 写入 `dist/`。Windows 下可以用
+`npm run package:exe` 生成 NSIS setup `.exe`。脚本也会生成同名 `.sha256` 校验文件和
+`.json` manifest。需要显式指定 Tauri target 时可以设置 `CRAB_TARGET`，例如：
 
 ```bash
 CRAB_TARGET=aarch64-apple-darwin scripts/package-desktop.sh
 ```
 
-CI asset 命名和签名说明见 [桌面安装包文档](DESKTOP_PACKAGING.md)。
+CI asset 命名和签名说明见 [桌面安装包文档](DESKTOP_PACKAGING.zh-CN.md)。
 
 ## 本地状态
 

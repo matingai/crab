@@ -546,13 +546,15 @@ npm run tauri:dev
 Build a local Tauri installer:
 
 ```bash
-scripts/package-desktop.sh
+cd desktop-shell
+npm run package:desktop
 ```
 
-On macOS this creates a release-ready DMG in `dist/`; on Windows, run the same helper from
-Git Bash to create the NSIS setup `.exe`. The helper also writes `.sha256` and `.json`
-metadata beside the installer. See [Desktop Packaging](docs/DESKTOP_PACKAGING.md) for
-release asset names, signing notes, and CI behavior.
+On macOS, `npm run package:dmg` creates a release-ready DMG in `dist/`; on Windows,
+`npm run package:exe` creates the NSIS setup `.exe`. The helper also writes `.sha256` and
+`.json` metadata beside the installer. See
+[Desktop Packaging](docs/DESKTOP_PACKAGING.md) for release asset names, signing notes, and
+CI behavior.
 
 Check the Tauri backend:
 

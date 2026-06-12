@@ -64,6 +64,9 @@ and uses semantic versioning once stable release boundaries are established.
 - Desktop installer packaging now passes explicit Tauri targets in CI and emits a sibling
   `.json` release manifest beside each DMG or Windows setup `.exe`, including version,
   target, bundle type, and SHA-256 metadata.
+- Desktop installer packaging now has a cross-platform Node helper plus
+  `npm run package:desktop`, `npm run package:dmg`, and `npm run package:exe` shortcuts for
+  release-ready local builds.
 - The English and Chinese READMEs now surface desktop DMG and Windows setup `.exe`
   downloads near the top of the project page, with release asset names and unsigned
   preview-build notes for first-time users.

@@ -183,12 +183,14 @@ Open `http://localhost:1420`.
 To build a local Tauri installer:
 
 ```bash
-scripts/package-desktop.sh
+cd desktop-shell
+npm run package:desktop
 ```
 
-On macOS this writes a DMG into `dist/`. On Windows, run the same script from Git Bash to
-write an NSIS setup `.exe`. The helper also writes a sibling `.sha256` checksum and `.json`
-manifest. Set `CRAB_TARGET` when you need an explicitly targeted Tauri build, for example:
+On macOS you can use `npm run package:dmg` to write a DMG into `dist/`. On Windows, use
+`npm run package:exe` to write an NSIS setup `.exe`. The helper also writes a sibling
+`.sha256` checksum and `.json` manifest. Set `CRAB_TARGET` when you need an explicitly
+targeted Tauri build, for example:
 
 ```bash
 CRAB_TARGET=aarch64-apple-darwin scripts/package-desktop.sh

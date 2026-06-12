@@ -20,6 +20,7 @@ evidence, and exposes the whole execution as a stream of structured events.
 - [Install Guide 中文版](INSTALL.zh-CN.md): Chinese installation guide.
 - [Desktop Packaging](DESKTOP_PACKAGING.md): DMG and Windows setup packaging, asset names,
   signing expectations, and CI behavior.
+- [Desktop Packaging 中文版](DESKTOP_PACKAGING.zh-CN.md): Chinese desktop packaging guide.
 - [Quickstart](QUICKSTART.md): install, doctor, no-key smoke test, first model-backed
   prompt, and desktop preview.
 - [Quickstart 中文版](QUICKSTART.zh-CN.md): Chinese quickstart guide.

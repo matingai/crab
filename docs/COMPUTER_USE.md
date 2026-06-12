@@ -19,6 +19,8 @@ The current implementation is deliberately conservative:
   before an approval-gated write action runs.
 - Approval-gated focus support for a current `@u` ref.
 - Approval-gated click support for a current `@u` ref.
+- Approval-gated native Accessibility action execution for a small allowlist such as
+  press, show menu, confirm, cancel, increment, and decrement.
 - Approval-gated text setting for a current `@u` ref when the target Accessibility element
   supports a writable value.
 - Approval-gated small-step scrolling for a current `@u` ref through native
@@ -33,7 +35,7 @@ side effect of ordinary chat.
 
 ## Tool Surface
 
-The built-in `computer_use` tool supports eleven actions:
+The built-in `computer_use` tool supports twelve actions:
 
 | Action | Behavior |
 | --- | --- |
@@ -45,6 +47,7 @@ The built-in `computer_use` tool supports eleven actions:
 | `wait` | Polls snapshots until target text appears or the UI tree settles, then returns the latest snapshot. |
 | `focus` | Sets keyboard focus to a snapshot ref such as `@u2`, then returns a post-focus snapshot. |
 | `click` | Activates a snapshot ref such as `@u2`, then returns a post-click snapshot. |
+| `perform_action` | Runs one whitelisted native Accessibility action on a snapshot ref, then returns a post-action snapshot. |
 | `set_text` | Sets the Accessibility value for a snapshot ref, then returns a post-action snapshot. |
 | `scroll` | Performs a small Accessibility scroll action on a snapshot ref, then returns a post-action snapshot. |
 | `press_key` | Presses one whitelisted non-text key in the frontmost app, then returns a post-action snapshot. |
@@ -99,8 +102,9 @@ frontmost app, returns the target element line plus `available_actions`, and sav
 }
 ```
 
-This helps the agent choose between `click`, `scroll`, `set_text`, or a key-driven flow
-based on the UI element's reported native actions instead of guessing from text alone.
+This helps the agent choose between `perform_action`, `click`, `scroll`, `set_text`, or
+a key-driven flow based on the UI element's reported native actions instead of guessing
+from text alone.
 
 `find` is the lightweight targeting step for native UI work. It takes a fresh snapshot,
 saves a new `snapshot_id`, and returns only matching element lines. Use it when the agent
@@ -187,6 +191,19 @@ guard fails, the write action is not attempted and the agent should run `snapsho
 
 ```json
 {
+  "action": "perform_action",
+  "ref": "@u8",
+  "snapshot_id": "cu_7d3c0a5d21a9e472",
+  "native_action": "AXPress",
+  "expect_role": "button",
+  "expect_text": "Continue",
+  "max_items": 40,
+  "max_depth": 3
+}
+```
+
+```json
+{
   "action": "set_text",
   "ref": "@u5",
   "snapshot_id": "cu_7d3c0a5d21a9e472",
@@ -219,12 +236,17 @@ guard fails, the write action is not attempted and the agent should run `snapsho
 }
 ```
 
-`focus`, `click`, `set_text`, `scroll`, and `press_key` are write actions. Crab's default tool
-policy requires approval before they run, even if the user has not configured a custom
-`tool_policy`. `status`, `snapshot`, `inspect_ref`, `find`, and `wait` stay available
-without approval. `set_text` does not send global keystrokes; it attempts to set the
-target Accessibility element's value directly, so it is mainly for text fields and
-similar controls.
+`focus`, `click`, `perform_action`, `set_text`, `scroll`, and `press_key` are write
+actions. Crab's default tool policy requires approval before they run, even if the user
+has not configured a custom `tool_policy`. `status`, `snapshot`, `inspect_ref`, `find`,
+and `wait` stay available without approval. `set_text` does not send global keystrokes;
+it attempts to set the target Accessibility element's value directly, so it is mainly for
+text fields and similar controls.
+
+`perform_action` accepts only a small native Accessibility action allowlist: `press`,
+`show_menu`, `confirm`, `cancel`, `increment`, and `decrement`. AX-prefixed names such as
+`AXPress` and `AXShowMenu` are accepted and normalized. Use `inspect_ref` first when
+possible so the chosen native action is backed by current UI evidence.
 
 `scroll` intentionally acts on a specific observed ref and accepts only `up`, `down`,
 `left`, or `right`, with `scroll_steps` clamped to `1..=10`. It is for moving within
@@ -267,6 +289,7 @@ gives it a bounded, inspectable desktop UI tree. Future write actions should sta
 - read-only ref inspection before choosing an available native action;
 - read-only find steps before choosing an observed ref;
 - pre-action ref guards for role, text, and state when the target is important;
+- a small native action allowlist instead of arbitrary AX action execution;
 - read-only waits after actions before choosing the next ref;
 - snapshot-bound refs instead of coordinate guessing;
 - small, ref-bound scrolling instead of global wheel injection;

@@ -236,7 +236,7 @@ fn default_tool_call_requires_approval(tool_name: &str, raw_arguments: &str) -> 
         .trim();
     matches!(
         action,
-        "focus" | "click" | "set_text" | "scroll" | "press_key"
+        "focus" | "click" | "perform_action" | "set_text" | "scroll" | "press_key"
     )
 }
 
@@ -751,6 +751,27 @@ tool_policy:
         assert!(approval.command.contains("args_hash="));
         assert!(!approval.command.contains("@u2"));
         assert!(!approval.command.contains("down"));
+    }
+
+    #[test]
+    fn computer_use_perform_action_requires_approval_by_default_without_leaking_args() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+
+        let decision = evaluate_tool_policy(
+            tmp.path(),
+            "session-1",
+            "computer_use",
+            r#"{"action":"perform_action","ref":"@u2","native_action":"AXPress"}"#,
+        )
+        .expect("policy");
+        let ToolPolicyPreflight::ApprovalRequired(approval) = decision else {
+            panic!("expected approval");
+        };
+
+        assert!(approval.reason.contains("computer_use"));
+        assert!(approval.command.contains("args_hash="));
+        assert!(!approval.command.contains("@u2"));
+        assert!(!approval.command.contains("AXPress"));
     }
 
     #[test]

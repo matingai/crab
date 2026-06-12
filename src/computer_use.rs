@@ -30,6 +30,12 @@ pub struct ComputerUseScrollDirection {
     pub ax_action: &'static str,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ComputerUseNativeAction {
+    pub label: &'static str,
+    pub ax_action: &'static str,
+}
+
 pub fn inspect_computer_use(prompt: bool) -> ComputerUseStatus {
     platform::inspect_computer_use(prompt)
 }
@@ -86,6 +92,20 @@ pub fn scroll_frontmost_app_ref(
         reference,
         normalize_computer_use_scroll_direction(direction)?,
         steps,
+        max_items,
+        max_depth,
+    )
+}
+
+pub fn perform_frontmost_app_ref_action(
+    reference: &str,
+    native_action: &str,
+    max_items: usize,
+    max_depth: usize,
+) -> Result<String> {
+    platform::perform_frontmost_app_ref_action(
+        reference,
+        normalize_computer_use_native_action(native_action)?,
         max_items,
         max_depth,
     )
@@ -204,10 +224,46 @@ pub fn normalize_computer_use_scroll_direction(
     }
 }
 
+pub fn normalize_computer_use_native_action(action: &str) -> Result<ComputerUseNativeAction> {
+    let normalized = action.trim().to_ascii_lowercase().replace([' ', '-'], "_");
+    let compact = normalized.replace('_', "");
+    match compact.as_str() {
+        "press" | "axpress" => Ok(ComputerUseNativeAction {
+            label: "press",
+            ax_action: "AXPress",
+        }),
+        "showmenu" | "menu" | "axshowmenu" => Ok(ComputerUseNativeAction {
+            label: "show_menu",
+            ax_action: "AXShowMenu",
+        }),
+        "confirm" | "axconfirm" => Ok(ComputerUseNativeAction {
+            label: "confirm",
+            ax_action: "AXConfirm",
+        }),
+        "cancel" | "axcancel" => Ok(ComputerUseNativeAction {
+            label: "cancel",
+            ax_action: "AXCancel",
+        }),
+        "increment" | "axincrement" => Ok(ComputerUseNativeAction {
+            label: "increment",
+            ax_action: "AXIncrement",
+        }),
+        "decrement" | "axdecrement" => Ok(ComputerUseNativeAction {
+            label: "decrement",
+            ax_action: "AXDecrement",
+        }),
+        "" => anyhow::bail!("computer_use perform_action requires a non-empty `native_action`"),
+        other => anyhow::bail!(
+            "unsupported computer_use native_action `{other}`; allowed actions are press, show_menu, confirm, cancel, increment, and decrement"
+        ),
+    }
+}
+
 #[cfg(target_os = "macos")]
 mod platform {
     use super::{
-        ComputerUseKey, ComputerUseScrollDirection, ComputerUseStatus, Result, parse_ui_ref,
+        ComputerUseKey, ComputerUseNativeAction, ComputerUseScrollDirection, ComputerUseStatus,
+        Result, parse_ui_ref,
     };
     use anyhow::{Context, bail};
     use std::ffi::c_void;
@@ -349,6 +405,51 @@ mod platform {
         let post_snapshot = frontmost_app_snapshot(max_items, max_depth)?;
         Ok(format!(
             "{}\n\npost_scroll_snapshot:\n{}",
+            stdout.trim(),
+            post_snapshot
+        ))
+    }
+
+    pub fn perform_frontmost_app_ref_action(
+        reference: &str,
+        native_action: ComputerUseNativeAction,
+        max_items: usize,
+        max_depth: usize,
+    ) -> Result<String> {
+        if !accessibility_trusted(false) {
+            bail!(
+                "computer_use perform_action requires macOS Accessibility permission. Run action=request_permission, then enable Crab or the launching terminal in System Settings > Privacy & Security > Accessibility."
+            );
+        }
+
+        let target_index = parse_ui_ref(reference)?;
+        let max_items = max_items.clamp(1, 50);
+        if target_index > max_items {
+            bail!(
+                "computer_use ref @u{target_index} is outside max_items={max_items}; use a ref from the latest bounded snapshot or increase max_items up to 50"
+            );
+        }
+        let max_depth = max_depth.clamp(1, 6);
+        let script =
+            frontmost_perform_action_script(target_index, native_action, max_items, max_depth);
+        let mut command = Command::new("osascript");
+        for line in &script {
+            command.arg("-e").arg(line);
+        }
+        let output = command
+            .output()
+            .context("failed to run osascript for Accessibility perform_action")?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!(
+                "Accessibility perform_action failed: {}",
+                stderr.trim().trim_end_matches('.')
+            );
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let post_snapshot = frontmost_app_snapshot(max_items, max_depth)?;
+        Ok(format!(
+            "{}\n\npost_action_snapshot:\n{}",
             stdout.trim(),
             post_snapshot
         ))
@@ -1030,6 +1131,66 @@ mod platform {
         .collect()
     }
 
+    fn frontmost_perform_action_script(
+        target_index: usize,
+        native_action: ComputerUseNativeAction,
+        max_items: usize,
+        max_depth: usize,
+    ) -> Vec<String> {
+        [
+            "global itemIndex, maxItems, maxDepth, targetIndex, didPerformAction, nativeAction",
+            &format!("set targetIndex to {target_index}"),
+            &format!("set maxItems to {max_items}"),
+            &format!("set maxDepth to {max_depth}"),
+            &format!("set nativeAction to \"{}\"", native_action.ax_action),
+            "set itemIndex to 0",
+            "set didPerformAction to false",
+            "on visitElement(elementRef, depth)",
+            "global itemIndex, maxItems, maxDepth, targetIndex, didPerformAction, nativeAction",
+            "if itemIndex is greater than or equal to maxItems then return false",
+            "tell application \"System Events\"",
+            "set itemIndex to itemIndex + 1",
+            "if itemIndex is targetIndex then",
+            "try",
+            "perform action nativeAction of elementRef",
+            "delay 0.15",
+            "set didPerformAction to true",
+            "return true",
+            "on error errMsg",
+            "error \"failed to perform \" & nativeAction & \" for @u\" & targetIndex & \": \" & errMsg",
+            "end try",
+            "end if",
+            "if depth is less than maxDepth then",
+            "try",
+            "set childElements to UI elements of elementRef",
+            "repeat with childElement in childElements",
+            "if itemIndex is greater than or equal to maxItems then exit repeat",
+            "if my visitElement(childElement, depth + 1) then return true",
+            "end repeat",
+            "end try",
+            "end if",
+            "end tell",
+            "return false",
+            "end visitElement",
+            "tell application \"System Events\"",
+            "set frontApp to first application process whose frontmost is true",
+            "set appName to name of frontApp",
+            "repeat with windowRef in windows of frontApp",
+            "if itemIndex is greater than or equal to maxItems then exit repeat",
+            "if my visitElement(windowRef, 0) then exit repeat",
+            "end repeat",
+            "if didPerformAction is false then error \"UI ref @u\" & targetIndex & \" was not found in the current Accessibility snapshot\"",
+            &format!(
+                "return \"performed_action_ref: @u\" & targetIndex & linefeed & \"native_action: {}\" & linefeed & \"ax_action: {}\" & linefeed & \"frontmost_app_before_action: \" & appName",
+                native_action.label, native_action.ax_action
+            ),
+            "end tell",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+    }
+
     fn frontmost_press_key_script(key: ComputerUseKey) -> Vec<String> {
         [
             "tell application \"System Events\"",
@@ -1082,12 +1243,13 @@ mod platform {
     #[cfg(test)]
     mod tests {
         use super::{
-            frontmost_click_script, frontmost_focus_script, frontmost_press_key_script,
-            frontmost_ref_details_script, frontmost_scroll_script, frontmost_set_text_script,
-            frontmost_snapshot_script,
+            frontmost_click_script, frontmost_focus_script, frontmost_perform_action_script,
+            frontmost_press_key_script, frontmost_ref_details_script, frontmost_scroll_script,
+            frontmost_set_text_script, frontmost_snapshot_script,
         };
         use crate::computer_use::{
-            normalize_computer_use_key, normalize_computer_use_scroll_direction,
+            normalize_computer_use_key, normalize_computer_use_native_action,
+            normalize_computer_use_scroll_direction,
         };
         use std::process::Command;
 
@@ -1246,12 +1408,36 @@ mod platform {
                 String::from_utf8_lossy(&output.stderr)
             );
         }
+
+        #[test]
+        fn perform_action_script_compiles() {
+            let native_action = normalize_computer_use_native_action("press").expect("action");
+            let script = frontmost_perform_action_script(2, native_action, 8, 2);
+            let tmp = tempfile::tempdir().expect("tempdir");
+            let output_path = tmp.path().join("computer-use-perform-action.scpt");
+            let mut command = Command::new("osacompile");
+            command.arg("-o").arg(&output_path);
+            for line in script {
+                command.arg("-e").arg(line);
+            }
+
+            let output = command.output().expect("run osacompile");
+            assert!(
+                output.status.success(),
+                "osacompile failed\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
     }
 }
 
 #[cfg(not(target_os = "macos"))]
 mod platform {
-    use super::{ComputerUseKey, ComputerUseScrollDirection, ComputerUseStatus, Result};
+    use super::{
+        ComputerUseKey, ComputerUseNativeAction, ComputerUseScrollDirection, ComputerUseStatus,
+        Result,
+    };
     use anyhow::bail;
 
     pub fn inspect_computer_use(prompt: bool) -> ComputerUseStatus {
@@ -1320,13 +1506,22 @@ mod platform {
     ) -> Result<String> {
         bail!("native Accessibility-backed computer use currently supports macOS only")
     }
+
+    pub fn perform_frontmost_app_ref_action(
+        _reference: &str,
+        _native_action: ComputerUseNativeAction,
+        _max_items: usize,
+        _max_depth: usize,
+    ) -> Result<String> {
+        bail!("native Accessibility-backed computer use currently supports macOS only")
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        inspect_computer_use, normalize_computer_use_key, normalize_computer_use_scroll_direction,
-        parse_ui_ref,
+        inspect_computer_use, normalize_computer_use_key, normalize_computer_use_native_action,
+        normalize_computer_use_scroll_direction, parse_ui_ref,
     };
 
     #[test]
@@ -1394,5 +1589,34 @@ mod tests {
         let error =
             normalize_computer_use_scroll_direction("diagonal").expect_err("unsupported direction");
         assert!(format!("{error:#}").contains("unsupported computer_use scroll direction"));
+    }
+
+    #[test]
+    fn normalizes_computer_use_native_actions() {
+        assert_eq!(
+            normalize_computer_use_native_action("AXPress")
+                .expect("action")
+                .label,
+            "press"
+        );
+        assert_eq!(
+            normalize_computer_use_native_action("show-menu")
+                .expect("action")
+                .ax_action,
+            "AXShowMenu"
+        );
+        assert_eq!(
+            normalize_computer_use_native_action("decrement")
+                .expect("action")
+                .ax_action,
+            "AXDecrement"
+        );
+    }
+
+    #[test]
+    fn rejects_unsupported_computer_use_native_actions() {
+        let error =
+            normalize_computer_use_native_action("raise").expect_err("unsupported native action");
+        assert!(format!("{error:#}").contains("unsupported computer_use native_action"));
     }
 }

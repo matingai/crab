@@ -14,7 +14,7 @@ and uses semantic versioning once stable release boundaries are established.
   snapshots with compact state flags, read-only ref inspection, native-action-aware ref
   search, text appear/disappear wait polling, read-only ref readiness waits, pre-action
   ref guards, frontmost-app guards, native action availability guards,
-  freshness- and bounds-checked snapshot-bound approval-gated
+  freshness-, bounds-, and origin-checked snapshot-bound approval-gated
   focus/click/perform_action/set_text/scroll/key actions with post-action snapshot ids,
   whitelisted native Accessibility actions, whitelisted non-text key pressing, docs, and
   `doctor` visibility. Arbitrary keyboard typing and broad app-control write actions

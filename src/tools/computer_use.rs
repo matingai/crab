@@ -353,6 +353,8 @@ impl Tool for ComputerUseTool {
                 if !status.ready() {
                     bail!("{}", status.guidance);
                 }
+                let snapshot_origin_guard =
+                    run_snapshot_origin_guard(&snapshot_record, max_items, max_depth)?;
                 let app_guard = run_app_guard(max_items, max_depth, app_guard_request.as_ref())?;
                 let ref_guard =
                     run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
@@ -361,6 +363,7 @@ impl Tool for ComputerUseTool {
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
                     &post_record.snapshot_id,
+                    &snapshot_origin_guard,
                     ref_guard.as_ref(),
                     app_guard.as_ref(),
                     None,
@@ -384,6 +387,8 @@ impl Tool for ComputerUseTool {
                 if !status.ready() {
                     bail!("{}", status.guidance);
                 }
+                let snapshot_origin_guard =
+                    run_snapshot_origin_guard(&snapshot_record, max_items, max_depth)?;
                 let app_guard = run_app_guard(max_items, max_depth, app_guard_request.as_ref())?;
                 let ref_guard =
                     run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
@@ -403,6 +408,7 @@ impl Tool for ComputerUseTool {
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
                     &post_record.snapshot_id,
+                    &snapshot_origin_guard,
                     ref_guard.as_ref(),
                     app_guard.as_ref(),
                     Some(&native_action_guard),
@@ -425,6 +431,8 @@ impl Tool for ComputerUseTool {
                 if !status.ready() {
                     bail!("{}", status.guidance);
                 }
+                let snapshot_origin_guard =
+                    run_snapshot_origin_guard(&snapshot_record, max_items, max_depth)?;
                 let app_guard = run_app_guard(max_items, max_depth, app_guard_request.as_ref())?;
                 let ref_guard =
                     run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
@@ -433,6 +441,7 @@ impl Tool for ComputerUseTool {
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
                     &post_record.snapshot_id,
+                    &snapshot_origin_guard,
                     ref_guard.as_ref(),
                     app_guard.as_ref(),
                     None,
@@ -456,6 +465,8 @@ impl Tool for ComputerUseTool {
                 if !status.ready() {
                     bail!("{}", status.guidance);
                 }
+                let snapshot_origin_guard =
+                    run_snapshot_origin_guard(&snapshot_record, max_items, max_depth)?;
                 let app_guard = run_app_guard(max_items, max_depth, app_guard_request.as_ref())?;
                 let ref_guard =
                     run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
@@ -464,6 +475,7 @@ impl Tool for ComputerUseTool {
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
                     &post_record.snapshot_id,
+                    &snapshot_origin_guard,
                     ref_guard.as_ref(),
                     app_guard.as_ref(),
                     None,
@@ -487,6 +499,8 @@ impl Tool for ComputerUseTool {
                 if !status.ready() {
                     bail!("{}", status.guidance);
                 }
+                let snapshot_origin_guard =
+                    run_snapshot_origin_guard(&snapshot_record, max_items, max_depth)?;
                 let app_guard = run_app_guard(max_items, max_depth, app_guard_request.as_ref())?;
                 let ref_guard =
                     run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
@@ -501,6 +515,7 @@ impl Tool for ComputerUseTool {
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
                     &post_record.snapshot_id,
+                    &snapshot_origin_guard,
                     ref_guard.as_ref(),
                     app_guard.as_ref(),
                     None,
@@ -522,12 +537,15 @@ impl Tool for ComputerUseTool {
                 if !status.ready() {
                     bail!("{}", status.guidance);
                 }
+                let snapshot_origin_guard =
+                    run_snapshot_origin_guard(&snapshot_record, max_items, max_depth)?;
                 let app_guard = run_app_guard(max_items, max_depth, app_guard_request.as_ref())?;
                 let result = press_frontmost_app_key(key.label, max_items, max_depth)?;
                 let post_record = save_snapshot_record(ctx, max_items, max_depth, &result)?;
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
                     &post_record.snapshot_id,
+                    &snapshot_origin_guard,
                     None,
                     app_guard.as_ref(),
                     None,
@@ -970,6 +988,13 @@ struct ComputerUseAppGuardOutcome {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct ComputerUseSnapshotOriginGuardOutcome {
+    app_line_sha256: String,
+    pid: Option<u32>,
+    snapshot_sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ComputerUseNativeActionGuardOutcome {
     reference: String,
     native_action: &'static str,
@@ -983,6 +1008,10 @@ struct ComputerUseSnapshotRecord {
     max_items: usize,
     max_depth: usize,
     output_sha256: String,
+    #[serde(default)]
+    frontmost_app_line_sha256: Option<String>,
+    #[serde(default)]
+    pid: Option<u32>,
 }
 
 fn save_snapshot_record(
@@ -992,6 +1021,9 @@ fn save_snapshot_record(
     output: &str,
 ) -> Result<ComputerUseSnapshotRecord> {
     let output_sha256 = sha256_hex(output.as_bytes());
+    let frontmost_app_line_sha256 =
+        snapshot_frontmost_app_line(output).map(|line| sha256_hex(line.as_bytes()));
+    let pid = snapshot_pid(output);
     let captured_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
@@ -1016,6 +1048,8 @@ fn save_snapshot_record(
         max_items,
         max_depth,
         output_sha256,
+        frontmost_app_line_sha256,
+        pid,
     };
     let path = snapshot_record_path(ctx);
     if let Some(parent) = path.parent() {
@@ -1430,6 +1464,62 @@ fn run_app_guard(
     check_app_guard_snapshot(&snapshot, request).map(Some)
 }
 
+fn run_snapshot_origin_guard(
+    record: &ComputerUseSnapshotRecord,
+    max_items: usize,
+    max_depth: usize,
+) -> Result<ComputerUseSnapshotOriginGuardOutcome> {
+    let snapshot = frontmost_app_snapshot(max_items, max_depth)?;
+    check_snapshot_origin_guard(record, &snapshot)
+}
+
+fn check_snapshot_origin_guard(
+    record: &ComputerUseSnapshotRecord,
+    snapshot: &str,
+) -> Result<ComputerUseSnapshotOriginGuardOutcome> {
+    let expected_app_line_sha256 = record.frontmost_app_line_sha256.as_deref().ok_or_else(|| {
+        anyhow::anyhow!(
+            "computer_use snapshot `{}` lacks frontmost-app origin metadata; call snapshot/find/inspect_ref/wait/wait_ref again before a write action",
+            record.snapshot_id
+        )
+    })?;
+    let app_line = snapshot_frontmost_app_line(snapshot).ok_or_else(|| {
+        anyhow::anyhow!(
+            "computer_use snapshot origin guard could not read the current frontmost app (snapshot_sha256: {}). call snapshot again",
+            sha256_hex(snapshot.as_bytes())
+        )
+    })?;
+    let current_app_line_sha256 = sha256_hex(app_line.as_bytes());
+    if current_app_line_sha256 != expected_app_line_sha256 {
+        bail!(
+            "computer_use snapshot origin guard failed for `{}`: frontmost app changed since observation (current_app_line_sha256: {}, expected_app_line_sha256: {}). call snapshot/find/inspect_ref/wait/wait_ref again",
+            record.snapshot_id,
+            current_app_line_sha256,
+            expected_app_line_sha256
+        );
+    }
+
+    let current_pid = snapshot_pid(snapshot);
+    if let Some(expected_pid) = record.pid
+        && current_pid != Some(expected_pid)
+    {
+        bail!(
+            "computer_use snapshot origin guard failed for `{}`: frontmost pid changed since observation (current_pid: {}, expected_pid: {}). call snapshot/find/inspect_ref/wait/wait_ref again",
+            record.snapshot_id,
+            current_pid
+                .map(|pid| pid.to_string())
+                .unwrap_or_else(|| "unknown".to_string()),
+            expected_pid
+        );
+    }
+
+    Ok(ComputerUseSnapshotOriginGuardOutcome {
+        app_line_sha256: current_app_line_sha256,
+        pid: current_pid,
+        snapshot_sha256: sha256_hex(snapshot.as_bytes()),
+    })
+}
+
 fn check_app_guard_snapshot(
     snapshot: &str,
     request: &ComputerUseAppGuardRequest,
@@ -1590,6 +1680,7 @@ fn check_ref_guard_line(
 fn render_write_result(
     snapshot_id: &str,
     post_snapshot_id: &str,
+    snapshot_origin_guard: &ComputerUseSnapshotOriginGuardOutcome,
     ref_guard: Option<&ComputerUseRefGuardOutcome>,
     app_guard: Option<&ComputerUseAppGuardOutcome>,
     native_action_guard: Option<&ComputerUseNativeActionGuardOutcome>,
@@ -1597,6 +1688,15 @@ fn render_write_result(
 ) -> String {
     let mut output =
         format!("using_snapshot_id: {snapshot_id}\npost_snapshot_id: {post_snapshot_id}\n");
+    output.push_str(&format!(
+        "snapshot_origin_guard: passed\nsnapshot_origin_guard_app_line_sha256: {}\nsnapshot_origin_guard_pid: {}\nsnapshot_origin_guard_snapshot_sha256: {}\n",
+        snapshot_origin_guard.app_line_sha256,
+        snapshot_origin_guard
+            .pid
+            .map(|pid| pid.to_string())
+            .unwrap_or_else(|| "unknown".to_string()),
+        snapshot_origin_guard.snapshot_sha256
+    ));
     if let Some(ref_guard) = ref_guard {
         output.push_str(&format!(
             "ref_guard: passed\nref_guard_ref: {}\nref_guard_line_sha256: {}\n",
@@ -1648,11 +1748,11 @@ mod tests {
         ComputerUseRefGuardRequest, ComputerUseTool, ComputerUseWaitMode,
         ComputerUseWaitRefRequest, MAX_SET_TEXT_CHARS, MAX_SNAPSHOT_RECORD_AGE_SECONDS,
         check_app_guard_snapshot, check_native_action_guard_details, check_ref_guard_line,
-        details_have_native_action, details_match_wait_ref, find_snapshot_lines,
-        load_snapshot_record, ref_line_from_details, render_wait_ref_unavailable,
-        render_write_result, resolve_snapshot_record, save_snapshot_record, snapshot_contains_text,
-        snapshot_frontmost_app_line, snapshot_line_for_ref, snapshot_pid, snapshot_record_path,
-        ui_ref_from_snapshot_line,
+        check_snapshot_origin_guard, details_have_native_action, details_match_wait_ref,
+        find_snapshot_lines, load_snapshot_record, ref_line_from_details,
+        render_wait_ref_unavailable, render_write_result, resolve_snapshot_record,
+        save_snapshot_record, snapshot_contains_text, snapshot_frontmost_app_line,
+        snapshot_line_for_ref, snapshot_pid, snapshot_record_path, ui_ref_from_snapshot_line,
     };
     use crate::computer_use::normalize_computer_use_native_action;
     use crate::tools::{Tool, ToolContext};
@@ -2483,9 +2583,15 @@ available_actions: AXPress
             },
         )
         .expect("app guard");
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let record =
+            save_snapshot_record(&ctx(tmp.path()), 40, 3, app_snapshot).expect("save record");
+        let origin_guard =
+            check_snapshot_origin_guard(&record, app_snapshot).expect("origin guard");
         let rendered = render_write_result(
             "cu_test_before",
             "cu_test_after",
+            &origin_guard,
             None,
             Some(&app_guard),
             Some(&guard),
@@ -2494,6 +2600,10 @@ available_actions: AXPress
 
         assert!(rendered.contains("using_snapshot_id: cu_test_before"));
         assert!(rendered.contains("post_snapshot_id: cu_test_after"));
+        assert!(rendered.contains("snapshot_origin_guard: passed"));
+        assert!(rendered.contains("snapshot_origin_guard_app_line_sha256:"));
+        assert!(rendered.contains("snapshot_origin_guard_pid: 42"));
+        assert!(rendered.contains("snapshot_origin_guard_snapshot_sha256:"));
         assert!(rendered.contains("app_guard: passed"));
         assert!(rendered.contains("app_guard_app_line_sha256:"));
         assert!(rendered.contains("app_guard_pid: 42"));
@@ -2557,6 +2667,60 @@ available_actions: AXPress
     }
 
     #[test]
+    fn snapshot_origin_guard_passes_for_matching_frontmost_app_and_pid() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let ctx = ctx(tmp.path());
+        let snapshot = "frontmost_app: Finder\npid: 42\nui_tree:\n- @u1 role='window'";
+        let record = save_snapshot_record(&ctx, 40, 3, snapshot).expect("save snapshot record");
+
+        let guard = check_snapshot_origin_guard(&record, snapshot).expect("snapshot origin guard");
+
+        assert_eq!(
+            guard.app_line_sha256,
+            super::sha256_hex("frontmost_app: Finder".as_bytes())
+        );
+        assert_eq!(guard.pid, Some(42));
+        assert_eq!(
+            guard.snapshot_sha256,
+            super::sha256_hex(snapshot.as_bytes())
+        );
+    }
+
+    #[test]
+    fn snapshot_origin_guard_rejects_changed_frontmost_app_without_echoing_names() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let ctx = ctx(tmp.path());
+        let record = save_snapshot_record(&ctx, 40, 3, "frontmost_app: SecretApp\npid: 42")
+            .expect("save snapshot record");
+
+        let error = check_snapshot_origin_guard(&record, "frontmost_app: OtherSecretApp\npid: 42")
+            .expect_err("changed frontmost app should fail");
+        let message = format!("{error:#}");
+
+        assert!(message.contains("snapshot origin guard failed"));
+        assert!(message.contains("current_app_line_sha256:"));
+        assert!(message.contains("expected_app_line_sha256:"));
+        assert!(!message.contains("SecretApp"));
+        assert!(!message.contains("OtherSecretApp"));
+    }
+
+    #[test]
+    fn snapshot_origin_guard_rejects_changed_pid() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let ctx = ctx(tmp.path());
+        let record = save_snapshot_record(&ctx, 40, 3, "frontmost_app: Finder\npid: 42")
+            .expect("save snapshot record");
+
+        let error = check_snapshot_origin_guard(&record, "frontmost_app: Finder\npid: 43")
+            .expect_err("changed pid should fail");
+        let message = format!("{error:#}");
+
+        assert!(message.contains("frontmost pid changed"));
+        assert!(message.contains("current_pid: 43"));
+        assert!(message.contains("expected_pid: 42"));
+    }
+
+    #[test]
     fn snapshot_record_roundtrip_avoids_raw_ui_persistence() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let ctx = ctx(tmp.path());
@@ -2569,6 +2733,8 @@ available_actions: AXPress
         .expect("save snapshot record");
 
         assert!(record.snapshot_id.starts_with("cu_"));
+        assert!(record.frontmost_app_line_sha256.is_some());
+        assert_eq!(record.pid, None);
         let loaded = load_snapshot_record(&ctx)
             .expect("load snapshot record")
             .expect("record exists");

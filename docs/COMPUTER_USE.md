@@ -208,9 +208,12 @@ if a stale id is supplied, the action fails and the agent must observe the deskt
 Because `@u` refs are assigned inside the bounded tree, write actions also require the
 requested `max_items` and `max_depth` to match the snapshot that produced the ref. Snapshot
 records older than 30 seconds are rejected for writes, so an agent cannot apply a stale UI
-observation to a changed desktop. When a write action succeeds, Crab saves the returned
-post-action observation as the new latest snapshot record and returns `post_snapshot_id`,
-so the next step can continue from fresh UI evidence instead of the pre-action id.
+observation to a changed desktop. Crab also records the observed frontmost-app origin as a
+hash plus pid and re-checks that origin before every write action; if focus moved to
+another app or process, the write is rejected before any Accessibility mutation runs. When
+a write action succeeds, Crab saves the returned post-action observation as the new latest
+snapshot record and returns `post_snapshot_id`, so the next step can continue from fresh UI
+evidence instead of the pre-action id.
 
 For safer targeting, write actions can also include optional ref guards. `expect_role`,
 `expect_text`, and `expect_state` make Crab take one more read-only snapshot before the
@@ -325,8 +328,9 @@ wheel injection.
 and confirmation flows, not arbitrary text entry.
 
 The session snapshot record is intentionally small. It stores the `snapshot_id`, capture
-time, bounds used for the read, and a SHA-256 hash of the rendered UI observation. It does
-not persist the raw Accessibility tree, element names, field values, or window text.
+time, bounds used for the read, a SHA-256 hash of the rendered UI observation, a hash of
+the frontmost-app line, and the frontmost pid when available. It does not persist the raw
+Accessibility tree, app name, element names, field values, or window text.
 
 ## macOS Permission Flow
 

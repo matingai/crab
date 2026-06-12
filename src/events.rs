@@ -279,6 +279,7 @@ pub enum AgentEvent {
         tool_call_id: String,
         tool_name: String,
         status: String,
+        error_kind: Option<String>,
         duration_ms: u128,
         output_preview: String,
         execution_mode: String,

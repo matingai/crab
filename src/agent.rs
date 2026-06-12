@@ -2336,6 +2336,7 @@ impl Agent {
             tool_call_id: pending.tool_call_id.clone(),
             tool_name: pending.tool_name.clone(),
             status: tool_status.to_string(),
+            error_kind: tool_error_kind(tool_status, &result).map(str::to_string),
             duration_ms,
             output_preview: redacted_truncated(result.clone(), 500),
             execution_mode: pending.execution_mode.clone(),
@@ -2764,6 +2765,7 @@ impl Agent {
                     tool_call_id: call.id.clone(),
                     tool_name: tool_name.clone(),
                     status: tool_status.to_string(),
+                    error_kind: tool_error_kind(tool_status, &result).map(str::to_string),
                     duration_ms,
                     output_preview: redacted_truncated(result.clone(), 500),
                     execution_mode: "sequential".to_string(),
@@ -4587,6 +4589,7 @@ impl Agent {
                 tool_call_id: call.id.clone(),
                 tool_name: tool_name.clone(),
                 status: tool_status.to_string(),
+                error_kind: tool_error_kind(tool_status, &result).map(str::to_string),
                 duration_ms,
                 output_preview: redacted_truncated(result.clone(), 500),
                 execution_mode: "parallel".to_string(),
@@ -5153,6 +5156,52 @@ fn classify_tool_result_status(result: &str) -> &'static str {
     } else {
         "done"
     }
+}
+
+fn tool_error_kind(status: &str, result: &str) -> Option<&'static str> {
+    if status != "error" {
+        return None;
+    }
+    let lowered = result.trim_start().to_ascii_lowercase();
+    if lowered.starts_with("approval denied") {
+        return Some("approval_denied");
+    }
+    if lowered.starts_with("tool_error: unknown tool") {
+        return Some("unknown_tool");
+    }
+    if lowered.starts_with("tool_error: invalid json arguments") {
+        return Some("invalid_json_arguments");
+    }
+    if lowered.contains("invalid ") && lowered.contains(" arguments") {
+        return Some("invalid_arguments");
+    }
+    if lowered.contains("tool_policy") && lowered.contains("disabled") {
+        return Some("tool_policy_denied");
+    }
+    if lowered.contains("failed to evaluate tool policy") {
+        return Some("tool_policy_error");
+    }
+    for line in result.lines() {
+        let normalized = line.trim().to_ascii_lowercase();
+        if let Some(value) = normalized.strip_prefix("status:") {
+            match value.trim() {
+                "timeout" => return Some("timeout"),
+                "canceled" | "cancelled" => return Some("canceled"),
+                "failed" | "error" => return Some("execution_error"),
+                _ => {}
+            }
+        }
+        if let Some(value) = normalized.strip_prefix("exit_code:") {
+            if value
+                .trim()
+                .parse::<i32>()
+                .is_ok_and(|exit_code| exit_code != 0)
+            {
+                return Some("process_exit");
+            }
+        }
+    }
+    Some("execution_error")
 }
 
 fn tool_status_to_phase(status: &str) -> StoredToolPhase {
@@ -7510,7 +7559,7 @@ mod tests {
         should_run_context_compression_before_iteration,
         should_summarize_tool_result_for_reconcile, summarize_active_todos_for_goal_loop,
         summarize_tool_result, summarize_tool_result_for_history, sync_todos_from_goal_state,
-        trim_prompt_history,
+        tool_error_kind, trim_prompt_history,
     };
     use crate::approval::{request_approval, resolve_request, save_pending_approval};
     use crate::config::{AppConfig, AuxiliaryModelConfig};
@@ -7697,6 +7746,67 @@ mod tests {
         assert!(approval.contains("requires approval"));
         let success = summarize_tool_result("read_file", "contents loaded", "done");
         assert!(success.contains("observed"));
+    }
+
+    #[test]
+    fn classifies_tool_error_kinds() {
+        assert_eq!(
+            tool_error_kind(
+                "error",
+                "tool_error: invalid JSON arguments for `read_file`: expected value"
+            ),
+            Some("invalid_json_arguments")
+        );
+        assert_eq!(
+            tool_error_kind(
+                "error",
+                "tool_error: invalid read_file arguments: missing field `path`"
+            ),
+            Some("invalid_arguments")
+        );
+        assert_eq!(
+            tool_error_kind(
+                "error",
+                "tool_error: tool `read_file` is disabled by tool_policy"
+            ),
+            Some("tool_policy_denied")
+        );
+        assert_eq!(
+            tool_error_kind("error", "language: bash\nstatus: completed\nexit_code: 2"),
+            Some("process_exit")
+        );
+        assert_eq!(tool_error_kind("done", "ok"), None);
+    }
+
+    #[tokio::test]
+    async fn tool_finished_event_reports_invalid_argument_kind() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut agent = Agent::new(build_test_config(
+            "mock://invalid-tool-arguments",
+            tmp.path(),
+        ))
+        .expect("agent");
+        let mut handler = RecordingEventHandler::new();
+
+        let response = agent
+            .run_prompt_with_handler("Read the README", &mut handler)
+            .await
+            .expect("response");
+
+        assert_eq!(response, "recovered after invalid tool arguments");
+        assert!(handler.events().iter().any(|event| matches!(
+            event,
+            AgentEvent::ToolCallFinished {
+                tool_name,
+                status,
+                error_kind,
+                output_preview,
+                ..
+            } if tool_name == "read_file"
+                && status == "error"
+                && error_kind.as_deref() == Some("invalid_json_arguments")
+                && output_preview.contains("invalid JSON arguments")
+        )));
     }
 
     #[test]

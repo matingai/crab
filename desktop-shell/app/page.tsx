@@ -3059,7 +3059,10 @@ function summarizeEvent(event: Record<string, unknown> & { type?: string }): str
     case "tool_call_delta":
       return `${String(event.tool_name || "")} ${truncate(String(event.detail_preview || ""), 60)}`;
     case "tool_call_finished":
-      return `${String(event.tool_name || "")} ${truncate(String(event.output_preview || ""), 60)}${formatEventDuration(event.duration_ms)}`;
+      {
+        const errorKind = formatToolErrorKind(String(event.error_kind || ""));
+        return `${String(event.tool_name || "")}${errorKind ? ` · ${errorKind}` : ""} ${truncate(String(event.output_preview || ""), 60)}${formatEventDuration(event.duration_ms)}`;
+      }
     case "assistant_message":
       return truncate(String(event.content || ""), 80);
     case "approval_required":
@@ -3288,6 +3291,33 @@ function formatLearningStateSource(source: string): string {
       return "模型复盘";
     default:
       return source;
+  }
+}
+
+function formatToolErrorKind(kind: string): string {
+  switch (kind) {
+    case "invalid_json_arguments":
+      return "参数 JSON 错误";
+    case "invalid_arguments":
+      return "参数不合法";
+    case "unknown_tool":
+      return "未知工具";
+    case "tool_policy_denied":
+      return "策略拦截";
+    case "tool_policy_error":
+      return "策略检查失败";
+    case "approval_denied":
+      return "审批拒绝";
+    case "process_exit":
+      return "进程退出异常";
+    case "timeout":
+      return "超时";
+    case "canceled":
+      return "已取消";
+    case "execution_error":
+      return "执行错误";
+    default:
+      return kind;
   }
 }
 
@@ -5265,7 +5295,12 @@ export default function Page() {
         }
         const toolPhase = String(event.status || "") === "error" ? "error" : "done";
         const durationMs = readDurationMs(event.duration_ms);
-        setAgentActivity(toolPhase === "error" ? "工具执行失败" : "工具执行完成");
+        const errorKind = formatToolErrorKind(String(event.error_kind || ""));
+        setAgentActivity(
+          toolPhase === "error"
+            ? `工具执行失败${errorKind ? ` · ${errorKind}` : ""}`
+            : "工具执行完成",
+        );
         markToolFinished(
           String(event.tool_call_id || `${envelope.seq}-${String(event.tool_name || "tool")}`),
           String(event.tool_name || "tool"),

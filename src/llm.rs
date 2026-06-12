@@ -587,6 +587,43 @@ impl OpenAiCompatClient {
             }));
         }
 
+        if self.base_url == "mock://invalid-tool-arguments" {
+            let tool_message = messages.iter().any(|message| message.role == "tool");
+            if tool_message {
+                return Some(Ok(ChatResponse {
+                    choices: vec![crate::types::ChatChoice {
+                        message: ChatMessage {
+                            role: "assistant".to_string(),
+                            content: Some(Value::String(
+                                "recovered after invalid tool arguments".to_string(),
+                            )),
+                            tool_calls: None,
+                            tool_call_id: None,
+                        },
+                    }],
+                    usage: None,
+                }));
+            }
+            return Some(Ok(ChatResponse {
+                choices: vec![crate::types::ChatChoice {
+                    message: ChatMessage {
+                        role: "assistant".to_string(),
+                        content: None,
+                        tool_calls: Some(vec![ToolCall {
+                            id: "call-read-file-invalid-json".to_string(),
+                            kind: "function".to_string(),
+                            function: ToolFunctionCall {
+                                name: "read_file".to_string(),
+                                arguments: r#"{"path":"README.md""#.to_string(),
+                            },
+                        }]),
+                        tool_call_id: None,
+                    },
+                }],
+                usage: None,
+            }));
+        }
+
         if self.base_url == "mock://final-response"
             || self.base_url == "mock://codex-final-response"
             || self.base_url == "mock://auxiliary-summary-title"

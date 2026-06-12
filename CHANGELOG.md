@@ -26,6 +26,9 @@ and uses semantic versioning once stable release boundaries are established.
 - Tool outcomes now carry explicit error status across events, timeline entries, archive
   records, goal-state reconciliation, and the desktop shell; parallel batches report
   `completed_with_errors` when all tools finish but one or more fail.
+- Tool completion events now include a stable `error_kind` for malformed JSON arguments,
+  invalid tool arguments, tool-policy denials, approval denials, non-zero process exits,
+  timeouts, and generic execution failures.
 - Tool and parallel-batch completion events now include elapsed duration, and the desktop
   shell surfaces that timing in the live execution timeline.
 - Turn start events now include a turn id, resumed flag, input character count, and

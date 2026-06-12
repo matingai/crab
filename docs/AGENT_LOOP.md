@@ -142,8 +142,12 @@ batch while reporting `completed_with_errors`, which lets the main loop continue
 clear evidence about which tool calls need repair.
 
 Completion events also include elapsed duration for each tool call and each parallel
-batch. That timing is shown in the desktop timeline, giving users a concrete feel for
-which parts of the loop are doing work, waiting on tools, or worth optimizing.
+batch. Failed tool calls carry a stable `error_kind` such as `invalid_json_arguments`,
+`invalid_arguments`, `tool_policy_denied`, `approval_denied`, `process_exit`, or
+`timeout`, so a UI and the next model turn can distinguish malformed arguments from
+environment, policy, and execution failures. That timing and error metadata is shown in
+the desktop timeline, giving users a concrete feel for which parts of the loop are doing
+work, waiting on tools, repairable by the model, or worth optimizing.
 
 The point is to preserve meaning, not just bytes.
 

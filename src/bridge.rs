@@ -1255,7 +1255,10 @@ mod tests {
             emitted_at_unix_ms: 1,
             event: AgentEvent::TurnStarted {
                 session_id: "demo".to_string(),
-                user_input: "hello".to_string(),
+                turn_id: "turn-1".to_string(),
+                user_input_preview: "hello".to_string(),
+                input_chars: 5,
+                resumed: false,
             },
         });
         sink.push(BridgeEventEnvelope {

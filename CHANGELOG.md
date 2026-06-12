@@ -28,6 +28,8 @@ and uses semantic versioning once stable release boundaries are established.
   `completed_with_errors` when all tools finish but one or more fail.
 - Tool and parallel-batch completion events now include elapsed duration, and the desktop
   shell surfaces that timing in the live execution timeline.
+- Turn start events now include a turn id, resumed flag, input character count, and
+  redacted user-input preview instead of exposing the full prompt in the event stream.
 - Agent turns now emit a `turn_finished` summary event with status, elapsed duration,
   tool-call count, and a redacted response preview so UIs can show a clear run boundary.
 - Main and background model completion events now include status-aware elapsed duration,

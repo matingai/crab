@@ -9,7 +9,10 @@ pub enum AgentEvent {
     },
     TurnStarted {
         session_id: String,
-        user_input: String,
+        turn_id: String,
+        user_input_preview: String,
+        input_chars: usize,
+        resumed: bool,
     },
     TurnFinished {
         session_id: String,

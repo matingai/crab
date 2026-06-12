@@ -1493,6 +1493,22 @@ impl Agent {
         }
     }
 
+    fn emit_turn_started(
+        &self,
+        handler: &mut dyn EventHandler,
+        turn_id: &str,
+        user_input: &str,
+        resumed: bool,
+    ) {
+        handler.on_event(AgentEvent::TurnStarted {
+            session_id: self.session.session_id.clone(),
+            turn_id: turn_id.to_string(),
+            user_input_preview: redacted_truncated(user_input, 500),
+            input_chars: user_input.chars().count(),
+            resumed,
+        });
+    }
+
     fn emit_turn_finished(
         &self,
         handler: &mut dyn EventHandler,
@@ -1717,10 +1733,6 @@ impl Agent {
             });
             let _ = self.tools.run_hooks("on_session_start", &payload).await;
         }
-        handler.on_event(AgentEvent::TurnStarted {
-            session_id: self.session.session_id.clone(),
-            user_input: user_input.to_string(),
-        });
         let turn_started_at = Instant::now();
 
         let result = async {
@@ -1734,7 +1746,8 @@ impl Agent {
 
             self.session.history.push(ChatMessage::user(user_input));
             let turn_id = self.session.record_user_timeline_entry(user_input);
-            self.active_turn_id = Some(turn_id);
+            self.active_turn_id = Some(turn_id.clone());
+            self.emit_turn_started(handler, &turn_id, user_input, false);
             self.seed_goal_state_from_user_input(user_input)?;
             self.start_solve_episode(user_input);
             self.upsert_archive_turn(&self.active_archive_turn_id());
@@ -1742,7 +1755,7 @@ impl Agent {
             self.append_archive_event(
                 "turn_started",
                 "User turn started",
-                &truncated(user_input, 240),
+                &redacted_truncated(user_input, 240),
             );
             self.persist_session_with_handler(handler)?;
 
@@ -1787,7 +1800,10 @@ impl Agent {
             pending.batch_index,
             pending.batch_total,
         );
-        self.active_turn_id = Some(self.session.current_turn_id());
+        let resumed_turn_id = self.session.current_turn_id();
+        self.active_turn_id = Some(resumed_turn_id.clone());
+        let user_input = self.latest_user_input()?;
+        self.emit_turn_started(handler, &resumed_turn_id, &user_input, true);
         self.upsert_archive_tool_call(
             &pending.tool_call_id,
             &pending.tool_name,
@@ -1915,7 +1931,6 @@ impl Agent {
         self.persist_session_with_handler(handler)?;
         remove_pending_approval(&self.config.data_dir, approval_id)?;
 
-        let user_input = self.latest_user_input()?;
         let result = self
             .continue_active_turn(&user_input, handler, TurnProgress::default())
             .await;
@@ -7451,12 +7466,30 @@ mod tests {
             Agent::new(build_test_config("mock://final-response", tmp.path())).expect("agent");
         let mut handler = RecordingEventHandler::new();
 
+        let prompt = "say hello with OPENAI_API_KEY=test-redaction-fixture";
         let response = agent
-            .run_prompt_with_handler("say hello", &mut handler)
+            .run_prompt_with_handler(prompt, &mut handler)
             .await
             .expect("run");
 
         assert_eq!(response, "mock final response");
+        assert!(matches!(
+            handler
+                .events()
+                .iter()
+                .find(|event| matches!(event, AgentEvent::TurnStarted { .. })),
+            Some(AgentEvent::TurnStarted {
+                turn_id,
+                user_input_preview,
+                input_chars,
+                resumed,
+                ..
+            }) if turn_id == "turn-1"
+                && user_input_preview.contains("OPENAI_API_KEY=[REDACTED]")
+                && !user_input_preview.contains("test-redaction-fixture")
+                && *input_chars == prompt.chars().count()
+                && !resumed
+        ));
         assert!(matches!(
             handler
                 .events()
@@ -7627,6 +7660,20 @@ mod tests {
             .expect("resume");
 
         assert_eq!(response, "command completed");
+        assert!(matches!(
+            handler
+                .events()
+                .iter()
+                .find(|event| matches!(event, AgentEvent::TurnStarted { .. })),
+            Some(AgentEvent::TurnStarted {
+                turn_id,
+                user_input_preview,
+                resumed,
+                ..
+            }) if turn_id == "turn-1"
+                && user_input_preview == "delete hello.txt"
+                && *resumed
+        ));
         assert!(matches!(
             handler.events().iter().find(|event| matches!(event, AgentEvent::ToolCallStarted { .. })),
             Some(AgentEvent::ToolCallStarted {

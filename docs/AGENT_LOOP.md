@@ -166,6 +166,7 @@ This is part of treating the agent as a runtime. Context is a managed resource.
 The loop emits events because agent work should be inspectable while it happens. A desktop
 UI can show:
 
+- Turn start and resume boundaries, including turn id and redacted user-input preview.
 - Model request and streaming output.
 - Main and background model request completion status and duration.
 - Prompt context preparation budgets, retained blocks, trimming labels, and preparation

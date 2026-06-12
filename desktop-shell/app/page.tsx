@@ -2954,10 +2954,20 @@ function MarkdownContent({
   );
 }
 
+function readTurnStartedPreview(event: Record<string, unknown>): string {
+  const preview = event.user_input_preview ?? event.user_input ?? "";
+  return typeof preview === "string" ? preview : String(preview || "");
+}
+
 function summarizeEvent(event: Record<string, unknown> & { type?: string }): string {
   switch (event.type) {
     case "turn_started":
-      return truncate(String(event.user_input || ""), 80);
+      {
+        const turnId = typeof event.turn_id === "string" ? event.turn_id : "";
+        const prefix = event.resumed ? "继续执行" : "开始";
+        const preview = truncate(readTurnStartedPreview(event), 80);
+        return `${prefix}${turnId ? ` ${turnId}` : ""}${preview ? ` · ${preview}` : ""}`;
+      }
     case "turn_finished":
       return `本轮 ${formatTurnStatus(String(event.status || ""))}，${String(event.tool_call_count || 0)} 个工具${formatEventDuration(event.duration_ms)}`;
     case "assistant_delta":
@@ -4233,26 +4243,36 @@ export default function Page() {
     });
   }
 
-  function confirmUserMessage(content: string, seq: number) {
+  function confirmUserMessage(
+    content: string,
+    seq: number,
+    options?: { preservePendingContent?: boolean },
+  ) {
     const targetId = `user-${seq}`;
     const signature = promptSignature(content);
     const pending = pendingUserMessageRef.current;
+    const preservePendingContent = Boolean(options?.preservePendingContent);
     setTimeline((prev) => {
       if (prev.some((entry) => entry.id === targetId)) {
         return prev
           .filter((entry) => entry.id !== pending?.id)
           .map((entry) =>
             entry.id === targetId && entry.type === "user"
-              ? { ...entry, content, pending: false }
+              ? { ...entry, content: preservePendingContent ? entry.content : content, pending: false }
               : entry,
           );
       }
-      if (pending && pending.signature === signature) {
+      if (pending && (pending.signature === signature || preservePendingContent)) {
         let replaced = false;
         const next = prev.map((entry) => {
           if (entry.id === pending.id && entry.type === "user") {
             replaced = true;
-            return { ...entry, id: targetId, content, pending: false };
+            return {
+              ...entry,
+              id: targetId,
+              content: preservePendingContent ? entry.content : content,
+              pending: false,
+            };
           }
           return entry;
         });
@@ -4263,7 +4283,7 @@ export default function Page() {
       }
       return [...prev, { id: targetId, type: "user" as const, content }];
     });
-    if (pending?.signature === signature) {
+    if (pending && (pending.signature === signature || preservePendingContent)) {
       pendingUserMessageRef.current = null;
     }
   }
@@ -4677,10 +4697,18 @@ export default function Page() {
         setConfig((prev) => ({ ...prev, sessionId: String(event.session_id || "") }));
         break;
       case "turn_started":
-        resetActiveAssistantStreamState();
-        setParallelBatch(null);
-        setAgentActivity("正在准备上下文");
-        confirmUserMessage(String(event.user_input || ""), envelope.seq);
+        {
+          resetActiveAssistantStreamState();
+          setParallelBatch(null);
+          const resumed = Boolean(event.resumed);
+          const turnId = typeof event.turn_id === "string" ? event.turn_id : "";
+          setAgentActivity(resumed ? `正在继续${turnId ? ` ${turnId}` : "本轮"}` : "正在准备上下文");
+          if (!resumed) {
+            confirmUserMessage(readTurnStartedPreview(event), envelope.seq, {
+              preservePendingContent: true,
+            });
+          }
+        }
         break;
       case "turn_finished":
         {

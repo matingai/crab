@@ -12,7 +12,7 @@ Crab 的 computer-use 层是 browser tools 的原生桌面对照能力。Browser
 - 支持对当前 ref 做只读检查，返回当前元素行和系统报告的原生 Accessibility actions。
 - 支持只读等待某个当前 ref 存在，并匹配 role、文本、状态或原生 Accessibility action 预期。
 - 支持在新的 Accessibility snapshot 里按文本、role 和紧凑状态只读搜索候选 ref。
-- 只读等待指定文本出现，或等待前台 Accessibility tree 稳定。
+- 只读等待指定文本出现、消失，或等待前台 Accessibility tree 稳定。
 - 支持写动作前的可选 ref guard：先检查当前 ref 的 role、文本或紧凑状态，再执行经过 approval 的写动作。
 - 支持经过 approval 的当前 `@u` ref 聚焦。
 - 支持经过 approval 的当前 `@u` ref 点击。
@@ -36,7 +36,7 @@ tool call 和 approval policy。
 | `snapshot` | 读取前台应用及窗口的紧凑 Accessibility UI tree。 |
 | `inspect_ref` | 读取 snapshot ref 的当前详情和系统报告的原生 Accessibility actions。 |
 | `find` | 在新的 snapshot 里按 query、role 或 state 搜索候选 UI ref，并返回匹配元素行。 |
-| `wait` | 轮询 snapshot，直到目标文本出现或 UI tree 稳定，然后返回最新快照。 |
+| `wait` | 轮询 snapshot，直到目标文本出现、消失或 UI tree 稳定，然后返回最新快照。 |
 | `wait_ref` | 轮询单个 UI ref，直到它存在，并且可选 role、文本、状态或 native action 预期匹配。 |
 | `focus` | 把键盘焦点设到 `@u2` 这类 snapshot ref，然后返回聚焦后的快照。 |
 | `click` | 激活 `@u2` 这类 snapshot ref，然后返回点击后的快照。 |
@@ -144,6 +144,18 @@ snapshot 状态标记会刻意保持稀疏：`focused=true` 和 `selected=true` 
   "action": "wait",
   "wait_until": "text_present",
   "contains_text": "Ready",
+  "timeout_seconds": 10,
+  "poll_interval_ms": 250,
+  "max_items": 40,
+  "max_depth": 3
+}
+```
+
+```json
+{
+  "action": "wait",
+  "wait_until": "text_absent",
+  "contains_text": "Loading",
   "timeout_seconds": 10,
   "poll_interval_ms": 250,
   "max_items": 40,

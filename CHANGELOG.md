@@ -11,12 +11,12 @@ and uses semantic versioning once stable release boundaries are established.
 
 - Added a conservative `computer_use` foundation for macOS Accessibility-backed native
   desktop automation: status checks, permission prompting, frontmost-app UI tree
-  snapshots with compact state flags, read-only ref inspection/search and wait polling,
-  read-only ref readiness waits, pre-action ref guards, native action availability guards,
-  snapshot-bound approval-gated focus/click/text/scroll actions, whitelisted native
-  Accessibility actions, whitelisted non-text key pressing, docs, and `doctor`
-  visibility. Arbitrary keyboard typing and broad app-control write actions remain
-  intentionally disabled.
+  snapshots with compact state flags, read-only ref inspection/search, text
+  appear/disappear wait polling, read-only ref readiness waits, pre-action ref guards,
+  native action availability guards, snapshot-bound approval-gated focus/click/text/scroll
+  actions, whitelisted native Accessibility actions, whitelisted non-text key pressing,
+  docs, and `doctor` visibility. Arbitrary keyboard typing and broad app-control write
+  actions remain intentionally disabled.
 - Tool calls now pass through a local `tool_policy` preflight that protects common
   sensitive paths by default and can require approval or disable configured tools/path
   patterns before execution. Path-like arguments are now inspected recursively, including

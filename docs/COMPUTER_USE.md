@@ -16,7 +16,8 @@ The current implementation is deliberately conservative:
   Accessibility action expectations before any write is attempted.
 - Read-only searching across a fresh Accessibility snapshot to locate candidate refs by
   text, role, and compact state.
-- Read-only waiting for text to appear or for the frontmost Accessibility tree to settle.
+- Read-only waiting for text to appear, disappear, or for the frontmost Accessibility
+  tree to settle.
 - Optional pre-action ref guards that check a current ref's role, text, or compact state
   before an approval-gated write action runs.
 - Approval-gated focus support for a current `@u` ref.
@@ -46,7 +47,7 @@ The built-in `computer_use` tool supports thirteen actions:
 | `snapshot` | Reads a compact Accessibility UI tree for the frontmost application and its windows. |
 | `inspect_ref` | Reads current details and reported native Accessibility actions for a snapshot ref. |
 | `find` | Searches a fresh snapshot for candidate UI refs by query, role, or state, and returns matching element lines. |
-| `wait` | Polls snapshots until target text appears or the UI tree settles, then returns the latest snapshot. |
+| `wait` | Polls snapshots until target text appears, disappears, or the UI tree settles, then returns the latest snapshot. |
 | `wait_ref` | Polls one UI ref until it exists and optional role, text, state, or native action expectations match. |
 | `focus` | Sets keyboard focus to a snapshot ref such as `@u2`, then returns a post-focus snapshot. |
 | `click` | Activates a snapshot ref such as `@u2`, then returns a post-click snapshot. |
@@ -165,6 +166,18 @@ next action can be based on current evidence:
   "action": "wait",
   "wait_until": "text_present",
   "contains_text": "Ready",
+  "timeout_seconds": 10,
+  "poll_interval_ms": 250,
+  "max_items": 40,
+  "max_depth": 3
+}
+```
+
+```json
+{
+  "action": "wait",
+  "wait_until": "text_absent",
+  "contains_text": "Loading",
   "timeout_seconds": 10,
   "poll_interval_ms": 250,
   "max_items": 40,

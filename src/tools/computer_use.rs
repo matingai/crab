@@ -99,7 +99,7 @@ impl Tool for ComputerUseTool {
                     "action": {
                         "type": "string",
                         "enum": ["status", "request_permission", "snapshot", "inspect_ref", "find", "wait", "wait_ref", "focus", "click", "perform_action", "set_text", "scroll", "press_key"],
-                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; inspect_ref reads the current details and available actions for a snapshot ref; find searches a fresh snapshot for candidate UI refs; wait polls snapshots until text appears or the UI settles; wait_ref polls one UI ref until it exists and optional role, text, state, or native Accessibility action expectations match; focus sets keyboard focus to a snapshot ref such as @u2 after approval; click activates a snapshot ref after approval; perform_action runs one whitelisted native Accessibility action on a ref after approval; set_text sets the Accessibility value for a ref after approval; scroll performs a small Accessibility scroll action on a snapshot ref after approval; press_key sends one whitelisted non-text key to the frontmost app after approval."
+                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; inspect_ref reads the current details and available actions for a snapshot ref; find searches a fresh snapshot for candidate UI refs; wait polls snapshots until text appears, text disappears, or the UI settles; wait_ref polls one UI ref until it exists and optional role, text, state, or native Accessibility action expectations match; focus sets keyboard focus to a snapshot ref such as @u2 after approval; click activates a snapshot ref after approval; perform_action runs one whitelisted native Accessibility action on a ref after approval; set_text sets the Accessibility value for a ref after approval; scroll performs a small Accessibility scroll action on a snapshot ref after approval; press_key sends one whitelisted non-text key to the frontmost app after approval."
                     },
                     "max_items": {
                         "type": "integer",
@@ -149,13 +149,13 @@ impl Tool for ComputerUseTool {
                     },
                     "wait_until": {
                         "type": "string",
-                        "enum": ["text_present", "settled"],
-                        "description": "Wait mode for action=wait. text_present requires contains_text; settled waits for two consecutive matching snapshots. Defaults to text_present when contains_text is provided, otherwise settled."
+                        "enum": ["text_present", "text_absent", "settled"],
+                        "description": "Wait mode for action=wait. text_present and text_absent require contains_text; settled waits for two consecutive matching snapshots. Defaults to text_present when contains_text is provided, otherwise settled."
                     },
                     "contains_text": {
                         "type": "string",
                         "maxLength": 1000,
-                        "description": "Substring to wait for in the rendered Accessibility snapshot when wait_until=text_present."
+                        "description": "Substring to wait for in the rendered Accessibility snapshot when wait_until=text_present, or wait to disappear when wait_until=text_absent."
                     },
                     "query": {
                         "type": "string",
@@ -550,10 +550,26 @@ impl ComputerUseArgs {
                     case_sensitive: self.case_sensitive.unwrap_or(false),
                 }
             }
+            "text_absent" | "text_missing" | "text_gone" | "gone" | "not_present" => {
+                let Some(contains_text) = contains_text else {
+                    bail!("computer_use wait_until=text_absent requires `contains_text`");
+                };
+                if contains_text.chars().count() > MAX_WAIT_TEXT_CHARS {
+                    bail!(
+                        "computer_use wait contains_text is too long; maximum is {MAX_WAIT_TEXT_CHARS} characters"
+                    );
+                }
+                ComputerUseWaitMode::TextAbsent {
+                    contains_text: contains_text.to_string(),
+                    case_sensitive: self.case_sensitive.unwrap_or(false),
+                }
+            }
             "settled" | "stable" => ComputerUseWaitMode::Settled,
             "" => bail!("computer_use wait_until cannot be empty"),
             other => {
-                bail!("unsupported computer_use wait_until `{other}`; use text_present or settled")
+                bail!(
+                    "unsupported computer_use wait_until `{other}`; use text_present, text_absent, or settled"
+                )
             }
         };
         Ok(ComputerUseWaitRequest {
@@ -702,6 +718,10 @@ enum ComputerUseWaitMode {
         contains_text: String,
         case_sensitive: bool,
     },
+    TextAbsent {
+        contains_text: String,
+        case_sensitive: bool,
+    },
     Settled,
 }
 
@@ -709,6 +729,7 @@ impl ComputerUseWaitMode {
     fn label(&self) -> &'static str {
         match self {
             ComputerUseWaitMode::TextPresent { .. } => "text_present",
+            ComputerUseWaitMode::TextAbsent { .. } => "text_absent",
             ComputerUseWaitMode::Settled => "settled",
         }
     }
@@ -958,6 +979,10 @@ async fn wait_for_frontmost_app(
                 contains_text,
                 case_sensitive,
             } => snapshot_contains_text(&snapshot, contains_text, *case_sensitive),
+            ComputerUseWaitMode::TextAbsent {
+                contains_text,
+                case_sensitive,
+            } => !snapshot_contains_text(&snapshot, contains_text, *case_sensitive),
             ComputerUseWaitMode::Settled => {
                 let current_sha256 = sha256_hex(snapshot.as_bytes());
                 let settled = previous_snapshot_sha256
@@ -970,6 +995,7 @@ async fn wait_for_frontmost_app(
         if matched {
             let result = match &request.mode {
                 ComputerUseWaitMode::TextPresent { .. } => "matched",
+                ComputerUseWaitMode::TextAbsent { .. } => "matched",
                 ComputerUseWaitMode::Settled => "settled",
             };
             return Ok(ComputerUseWaitOutcome {
@@ -1550,12 +1576,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn wait_text_absent_requires_contains_text() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tool = ComputerUseTool;
+        let error = tool
+            .execute(
+                json!({ "action": "wait", "wait_until": "text_absent" }),
+                &ctx(tmp.path()),
+            )
+            .await
+            .expect_err("missing contains_text");
+
+        assert!(format!("{error:#}").contains("requires `contains_text`"));
+    }
+
+    #[tokio::test]
     async fn wait_rejects_unsupported_mode() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let tool = ComputerUseTool;
         let error = tool
             .execute(
-                json!({ "action": "wait", "wait_until": "gone" }),
+                json!({ "action": "wait", "wait_until": "visible" }),
                 &ctx(tmp.path()),
             )
             .await
@@ -1629,6 +1670,27 @@ mod tests {
             request.mode,
             ComputerUseWaitMode::TextPresent {
                 contains_text: "Ready".to_string(),
+                case_sensitive: true,
+            }
+        );
+    }
+
+    #[test]
+    fn wait_request_parses_text_absent_aliases() {
+        let args: super::ComputerUseArgs = serde_json::from_value(json!({
+            "action": "wait",
+            "wait_until": "text-gone",
+            "contains_text": "Loading",
+            "case_sensitive": true
+        }))
+        .expect("args");
+        let request = args.wait_request().expect("wait request");
+
+        assert_eq!(request.mode.label(), "text_absent");
+        assert_eq!(
+            request.mode,
+            ComputerUseWaitMode::TextAbsent {
+                contains_text: "Loading".to_string(),
                 case_sensitive: true,
             }
         );
@@ -2052,6 +2114,7 @@ available_actions: AXPress
         assert!(schema.contains("\"direction\""));
         assert!(schema.contains("\"scroll_steps\""));
         assert!(schema.contains("\"wait_until\""));
+        assert!(schema.contains("\"text_absent\""));
         assert!(schema.contains("\"contains_text\""));
         assert!(schema.contains("\"query\""));
         assert!(schema.contains("\"role\""));

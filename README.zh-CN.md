@@ -6,6 +6,7 @@
 
 <p>
   <a href="https://github.com/matingai/crab/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/matingai/crab?style=for-the-badge&logo=github&color=0f766e" /></a>
+  <a href="https://github.com/matingai/crab/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/matingai/crab?include_prereleases&style=for-the-badge&logo=github&color=2563eb" /></a>
   <a href=".github/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/matingai/crab/ci.yml?branch=main&style=for-the-badge&label=CI&logo=githubactions&logoColor=white" /></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" /></a>
   <a href="https://github.com/matingai/crab/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/matingai/crab?style=for-the-badge&color=64748b" /></a>
@@ -16,6 +17,7 @@
   <a href="docs/AGENT_LOOP.md"><img alt="Agent loop: goal-state controller" src="https://img.shields.io/badge/agent%20loop-goal--state%20controller-7c3aed?style=for-the-badge" /></a>
   <a href="docs/AGENT_LOOP.md#delegation-model"><img alt="Worker delegation" src="https://img.shields.io/badge/delegation-worker%20runs-0891b2?style=for-the-badge" /></a>
   <a href="docs/ARCHITECTURE.md#local-state"><img alt="Local-first runtime" src="https://img.shields.io/badge/runtime-local--first-334155?style=for-the-badge" /></a>
+  <a href="docs/DESKTOP_PACKAGING.md"><img alt="Installers: DMG and EXE" src="https://img.shields.io/badge/installers-DMG%20%2B%20EXE-0f766e?style=for-the-badge" /></a>
   <a href="#桌面壳"><img alt="Desktop shell" src="https://img.shields.io/badge/desktop-Electron%20%2B%20Tauri-111827?style=for-the-badge" /></a>
   <a href="#配置"><img alt="OpenAI compatible" src="https://img.shields.io/badge/models-OpenAI--compatible-10a37f?style=for-the-badge" /></a>
   <a href="SECURITY.md"><img alt="Security policy" src="https://img.shields.io/badge/security-policy-b91c1c?style=for-the-badge" /></a>
@@ -99,6 +101,22 @@ flowchart LR
 | 定时任务 | 运行设置 |
 | --- | --- |
 | ![Crab 定时任务](docs/assets/screenshots/crab-activity.png) | ![Crab 运行设置](docs/assets/screenshots/crab-settings.png) |
+
+## 下载桌面 App
+
+最容易试用 Crab 的方式，是直接从
+[GitHub Releases](https://github.com/matingai/crab/releases) 下载桌面安装包。tagged
+release 会在 GitHub 原生 runner 上构建，普通用户不需要本地安装 Rust、Node.js 或打包环境。
+
+| 平台 | Release asset | 安装体验 |
+| --- | --- | --- |
+| macOS Apple Silicon | `crab-desktop-vX.Y.Z-aarch64-apple-darwin.dmg` | 打开 DMG，把 Crab 拖进 Applications。 |
+| macOS Intel | `crab-desktop-vX.Y.Z-x86_64-apple-darwin.dmg` | 打开 DMG，把 Crab 拖进 Applications。 |
+| Windows x64 | `crab-desktop-vX.Y.Z-x86_64-pc-windows-msvc-setup.exe` | 直接运行 setup 安装程序。 |
+
+每个安装包都会同时发布同名 `.sha256` 校验文件和 `.json` manifest。当前 0.1.x 是未签名 preview
+安装包，在接入代码签名和 notarization 之前，macOS Gatekeeper 或 Windows SmartScreen 可能会提示风险。
+发布流水线和签名计划见 [桌面安装包文档](docs/DESKTOP_PACKAGING.md)。
 
 ## 延伸文档
 

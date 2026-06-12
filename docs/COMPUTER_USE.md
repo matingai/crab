@@ -213,7 +213,8 @@ hash plus pid and re-checks that origin before every write action; if focus move
 another app or process, the write is rejected before any Accessibility mutation runs. When
 a write action succeeds, Crab saves the returned post-action observation as the new latest
 snapshot record and returns `post_snapshot_id`, so the next step can continue from fresh UI
-evidence instead of the pre-action id.
+evidence instead of the pre-action id. The saved post-action record is built from the
+extracted `post_*_snapshot` body, not from the surrounding action log lines.
 
 For safer targeting, write actions can also include optional ref guards. `expect_role`,
 `expect_text`, and `expect_state` make Crab take one more read-only snapshot before the

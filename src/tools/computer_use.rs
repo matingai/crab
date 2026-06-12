@@ -359,7 +359,8 @@ impl Tool for ComputerUseTool {
                 let ref_guard =
                     run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
                 let result = click_frontmost_app_ref(reference, max_items, max_depth)?;
-                let post_record = save_snapshot_record(ctx, max_items, max_depth, &result)?;
+                let post_record =
+                    save_post_action_snapshot_record(ctx, max_items, max_depth, &result)?;
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
                     &post_record.snapshot_id,
@@ -404,7 +405,8 @@ impl Tool for ComputerUseTool {
                     max_items,
                     max_depth,
                 )?;
-                let post_record = save_snapshot_record(ctx, max_items, max_depth, &result)?;
+                let post_record =
+                    save_post_action_snapshot_record(ctx, max_items, max_depth, &result)?;
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
                     &post_record.snapshot_id,
@@ -437,7 +439,8 @@ impl Tool for ComputerUseTool {
                 let ref_guard =
                     run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
                 let result = focus_frontmost_app_ref(reference, max_items, max_depth)?;
-                let post_record = save_snapshot_record(ctx, max_items, max_depth, &result)?;
+                let post_record =
+                    save_post_action_snapshot_record(ctx, max_items, max_depth, &result)?;
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
                     &post_record.snapshot_id,
@@ -471,7 +474,8 @@ impl Tool for ComputerUseTool {
                 let ref_guard =
                     run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
                 let result = set_frontmost_app_ref_text(reference, text, max_items, max_depth)?;
-                let post_record = save_snapshot_record(ctx, max_items, max_depth, &result)?;
+                let post_record =
+                    save_post_action_snapshot_record(ctx, max_items, max_depth, &result)?;
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
                     &post_record.snapshot_id,
@@ -511,7 +515,8 @@ impl Tool for ComputerUseTool {
                     max_items,
                     max_depth,
                 )?;
-                let post_record = save_snapshot_record(ctx, max_items, max_depth, &result)?;
+                let post_record =
+                    save_post_action_snapshot_record(ctx, max_items, max_depth, &result)?;
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
                     &post_record.snapshot_id,
@@ -541,7 +546,8 @@ impl Tool for ComputerUseTool {
                     run_snapshot_origin_guard(&snapshot_record, max_items, max_depth)?;
                 let app_guard = run_app_guard(max_items, max_depth, app_guard_request.as_ref())?;
                 let result = press_frontmost_app_key(key.label, max_items, max_depth)?;
-                let post_record = save_snapshot_record(ctx, max_items, max_depth, &result)?;
+                let post_record =
+                    save_post_action_snapshot_record(ctx, max_items, max_depth, &result)?;
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
                     &post_record.snapshot_id,
@@ -1059,6 +1065,37 @@ fn save_snapshot_record(
     fs::write(&path, serde_json::to_vec_pretty(&record)?)
         .with_context(|| format!("failed to write {}", path.display()))?;
     Ok(record)
+}
+
+fn save_post_action_snapshot_record(
+    ctx: &ToolContext,
+    max_items: usize,
+    max_depth: usize,
+    result: &str,
+) -> Result<ComputerUseSnapshotRecord> {
+    let post_snapshot = post_action_snapshot_from_result(result)?;
+    save_snapshot_record(ctx, max_items, max_depth, post_snapshot)
+}
+
+fn post_action_snapshot_from_result(result: &str) -> Result<&str> {
+    const POST_SNAPSHOT_MARKERS: &[&str] = &[
+        "post_click_snapshot:",
+        "post_focus_snapshot:",
+        "post_set_text_snapshot:",
+        "post_key_snapshot:",
+        "post_scroll_snapshot:",
+        "post_action_snapshot:",
+    ];
+    for marker in POST_SNAPSHOT_MARKERS {
+        if let Some((_, post_snapshot)) = result.split_once(marker) {
+            let post_snapshot = post_snapshot.trim();
+            if post_snapshot.is_empty() {
+                bail!("computer_use write action did not return a post-action snapshot");
+            }
+            return Ok(post_snapshot);
+        }
+    }
+    bail!("computer_use write action result did not include a post-action snapshot")
 }
 
 fn resolve_snapshot_record(
@@ -1749,10 +1786,11 @@ mod tests {
         ComputerUseWaitRefRequest, MAX_SET_TEXT_CHARS, MAX_SNAPSHOT_RECORD_AGE_SECONDS,
         check_app_guard_snapshot, check_native_action_guard_details, check_ref_guard_line,
         check_snapshot_origin_guard, details_have_native_action, details_match_wait_ref,
-        find_snapshot_lines, load_snapshot_record, ref_line_from_details,
-        render_wait_ref_unavailable, render_write_result, resolve_snapshot_record,
-        save_snapshot_record, snapshot_contains_text, snapshot_frontmost_app_line,
-        snapshot_line_for_ref, snapshot_pid, snapshot_record_path, ui_ref_from_snapshot_line,
+        find_snapshot_lines, load_snapshot_record, post_action_snapshot_from_result,
+        ref_line_from_details, render_wait_ref_unavailable, render_write_result,
+        resolve_snapshot_record, save_post_action_snapshot_record, save_snapshot_record,
+        snapshot_contains_text, snapshot_frontmost_app_line, snapshot_line_for_ref, snapshot_pid,
+        snapshot_record_path, ui_ref_from_snapshot_line,
     };
     use crate::computer_use::normalize_computer_use_native_action;
     use crate::tools::{Tool, ToolContext};
@@ -2718,6 +2756,44 @@ available_actions: AXPress
         assert!(message.contains("frontmost pid changed"));
         assert!(message.contains("current_pid: 43"));
         assert!(message.contains("expected_pid: 42"));
+    }
+
+    #[test]
+    fn post_action_snapshot_extraction_returns_only_snapshot_body() {
+        let result = "clicked_ref: @u2\nfrontmost_app_before_click: Finder\n\npost_click_snapshot:\nfrontmost_app: Finder\npid: 42\nui_tree:\n- @u1 role='window'";
+
+        let post_snapshot =
+            post_action_snapshot_from_result(result).expect("post snapshot extraction");
+
+        assert!(post_snapshot.starts_with("frontmost_app: Finder"));
+        assert!(post_snapshot.contains("pid: 42"));
+        assert!(!post_snapshot.contains("clicked_ref"));
+        assert!(!post_snapshot.contains("frontmost_app_before_click"));
+    }
+
+    #[test]
+    fn post_action_snapshot_record_hashes_only_post_snapshot() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let ctx = ctx(tmp.path());
+        let post_snapshot = "frontmost_app: Finder\npid: 42\nui_tree:\n- @u1 role='window'";
+        let result = format!(
+            "clicked_ref: @u2\nfrontmost_app_before_click: Finder\n\npost_click_snapshot:\n{post_snapshot}"
+        );
+
+        let record = save_post_action_snapshot_record(&ctx, 40, 3, &result)
+            .expect("save post action snapshot record");
+        let expected_app_line_sha256 = super::sha256_hex("frontmost_app: Finder".as_bytes());
+
+        assert_eq!(
+            record.output_sha256,
+            super::sha256_hex(post_snapshot.as_bytes())
+        );
+        assert_eq!(
+            record.frontmost_app_line_sha256.as_deref(),
+            Some(expected_app_line_sha256.as_str())
+        );
+        assert_eq!(record.pid, Some(42));
+        assert_ne!(record.output_sha256, super::sha256_hex(result.as_bytes()));
     }
 
     #[test]

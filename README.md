@@ -575,8 +575,8 @@ The built-in registry currently includes tool groups for:
   native-action-aware ref search, text appear/disappear UI waits, ref readiness waits,
   pre-action ref and frontmost-app guards, native action availability guards,
   freshness-, bounds-, and origin-checked snapshot-bound
-  focus/click/perform_action/set_text/scroll/key actions with post-action snapshot ids,
-  whitelisted native Accessibility actions, and whitelisted key presses.
+  focus/click/perform_action/set_text/scroll/key actions with clean post-action snapshot
+  ids, whitelisted native Accessibility actions, and whitelisted key presses.
 - PDF and Office document inspection, preview, extraction, and generation paths.
 - Session search, archive query, memory query, memory digest, and wiki-style notes.
 - Skills listing, viewing, and management.

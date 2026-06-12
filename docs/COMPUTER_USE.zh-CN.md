@@ -185,7 +185,8 @@ snapshot 一致。超过 30 秒的 snapshot 记录不能再用于写动作，避
 的桌面。Crab 还会把观察时的前台 app origin 记录成 hash 和 pid，并在每次写动作前自动重新校验；如果
 焦点已经切到另一个 app 或进程，写动作会在任何 Accessibility 修改发生前被拒绝。写动作成功后，Crab 会
 把返回的 post-action 观察结果保存为新的 latest snapshot record，并返回 `post_snapshot_id`，所以下一步
-可以基于新鲜 UI 证据继续，而不是继续沿用操作前的 id。
+可以基于新鲜 UI 证据继续，而不是继续沿用操作前的 id。保存后的 post-action record 来自提取出的
+`post_*_snapshot` 正文，不会把周围的动作日志行混进 snapshot 证据里。
 
 为了让目标定位更稳，写动作还可以带上可选的 ref guard。`expect_role`、`expect_text` 和
 `expect_state` 会让 Crab 在写动作前再读一次 snapshot，并验证选中的 ref 仍然像刚才观察到的控件。

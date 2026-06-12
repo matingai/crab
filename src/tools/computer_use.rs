@@ -80,6 +80,7 @@ const MAX_FIND_RESULTS: usize = 50;
 const DEFAULT_WAIT_TIMEOUT_SECONDS: u64 = 10;
 const MAX_WAIT_TIMEOUT_SECONDS: u64 = 30;
 const DEFAULT_WAIT_POLL_INTERVAL_MS: u64 = 250;
+const MAX_SNAPSHOT_RECORD_AGE_SECONDS: u64 = 30;
 
 fn default_action() -> String {
     "status".to_string()
@@ -1059,7 +1060,24 @@ fn resolve_snapshot_record(
             max_depth
         );
     }
+    let now_unix = current_unix_seconds();
+    let snapshot_age_seconds = now_unix.saturating_sub(record.captured_at_unix);
+    if snapshot_age_seconds > MAX_SNAPSHOT_RECORD_AGE_SECONDS {
+        bail!(
+            "computer_use snapshot `{}` is too old (age={}s, max={}s); call snapshot/find/inspect_ref/wait/wait_ref again before a write action",
+            record.snapshot_id,
+            snapshot_age_seconds,
+            MAX_SNAPSHOT_RECORD_AGE_SECONDS
+        );
+    }
     Ok(record)
+}
+
+fn current_unix_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 fn load_snapshot_record(ctx: &ToolContext) -> Result<Option<ComputerUseSnapshotRecord>> {
@@ -1628,12 +1646,13 @@ mod tests {
     use super::{
         ComputerUseAppGuardRequest, ComputerUseFindRequest, ComputerUseFindState,
         ComputerUseRefGuardRequest, ComputerUseTool, ComputerUseWaitMode,
-        ComputerUseWaitRefRequest, MAX_SET_TEXT_CHARS, check_app_guard_snapshot,
-        check_native_action_guard_details, check_ref_guard_line, details_have_native_action,
-        details_match_wait_ref, find_snapshot_lines, load_snapshot_record, ref_line_from_details,
-        render_wait_ref_unavailable, render_write_result, resolve_snapshot_record,
-        save_snapshot_record, snapshot_contains_text, snapshot_frontmost_app_line,
-        snapshot_line_for_ref, snapshot_pid, snapshot_record_path, ui_ref_from_snapshot_line,
+        ComputerUseWaitRefRequest, MAX_SET_TEXT_CHARS, MAX_SNAPSHOT_RECORD_AGE_SECONDS,
+        check_app_guard_snapshot, check_native_action_guard_details, check_ref_guard_line,
+        details_have_native_action, details_match_wait_ref, find_snapshot_lines,
+        load_snapshot_record, ref_line_from_details, render_wait_ref_unavailable,
+        render_write_result, resolve_snapshot_record, save_snapshot_record, snapshot_contains_text,
+        snapshot_frontmost_app_line, snapshot_line_for_ref, snapshot_pid, snapshot_record_path,
+        ui_ref_from_snapshot_line,
     };
     use crate::computer_use::normalize_computer_use_native_action;
     use crate::tools::{Tool, ToolContext};
@@ -2608,6 +2627,29 @@ available_actions: AXPress
         assert!(message.contains("snapshot bounds changed"));
         assert!(message.contains("latest max_items=40"));
         assert!(message.contains("requested max_items=30"));
+    }
+
+    #[test]
+    fn snapshot_record_rejects_old_snapshot() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let ctx = ctx(tmp.path());
+        let mut record = save_snapshot_record(&ctx, 40, 3, "frontmost_app: Finder")
+            .expect("save snapshot record");
+        record.captured_at_unix = record
+            .captured_at_unix
+            .saturating_sub(MAX_SNAPSHOT_RECORD_AGE_SECONDS + 1);
+        std::fs::write(
+            snapshot_record_path(&ctx),
+            serde_json::to_vec_pretty(&record).expect("serialize record"),
+        )
+        .expect("write old record");
+
+        let error = resolve_snapshot_record(&ctx, None, 40, 3)
+            .expect_err("old snapshot record should fail");
+        let message = format!("{error:#}");
+        assert!(message.contains("snapshot"));
+        assert!(message.contains("too old"));
+        assert!(message.contains("call snapshot/find/inspect_ref/wait/wait_ref again"));
     }
 
     #[test]

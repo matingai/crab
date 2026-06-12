@@ -178,10 +178,11 @@ snapshot 状态标记会刻意保持稀疏：`focused=true` 和 `selected=true` 
 
 action ref 是短期有效的：先获取最新 `snapshot`，从输出里选择一个可见的 `@u` 引用，然后立刻调用
 `click` 或 `set_text`。如果应用在操作前发生变化，这个 ref 可能会解析到新 UI tree 里的另一个元素。
-写动作会先校验最新的 `snapshot_id` 和对应遍历边界。如果省略 id，Crab 会使用当前 session 最近一次
-snapshot 记录；如果传入的是旧 id，动作会失败，并要求 agent 重新观察桌面。因为 `@u` ref 是在有界
-UI tree 里分配出来的，写动作还要求请求里的 `max_items` 和 `max_depth` 必须与生成该 ref 的 snapshot
-一致。写动作成功后，Crab 会把返回的 post-action 观察结果保存为新的 latest snapshot record，并返回
+写动作会先校验最新的 `snapshot_id`、对应遍历边界和观察时间。如果省略 id，Crab 会使用当前 session
+最近一次 snapshot 记录；如果传入的是旧 id，动作会失败，并要求 agent 重新观察桌面。因为 `@u` ref
+是在有界 UI tree 里分配出来的，写动作还要求请求里的 `max_items` 和 `max_depth` 必须与生成该 ref 的
+snapshot 一致。超过 30 秒的 snapshot 记录不能再用于写动作，避免 agent 把过期 UI 观察应用到已经变化
+的桌面。写动作成功后，Crab 会把返回的 post-action 观察结果保存为新的 latest snapshot record，并返回
 `post_snapshot_id`，所以下一步可以基于新鲜 UI 证据继续，而不是继续沿用操作前的 id。
 
 为了让目标定位更稳，写动作还可以带上可选的 ref guard。`expect_role`、`expect_text` 和

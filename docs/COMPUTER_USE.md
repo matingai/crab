@@ -48,10 +48,11 @@ Example tool arguments:
 ```
 
 Snapshot output includes the frontmost app name, process id, and a bounded UI tree. Each
-visible element line uses a stable reference for that snapshot and includes the best
-available role, name, value, and bounds:
+snapshot also returns a `snapshot_id`. Each visible element line uses a stable reference
+for that snapshot and includes the best available role, name, value, and bounds:
 
 ```text
+snapshot_id: cu_7d3c0a5d21a9e472
 frontmost_app: Finder
 pid: 123
 ui_tree:
@@ -65,11 +66,15 @@ approval-gated actions can target a concrete element without guessing coordinate
 Action refs are deliberately ephemeral: take a fresh `snapshot`, choose a visible `@u`
 reference from that output, then call `click` or `set_text` immediately. If the app
 changes before the action, the ref may resolve to a different UI element in the new tree.
+Write actions validate the latest `snapshot_id` before acting. If the id is omitted, Crab
+uses the latest snapshot record for the current session; if a stale id is supplied, the
+action fails and the agent must observe the desktop again.
 
 ```json
 {
   "action": "click",
   "ref": "@u2",
+  "snapshot_id": "cu_7d3c0a5d21a9e472",
   "max_items": 40,
   "max_depth": 3
 }
@@ -79,6 +84,7 @@ changes before the action, the ref may resolve to a different UI element in the 
 {
   "action": "set_text",
   "ref": "@u5",
+  "snapshot_id": "cu_7d3c0a5d21a9e472",
   "text": "hello",
   "max_items": 40,
   "max_depth": 3
@@ -90,6 +96,10 @@ before they run, even if the user has not configured a custom `tool_policy`. Rea
 actions stay available without approval. `set_text` does not send global keystrokes; it
 attempts to set the target Accessibility element's value directly, so it is mainly for
 text fields and similar controls.
+
+The session snapshot record is intentionally small. It stores the `snapshot_id`, capture
+time, bounds used for the read, and a SHA-256 hash of the rendered UI observation. It does
+not persist the raw Accessibility tree, element names, field values, or window text.
 
 ## macOS Permission Flow
 
@@ -115,6 +125,7 @@ actions on observed refs. It lets the agent know whether native automation is po
 gives it a bounded, inspectable desktop UI tree. Future write actions should stay gated by:
 
 - explicit tool names and arguments;
+- snapshot-bound refs instead of coordinate guessing;
 - local `tool_policy` approval rules;
 - redacted event and archive records;
 - visible desktop timeline events;

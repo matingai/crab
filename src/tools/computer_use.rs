@@ -1,7 +1,11 @@
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+use std::fs;
+use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::computer_use::{
     click_frontmost_app_ref, frontmost_app_snapshot, inspect_computer_use,
@@ -24,6 +28,7 @@ struct ComputerUseArgs {
     #[serde(rename = "ref")]
     ref_alias: Option<String>,
     text: Option<String>,
+    snapshot_id: Option<String>,
 }
 
 const MAX_SET_TEXT_CHARS: usize = 4_000;
@@ -77,6 +82,10 @@ impl Tool for ComputerUseTool {
                         "type": "string",
                         "maxLength": 4000,
                         "description": "Text to set on the referenced Accessibility element. Required for set_text."
+                    },
+                    "snapshot_id": {
+                        "type": "string",
+                        "description": "Optional id returned by the latest snapshot. Write actions validate this before acting; when omitted they use the latest saved snapshot for this session."
                     }
                 }),
                 &[],
@@ -84,7 +93,7 @@ impl Tool for ComputerUseTool {
         )
     }
 
-    async fn execute(&self, args: Value, _ctx: &ToolContext) -> Result<String> {
+    async fn execute(&self, args: Value, ctx: &ToolContext) -> Result<String> {
         let args: ComputerUseArgs =
             serde_json::from_value(args).context("invalid computer_use arguments")?;
         match args.action.trim() {
@@ -95,39 +104,51 @@ impl Tool for ComputerUseTool {
                 if !status.ready() {
                     bail!("{}", status.guidance);
                 }
-                let snapshot = frontmost_app_snapshot(
-                    args.max_items.clamp(1, 50),
-                    args.max_depth.clamp(1, 6),
-                )?;
-                Ok(format!("{}\n\n{}", render_status(false), snapshot.trim()))
+                let max_items = args.max_items.clamp(1, 50);
+                let max_depth = args.max_depth.clamp(1, 6);
+                let snapshot = frontmost_app_snapshot(max_items, max_depth)?;
+                let record = save_snapshot_record(ctx, max_items, max_depth, &snapshot)?;
+                Ok(format!(
+                    "snapshot_id: {}\n{}\n\n{}",
+                    record.snapshot_id,
+                    render_status(false),
+                    snapshot.trim()
+                ))
             }
             "click" => {
                 let reference = args.reference()?;
+                let max_items = args.max_items.clamp(1, 50);
+                let max_depth = args.max_depth.clamp(1, 6);
+                let snapshot_record = resolve_snapshot_record(ctx, args.snapshot_id.as_deref())?;
                 let status = inspect_computer_use(false);
                 if !status.ready() {
                     bail!("{}", status.guidance);
                 }
-                let result = click_frontmost_app_ref(
-                    reference,
-                    args.max_items.clamp(1, 50),
-                    args.max_depth.clamp(1, 6),
-                )?;
-                Ok(format!("{}\n\n{}", render_status(false), result.trim()))
+                let result = click_frontmost_app_ref(reference, max_items, max_depth)?;
+                Ok(format!(
+                    "using_snapshot_id: {}\n{}\n\n{}",
+                    snapshot_record.snapshot_id,
+                    render_status(false),
+                    result.trim()
+                ))
             }
             "set_text" => {
                 let reference = args.reference()?;
                 let text = args.text()?;
+                let max_items = args.max_items.clamp(1, 50);
+                let max_depth = args.max_depth.clamp(1, 6);
+                let snapshot_record = resolve_snapshot_record(ctx, args.snapshot_id.as_deref())?;
                 let status = inspect_computer_use(false);
                 if !status.ready() {
                     bail!("{}", status.guidance);
                 }
-                let result = set_frontmost_app_ref_text(
-                    reference,
-                    text,
-                    args.max_items.clamp(1, 50),
-                    args.max_depth.clamp(1, 6),
-                )?;
-                Ok(format!("{}\n\n{}", render_status(false), result.trim()))
+                let result = set_frontmost_app_ref_text(reference, text, max_items, max_depth)?;
+                Ok(format!(
+                    "using_snapshot_id: {}\n{}\n\n{}",
+                    snapshot_record.snapshot_id,
+                    render_status(false),
+                    result.trim()
+                ))
             }
             other => bail!(
                 "unsupported computer_use action `{other}`; use status, request_permission, snapshot, click, or set_text"
@@ -161,6 +182,107 @@ impl ComputerUseArgs {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct ComputerUseSnapshotRecord {
+    snapshot_id: String,
+    captured_at_unix: u64,
+    max_items: usize,
+    max_depth: usize,
+    output_sha256: String,
+}
+
+fn save_snapshot_record(
+    ctx: &ToolContext,
+    max_items: usize,
+    max_depth: usize,
+    output: &str,
+) -> Result<ComputerUseSnapshotRecord> {
+    let output_sha256 = sha256_hex(output.as_bytes());
+    let captured_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let captured_at_unix = captured_at.as_secs();
+    let snapshot_id = format!(
+        "cu_{}",
+        &sha256_hex(
+            format!(
+                "{}\0{}\0{}\0{}\0{}",
+                ctx.current_session_id,
+                max_items,
+                max_depth,
+                captured_at.as_nanos(),
+                output_sha256
+            )
+            .as_bytes()
+        )[..16]
+    );
+    let record = ComputerUseSnapshotRecord {
+        snapshot_id,
+        captured_at_unix,
+        max_items,
+        max_depth,
+        output_sha256,
+    };
+    let path = snapshot_record_path(ctx);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    fs::write(&path, serde_json::to_vec_pretty(&record)?)
+        .with_context(|| format!("failed to write {}", path.display()))?;
+    Ok(record)
+}
+
+fn resolve_snapshot_record(
+    ctx: &ToolContext,
+    requested_snapshot_id: Option<&str>,
+) -> Result<ComputerUseSnapshotRecord> {
+    let record = load_snapshot_record(ctx)?.ok_or_else(|| {
+        anyhow::anyhow!(
+            "computer_use action requires a recent snapshot; call computer_use with action=snapshot first"
+        )
+    })?;
+    if let Some(requested_snapshot_id) = requested_snapshot_id {
+        let requested_snapshot_id = requested_snapshot_id.trim();
+        if requested_snapshot_id.is_empty() {
+            bail!("computer_use snapshot_id cannot be empty");
+        }
+        if requested_snapshot_id != record.snapshot_id {
+            bail!(
+                "computer_use snapshot_id `{requested_snapshot_id}` does not match latest snapshot `{}`; call snapshot again or use the latest id",
+                record.snapshot_id
+            );
+        }
+    }
+    Ok(record)
+}
+
+fn load_snapshot_record(ctx: &ToolContext) -> Result<Option<ComputerUseSnapshotRecord>> {
+    let path = snapshot_record_path(ctx);
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let raw = fs::read(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    let record = serde_json::from_slice(&raw)
+        .with_context(|| format!("failed to parse {}", path.display()))?;
+    Ok(Some(record))
+}
+
+fn snapshot_record_path(ctx: &ToolContext) -> PathBuf {
+    ctx.data_dir
+        .join("runtime")
+        .join("computer-use")
+        .join(format!(
+            "latest-{}.json",
+            &sha256_hex(ctx.current_session_id.as_bytes())[..16]
+        ))
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 fn render_status(prompt: bool) -> String {
     let status = inspect_computer_use(prompt);
     format!(
@@ -176,7 +298,10 @@ fn render_status(prompt: bool) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{ComputerUseTool, MAX_SET_TEXT_CHARS};
+    use super::{
+        ComputerUseTool, MAX_SET_TEXT_CHARS, load_snapshot_record, resolve_snapshot_record,
+        save_snapshot_record, snapshot_record_path,
+    };
     use crate::tools::{Tool, ToolContext};
     use serde_json::json;
 
@@ -279,5 +404,50 @@ mod tests {
         assert!(schema.contains("\"set_text\""));
         assert!(schema.contains("\"reference\""));
         assert!(schema.contains("\"text\""));
+        assert!(schema.contains("\"snapshot_id\""));
+    }
+
+    #[test]
+    fn snapshot_record_roundtrip_avoids_raw_ui_persistence() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let ctx = ctx(tmp.path());
+        let record = save_snapshot_record(
+            &ctx,
+            40,
+            3,
+            "frontmost_app: SecretApp\nvalue='SECRET_TOKEN'",
+        )
+        .expect("save snapshot record");
+
+        assert!(record.snapshot_id.starts_with("cu_"));
+        let loaded = load_snapshot_record(&ctx)
+            .expect("load snapshot record")
+            .expect("record exists");
+        assert_eq!(loaded, record);
+
+        let raw = std::fs::read_to_string(snapshot_record_path(&ctx)).expect("read record");
+        assert!(!raw.contains("SecretApp"));
+        assert!(!raw.contains("SECRET_TOKEN"));
+    }
+
+    #[test]
+    fn snapshot_record_rejects_stale_snapshot_id() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let ctx = ctx(tmp.path());
+        save_snapshot_record(&ctx, 40, 3, "frontmost_app: Finder").expect("save snapshot record");
+
+        let error = resolve_snapshot_record(&ctx, Some("cu_stale"))
+            .expect_err("stale snapshot id should fail");
+        assert!(format!("{error:#}").contains("does not match latest snapshot"));
+    }
+
+    #[test]
+    fn action_without_snapshot_requires_snapshot_first() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let ctx = ctx(tmp.path());
+
+        let error =
+            resolve_snapshot_record(&ctx, None).expect_err("missing snapshot record should fail");
+        assert!(format!("{error:#}").contains("action=snapshot first"));
     }
 }

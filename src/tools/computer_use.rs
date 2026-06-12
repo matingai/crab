@@ -15,6 +15,8 @@ struct ComputerUseArgs {
     action: String,
     #[serde(default = "default_max_items")]
     max_items: usize,
+    #[serde(default = "default_max_depth")]
+    max_depth: usize,
 }
 
 fn default_action() -> String {
@@ -22,7 +24,11 @@ fn default_action() -> String {
 }
 
 fn default_max_items() -> usize {
-    20
+    40
+}
+
+fn default_max_depth() -> usize {
+    3
 }
 
 #[async_trait]
@@ -30,19 +36,25 @@ impl Tool for ComputerUseTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::function(
             "computer_use",
-            "Inspect and prepare native computer-use automation. On macOS, this checks Accessibility trust, can request the permission prompt, and can return a shallow snapshot of the frontmost app. Write actions such as click and typing are intentionally not enabled yet.",
+            "Inspect and prepare native computer-use automation. On macOS, this checks Accessibility trust, can request the permission prompt, and can return a shallow Accessibility UI tree for the frontmost app. Write actions such as click and typing are intentionally not enabled yet.",
             object_schema(
                 json!({
                     "action": {
                         "type": "string",
                         "enum": ["status", "request_permission", "snapshot"],
-                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app/window outline when permission is granted."
+                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree when permission is granted."
                     },
                     "max_items": {
                         "type": "integer",
                         "minimum": 1,
                         "maximum": 50,
-                        "description": "Maximum number of frontmost app windows to include in snapshot output."
+                        "description": "Maximum number of UI elements to include in snapshot output."
+                    },
+                    "max_depth": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 6,
+                        "description": "Maximum Accessibility UI tree depth to traverse from each frontmost app window."
                     }
                 }),
                 &[],
@@ -61,7 +73,10 @@ impl Tool for ComputerUseTool {
                 if !status.ready() {
                     bail!("{}", status.guidance);
                 }
-                let snapshot = frontmost_app_snapshot(args.max_items.clamp(1, 50))?;
+                let snapshot = frontmost_app_snapshot(
+                    args.max_items.clamp(1, 50),
+                    args.max_depth.clamp(1, 6),
+                )?;
                 Ok(format!("{}\n\n{}", render_status(false), snapshot.trim()))
             }
             other => bail!(
@@ -131,5 +146,16 @@ mod tests {
             .expect_err("unsupported action");
 
         assert!(format!("{error:#}").contains("unsupported computer_use action"));
+    }
+
+    #[test]
+    fn definition_exposes_snapshot_bounds() {
+        let tool = ComputerUseTool;
+        let definition = tool.definition();
+        let schema = serde_json::to_string(&definition.function.parameters).expect("schema");
+
+        assert!(schema.contains("\"max_items\""));
+        assert!(schema.contains("\"max_depth\""));
+        assert!(schema.contains("\"snapshot\""));
     }
 }

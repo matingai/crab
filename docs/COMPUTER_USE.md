@@ -8,7 +8,8 @@ The current implementation is deliberately conservative:
 
 - macOS Accessibility trust detection through native ApplicationServices APIs.
 - A permission-prompt path for first-time setup.
-- A shallow frontmost-app/window snapshot when Accessibility is granted.
+- A shallow frontmost-app Accessibility UI tree when permission is granted, with stable
+  element references such as `@u1`.
 - No mouse, keyboard, file, or app-control write actions yet.
 
 That shape is intentional. System-level automation should be introduced behind explicit
@@ -23,7 +24,7 @@ The built-in `computer_use` tool supports three actions:
 | --- | --- |
 | `status` | Reports platform support, Accessibility trust, prompt support, and setup guidance. |
 | `request_permission` | Calls the macOS Accessibility prompt API and reports the resulting state. |
-| `snapshot` | Reads a compact outline of the frontmost application and its windows. |
+| `snapshot` | Reads a compact Accessibility UI tree for the frontmost application and its windows. |
 
 Example tool arguments:
 
@@ -36,9 +37,26 @@ Example tool arguments:
 ```json
 {
   "action": "snapshot",
-  "max_items": 10
+  "max_items": 40,
+  "max_depth": 3
 }
 ```
+
+Snapshot output includes the frontmost app name, process id, and a bounded UI tree. Each
+visible element line uses a stable reference for that snapshot and includes the best
+available role, name, value, and bounds:
+
+```text
+frontmost_app: Finder
+pid: 123
+ui_tree:
+- @u1 role='window' name='Documents' bounds=(80,80,900x640)
+  - @u2 role='button' name='Back' bounds=(94,96,28x28)
+```
+
+The refs are observation handles only in the current milestone. They are designed so
+future approval-gated click and typing actions can target a concrete element without
+guessing coordinates.
 
 ## macOS Permission Flow
 
@@ -60,7 +78,7 @@ not a core runtime failure.
 ## Safety Model
 
 The first milestone is read-only. It lets the agent know whether native automation is
-possible and gives it a small, inspectable desktop snapshot. Future write actions should
+possible and gives it a bounded, inspectable desktop UI tree. Future write actions should
 stay gated by:
 
 - explicit tool names and arguments;

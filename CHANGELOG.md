@@ -10,8 +10,9 @@ and uses semantic versioning once stable release boundaries are established.
 ### Changed
 
 - Added a conservative `computer_use` foundation for macOS Accessibility-backed native
-  desktop automation: status checks, permission prompting, frontmost-app snapshots, docs,
-  and `doctor` visibility. Mouse and keyboard write actions remain intentionally disabled.
+  desktop automation: status checks, permission prompting, frontmost-app UI tree
+  snapshots, docs, and `doctor` visibility. Mouse and keyboard write actions remain
+  intentionally disabled.
 - Tool calls now pass through a local `tool_policy` preflight that protects common
   sensitive paths by default and can require approval or disable configured tools/path
   patterns before execution. Path-like arguments are now inspected recursively, including

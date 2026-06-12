@@ -22,8 +22,8 @@ pub fn inspect_computer_use(prompt: bool) -> ComputerUseStatus {
     platform::inspect_computer_use(prompt)
 }
 
-pub fn frontmost_app_snapshot(max_items: usize) -> Result<String> {
-    platform::frontmost_app_snapshot(max_items)
+pub fn frontmost_app_snapshot(max_items: usize, max_depth: usize) -> Result<String> {
+    platform::frontmost_app_snapshot(max_items, max_depth)
 }
 
 #[cfg(target_os = "macos")]
@@ -78,7 +78,7 @@ mod platform {
         }
     }
 
-    pub fn frontmost_app_snapshot(max_items: usize) -> Result<String> {
+    pub fn frontmost_app_snapshot(max_items: usize, max_depth: usize) -> Result<String> {
         if !accessibility_trusted(false) {
             bail!(
                 "computer_use snapshot requires macOS Accessibility permission. Run action=request_permission, then enable Crab or the launching terminal in System Settings > Privacy & Security > Accessibility."
@@ -86,33 +86,11 @@ mod platform {
         }
 
         let max_items = max_items.clamp(1, 50);
-        let script = [
-            "tell application \"System Events\"",
-            "set frontApp to first application process whose frontmost is true",
-            "set appName to name of frontApp",
-            "set appPid to unix id of frontApp",
-            "set output to \"frontmost_app: \" & appName & linefeed & \"pid: \" & appPid",
-            "set output to output & linefeed & \"windows:\"",
-            &format!("set maxItems to {max_items}"),
-            "set itemIndex to 0",
-            "repeat with w in windows of frontApp",
-            "if itemIndex is greater than or equal to maxItems then exit repeat",
-            "set itemIndex to itemIndex + 1",
-            "try",
-            "set windowName to name of w",
-            "set {x, y} to position of w",
-            "set {wide, high} to size of w",
-            "set output to output & linefeed & \"- index: \" & itemIndex & \", title: \" & quoted form of windowName & \", position: (\" & x & \", \" & y & \"), size: (\" & wide & \" x \" & high & \")\"",
-            "on error errMsg",
-            "set output to output & linefeed & \"- index: \" & itemIndex & \", error: \" & quoted form of errMsg",
-            "end try",
-            "end repeat",
-            "return output",
-            "end tell",
-        ];
+        let max_depth = max_depth.clamp(1, 6);
+        let script = frontmost_snapshot_script(max_items, max_depth);
 
         let mut command = Command::new("osascript");
-        for line in script {
+        for line in &script {
             command.arg("-e").arg(line);
         }
         let output = command
@@ -127,6 +105,105 @@ mod platform {
         }
         let stdout = String::from_utf8_lossy(&output.stdout);
         Ok(stdout.trim().to_string())
+    }
+
+    fn frontmost_snapshot_script(max_items: usize, max_depth: usize) -> Vec<String> {
+        [
+            "global itemIndex, maxItems, maxDepth",
+            &format!("set maxItems to {max_items}"),
+            &format!("set maxDepth to {max_depth}"),
+            "set itemIndex to 0",
+            "on cleanText(valueText)",
+            "try",
+            "set textValue to valueText as text",
+            "on error",
+            "return \"\"",
+            "end try",
+            "set oldDelimiters to AppleScript's text item delimiters",
+            "set AppleScript's text item delimiters to linefeed",
+            "set textItems to text items of textValue",
+            "set AppleScript's text item delimiters to \" \"",
+            "set textValue to textItems as text",
+            "set AppleScript's text item delimiters to return",
+            "set textItems to text items of textValue",
+            "set AppleScript's text item delimiters to \" \"",
+            "set textValue to textItems as text",
+            "set AppleScript's text item delimiters to oldDelimiters",
+            "if length of textValue is greater than 120 then set textValue to text 1 thru 117 of textValue & \"...\"",
+            "return textValue",
+            "end cleanText",
+            "on indentFor(depth)",
+            "set indentText to \"\"",
+            "repeat depth times",
+            "set indentText to indentText & \"  \"",
+            "end repeat",
+            "return indentText",
+            "end indentFor",
+            "on describeElement(elementRef, depth)",
+            "global itemIndex, maxItems, maxDepth",
+            "if itemIndex is greater than or equal to maxItems then return \"\"",
+            "tell application \"System Events\"",
+            "try",
+            "set roleText to role description of elementRef as text",
+            "on error",
+            "try",
+            "set roleText to role of elementRef as text",
+            "on error",
+            "set roleText to \"unknown\"",
+            "end try",
+            "end try",
+            "try",
+            "set nameText to name of elementRef as text",
+            "on error",
+            "set nameText to \"\"",
+            "end try",
+            "try",
+            "set valueText to value of elementRef as text",
+            "on error",
+            "set valueText to \"\"",
+            "end try",
+            "try",
+            "set {x, y} to position of elementRef",
+            "set {wide, high} to size of elementRef",
+            "set boundsText to \" bounds=(\" & x & \",\" & y & \",\" & wide & \"x\" & high & \")\"",
+            "on error",
+            "set boundsText to \"\"",
+            "end try",
+            "set itemIndex to itemIndex + 1",
+            "set lineText to \"- @u\" & itemIndex & \" role=\" & quoted form of (my cleanText(roleText))",
+            "if nameText is not \"\" then set lineText to lineText & \" name=\" & quoted form of (my cleanText(nameText))",
+            "if valueText is not \"\" then set lineText to lineText & \" value=\" & quoted form of (my cleanText(valueText))",
+            "set lineText to lineText & boundsText",
+            "set localOutput to linefeed & my indentFor(depth) & lineText",
+            "if depth is less than maxDepth then",
+            "try",
+            "set childElements to UI elements of elementRef",
+            "repeat with childElement in childElements",
+            "if itemIndex is greater than or equal to maxItems then exit repeat",
+            "set localOutput to localOutput & my describeElement(childElement, depth + 1)",
+            "end repeat",
+            "end try",
+            "end if",
+            "end tell",
+            "return localOutput",
+            "end describeElement",
+            "tell application \"System Events\"",
+            "set frontApp to first application process whose frontmost is true",
+            "set appName to name of frontApp",
+            "set appPid to unix id of frontApp",
+            "set output to \"frontmost_app: \" & appName & linefeed & \"pid: \" & appPid",
+            "set output to output & linefeed & \"ui_tree:\"",
+            "repeat with windowRef in windows of frontApp",
+            "if itemIndex is greater than or equal to maxItems then exit repeat",
+            "set output to output & my describeElement(windowRef, 0)",
+            "end repeat",
+            "if itemIndex is 0 then set output to output & linefeed & \"(no accessibility elements returned)\"",
+            "return output",
+            "end tell",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
     }
 
     fn accessibility_trusted(prompt: bool) -> bool {
@@ -159,6 +236,43 @@ mod platform {
             trusted
         }
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::frontmost_snapshot_script;
+        use std::process::Command;
+
+        #[test]
+        fn snapshot_script_includes_ui_tree_and_refs() {
+            let script = frontmost_snapshot_script(8, 2).join("\n");
+
+            assert!(script.contains("set maxItems to 8"));
+            assert!(script.contains("set maxDepth to 2"));
+            assert!(script.contains("ui_tree:"));
+            assert!(script.contains("@u"));
+            assert!(script.contains("role description"));
+        }
+
+        #[test]
+        fn snapshot_script_compiles() {
+            let script = frontmost_snapshot_script(8, 2);
+            let tmp = tempfile::tempdir().expect("tempdir");
+            let output_path = tmp.path().join("computer-use-snapshot.scpt");
+            let mut command = Command::new("osacompile");
+            command.arg("-o").arg(&output_path);
+            for line in script {
+                command.arg("-e").arg(line);
+            }
+
+            let output = command.output().expect("run osacompile");
+            assert!(
+                output.status.success(),
+                "osacompile failed\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -178,7 +292,7 @@ mod platform {
         }
     }
 
-    pub fn frontmost_app_snapshot(_max_items: usize) -> Result<String> {
+    pub fn frontmost_app_snapshot(_max_items: usize, _max_depth: usize) -> Result<String> {
         bail!("native Accessibility-backed computer use currently supports macOS only")
     }
 }

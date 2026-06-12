@@ -504,7 +504,7 @@ cargo check --manifest-path desktop-shell/src-tauri/Cargo.toml
 - 工作区文件：list、read、search、write、patch、move、delete。
 - Git 状态、diff、日志和分支操作。
 - 浏览器导航、快照、截图、交互、抽取和图片发现。
-- 原生 computer-use 准备能力：macOS Accessibility 状态、授权弹窗和前台应用快照。
+- 原生 computer-use 准备能力：macOS Accessibility 状态、授权弹窗和前台应用 UI tree 快照。
 - PDF 与 Office 文档的检查、预览、抽取和生成路径。
 - session 搜索、archive 查询、memory 查询、memory digest 和 wiki-style notes。
 - skills 列表、查看和管理。

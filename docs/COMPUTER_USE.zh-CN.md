@@ -8,7 +8,7 @@ Crab 的 computer-use 层是 browser tools 的原生桌面对照能力。Browser
 
 - 通过 macOS ApplicationServices 原生 API 检测 Accessibility 授权状态。
 - 提供首次设置时的授权弹窗入口。
-- 在已授权时读取前台应用和窗口的浅层快照。
+- 在已授权时读取前台应用的 Accessibility UI tree，并为元素生成 `@u1` 这类引用。
 - 暂不开放鼠标、键盘、文件或应用控制等写操作。
 
 这是有意的边界。系统级自动化不应该作为普通聊天的隐式副作用出现，而应该经过明确权限、可观察
@@ -22,7 +22,7 @@ tool call 和 approval policy。
 | --- | --- |
 | `status` | 返回平台支持、Accessibility 授权、是否支持弹窗以及设置指引。 |
 | `request_permission` | 调用 macOS Accessibility prompt API，并返回当前状态。 |
-| `snapshot` | 读取前台应用及窗口的紧凑轮廓。 |
+| `snapshot` | 读取前台应用及窗口的紧凑 Accessibility UI tree。 |
 
 示例参数：
 
@@ -35,9 +35,24 @@ tool call 和 approval policy。
 ```json
 {
   "action": "snapshot",
-  "max_items": 10
+  "max_items": 40,
+  "max_depth": 3
 }
 ```
+
+snapshot 输出包含前台应用名称、进程 id 和有界 UI tree。每一行可见元素都会带上本次快照内稳定的
+引用，并尽量包含 role、name、value 和 bounds：
+
+```text
+frontmost_app: Finder
+pid: 123
+ui_tree:
+- @u1 role='window' name='Documents' bounds=(80,80,900x640)
+  - @u2 role='button' name='Back' bounds=(94,96,28x28)
+```
+
+当前里程碑中这些 refs 只是观察句柄。它们的设计目标是让后续经过 approval 的点击、输入动作可以
+定位到具体元素，而不是猜屏幕坐标。
 
 ## macOS 授权流程
 
@@ -56,7 +71,7 @@ Electron/Tauri 桌面应用；正式打包后一般会显示为 Crab。
 
 ## 安全模型
 
-第一个里程碑是只读能力：让 agent 知道原生桌面自动化是否可用，并得到一个可审计的桌面快照。
+第一个里程碑是只读能力：让 agent 知道原生桌面自动化是否可用，并得到一个可审计的桌面 UI tree。
 后续如果加入点击、输入等写操作，应该继续由这些边界保护：
 
 - 明确的工具名和参数；

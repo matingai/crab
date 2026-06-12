@@ -69,6 +69,7 @@ use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use tokio::sync::mpsc::UnboundedSender;
 
+use crate::delegate_runs::DelegateRunRecord;
 use crate::mcp::list_cached_inspections;
 use crate::plugins::{PluginHookRegistry, load_plugin_catalog};
 use crate::privacy::redact_secrets;
@@ -138,8 +139,27 @@ pub use write_file::WriteFileTool;
 
 #[derive(Debug, Clone)]
 pub enum ToolRuntimeEvent {
-    Stdout { tool_call_id: String, chunk: String },
-    Stderr { tool_call_id: String, chunk: String },
+    Stdout {
+        tool_call_id: String,
+        chunk: String,
+    },
+    Stderr {
+        tool_call_id: String,
+        chunk: String,
+    },
+    DelegateRunUpdated {
+        tool_call_id: String,
+        delegate_run_id: String,
+        delegate_session_id: String,
+        parent_delegate_run_id: Option<String>,
+        root_delegate_run_id: String,
+        status: String,
+        source: String,
+        attempt: usize,
+        max_iterations: usize,
+        objective_preview: String,
+        result_preview: String,
+    },
 }
 
 tokio::task_local! {
@@ -210,6 +230,34 @@ pub(crate) fn emit_tool_stderr(session_id: &str, chunk: String) {
         ToolRuntimeEvent::Stderr {
             tool_call_id,
             chunk,
+        },
+    );
+}
+
+pub(crate) fn emit_delegate_run_update(session_id: &str, record: &DelegateRunRecord, source: &str) {
+    let Ok(tool_call_id) = ACTIVE_TOOL_CALL_ID.try_with(|value| value.clone()) else {
+        return;
+    };
+    let objective_preview = record
+        .worker_task
+        .as_ref()
+        .map(|task| task.objective.as_str())
+        .filter(|objective| !objective.trim().is_empty())
+        .unwrap_or(record.prompt_preview.as_str());
+    emit_tool_runtime_event(
+        session_id,
+        ToolRuntimeEvent::DelegateRunUpdated {
+            tool_call_id,
+            delegate_run_id: record.id.clone(),
+            delegate_session_id: record.session_id.clone(),
+            parent_delegate_run_id: record.parent_delegate_run_id.clone(),
+            root_delegate_run_id: record.root_delegate_run_id.clone(),
+            status: record.status.clone(),
+            source: source.to_string(),
+            attempt: record.attempt,
+            max_iterations: record.max_iterations,
+            objective_preview: truncated(redact_secrets(objective_preview), 180),
+            result_preview: truncated(redact_secrets(&record.result_preview), 240),
         },
     );
 }

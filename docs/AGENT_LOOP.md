@@ -192,7 +192,8 @@ UI can show:
   approved or denied before execution resumes.
 - Session checkpoint events after persistence, including turn id, history/timeline counts,
   pending approval counts, response-continuation availability, and a compact path preview.
-- Delegated run lifecycle.
+- Delegated run lifecycle updates, including worker run ids, child session ids, attempt
+  numbers, status, objective previews, and compact result previews.
 - Context pressure warnings.
 - Runtime status.
 - Turn-level completion boundaries with status, duration, and tool-call counts.

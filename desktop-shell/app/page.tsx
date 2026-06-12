@@ -3034,6 +3034,12 @@ function summarizeEvent(event: Record<string, unknown> & { type?: string }): str
               : "";
         return `模型恢复 ${String(event.kind || "")}/${String(event.action || "")} 第 ${String(event.attempt || 0)} 次${detail}`;
       }
+    case "delegate_run_updated":
+      {
+        const status = formatDelegateRunStatus(String(event.status || ""));
+        const objective = truncate(String(event.objective_preview || event.result_preview || ""), 60);
+        return `worker ${status}${objective ? ` · ${objective}` : ""}`;
+      }
     case "tool_batch_started":
       return `并发批次 ${String(event.batch_id || "")} 启动，${String(event.total_calls || 0)} 个工具`;
     case "tool_batch_progress":
@@ -3261,6 +3267,25 @@ function formatSolveTraceSource(source: string): string {
       return "回合结果";
     default:
       return source;
+  }
+}
+
+function formatDelegateRunStatus(status: string): string {
+  switch (status) {
+    case "running":
+      return "运行中";
+    case "completed":
+      return "已完成";
+    case "awaiting_approval":
+      return "等待审批";
+    case "failed":
+      return "失败";
+    case "canceled":
+      return "已取消";
+    case "cancel_requested":
+      return "取消中";
+    default:
+      return status || "更新";
   }
 }
 
@@ -5019,6 +5044,14 @@ export default function Page() {
           } else {
             setAgentActivity(`正在恢复模型请求 · ${kind || action || "recovery"}`);
           }
+        }
+        break;
+      case "delegate_run_updated":
+        {
+          const status = formatDelegateRunStatus(String(event.status || ""));
+          const objective = truncate(String(event.objective_preview || event.result_preview || ""), 46);
+          setAgentActivity(`worker ${status}${objective ? ` · ${objective}` : ""}`);
+          void loadDelegateRuns(String(event.session_id || currentSessionIdRef.current || ""));
         }
         break;
       case "assistant_delta":

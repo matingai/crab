@@ -9,7 +9,7 @@ use crate::config::AppConfig;
 use crate::delegate_runs::{DelegateWorkerTask, finalize_record, new_record, save_record};
 use crate::providers::infer_api_mode_for_endpoint;
 use crate::runtime_profile::RuntimeProfile;
-use crate::tools::{Tool, ToolContext, ToolRegistry, truncated};
+use crate::tools::{Tool, ToolContext, ToolRegistry, emit_delegate_run_update, truncated};
 use crate::types::{ToolDefinition, object_schema};
 
 pub struct DelegateToWorkerTool;
@@ -160,6 +160,7 @@ impl Tool for DelegateToWorkerTool {
         );
         record.worker_task = Some(worker_task.clone());
         save_record(&ctx.data_dir, &record)?;
+        emit_delegate_run_update(&ctx.current_session_id, &record, "delegate_to_worker");
         let provider_kind = if ctx.base_url.contains("/backend-api/codex") {
             "openai-codex".to_string()
         } else {
@@ -202,11 +203,13 @@ impl Tool for DelegateToWorkerTool {
                 };
                 finalize_record(&mut record, status, &response);
                 save_record(&ctx.data_dir, &record)?;
+                emit_delegate_run_update(&ctx.current_session_id, &record, "delegate_to_worker");
                 response
             }
             Err(error) => {
                 finalize_record(&mut record, "failed", &error.to_string());
                 save_record(&ctx.data_dir, &record)?;
+                emit_delegate_run_update(&ctx.current_session_id, &record, "delegate_to_worker");
                 return Err(error);
             }
         };

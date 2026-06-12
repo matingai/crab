@@ -3113,6 +3113,40 @@ impl Agent {
         event: ToolRuntimeEvent,
     ) {
         match event {
+            ToolRuntimeEvent::DelegateRunUpdated {
+                tool_call_id,
+                delegate_run_id,
+                delegate_session_id,
+                parent_delegate_run_id,
+                root_delegate_run_id,
+                status,
+                source,
+                attempt,
+                max_iterations,
+                objective_preview,
+                result_preview,
+            } => {
+                handler.on_event(AgentEvent::DelegateRunUpdated {
+                    session_id: session_id.to_string(),
+                    iteration,
+                    tool_call_id,
+                    delegate_run_id,
+                    delegate_session_id,
+                    parent_delegate_run_id,
+                    root_delegate_run_id,
+                    status,
+                    source,
+                    attempt,
+                    max_iterations,
+                    objective_preview,
+                    result_preview,
+                    execution_mode: execution_mode.to_string(),
+                    batch_id: batch_id.map(str::to_string),
+                    batch_index,
+                    batch_total,
+                });
+                return;
+            }
             ToolRuntimeEvent::Stdout {
                 tool_call_id: _,
                 chunk,
@@ -3165,6 +3199,45 @@ impl Agent {
         live_outputs: &mut BTreeMap<String, LiveToolOutputState>,
         event: ToolRuntimeEvent,
     ) {
+        if let ToolRuntimeEvent::DelegateRunUpdated {
+            tool_call_id,
+            delegate_run_id,
+            delegate_session_id,
+            parent_delegate_run_id,
+            root_delegate_run_id,
+            status,
+            source,
+            attempt,
+            max_iterations,
+            objective_preview,
+            result_preview,
+        } = event
+        {
+            let Some((_, batch_index)) = tool_runtime_index.get(&tool_call_id) else {
+                return;
+            };
+            handler.on_event(AgentEvent::DelegateRunUpdated {
+                session_id: session_id.to_string(),
+                iteration,
+                tool_call_id,
+                delegate_run_id,
+                delegate_session_id,
+                parent_delegate_run_id,
+                root_delegate_run_id,
+                status,
+                source,
+                attempt,
+                max_iterations,
+                objective_preview,
+                result_preview,
+                execution_mode: execution_mode.to_string(),
+                batch_id: batch_id.map(str::to_string),
+                batch_index: Some(*batch_index),
+                batch_total,
+            });
+            return;
+        }
+
         let (tool_call_id, is_stderr, chunk) = match event {
             ToolRuntimeEvent::Stdout {
                 tool_call_id,
@@ -3174,6 +3247,7 @@ impl Agent {
                 tool_call_id,
                 chunk,
             } => (tool_call_id, true, chunk),
+            ToolRuntimeEvent::DelegateRunUpdated { .. } => unreachable!(),
         };
 
         let Some((tool_name, batch_index)) = tool_runtime_index.get(&tool_call_id) else {

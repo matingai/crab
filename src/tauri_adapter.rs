@@ -204,6 +204,7 @@ fn event_session_id(event: &BridgeEventEnvelope) -> Option<String> {
         | crate::events::AgentEvent::BackgroundModelRequestStarted { session_id, .. }
         | crate::events::AgentEvent::BackgroundModelRequestFinished { session_id, .. }
         | crate::events::AgentEvent::SkillLifecycleSuggested { session_id, .. }
+        | crate::events::AgentEvent::DelegateRunUpdated { session_id, .. }
         | crate::events::AgentEvent::ToolBatchStarted { session_id, .. }
         | crate::events::AgentEvent::ToolBatchProgress { session_id, .. }
         | crate::events::AgentEvent::ToolBatchFinished { session_id, .. }

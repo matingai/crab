@@ -54,6 +54,9 @@ and uses semantic versioning once stable release boundaries are established.
 - Session persistence now emits richer checkpoint metadata through `session_saved`,
   including turn id, history/timeline counts, pending approvals, response-continuation
   availability, and a compact path preview for desktop recovery visibility.
+- Delegated worker tools now emit `delegate_run_updated` lifecycle events when worker runs
+  are created and finalized, including child session ids, attempts, status, objective
+  previews, and compact result previews.
 - Goal-state writes now emit a structured `goal_state_updated` event for user-input seeds,
   tool observations, tool-result reconcile, and turn-end reconcile, exposing focus-goal
   metadata and counts without streaming the full working memory.

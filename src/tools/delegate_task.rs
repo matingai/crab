@@ -9,7 +9,7 @@ use crate::config::AppConfig;
 use crate::delegate_runs::{finalize_record, new_record, save_record};
 use crate::providers::infer_api_mode_for_endpoint;
 use crate::runtime_profile::RuntimeProfile;
-use crate::tools::{Tool, ToolContext, truncated};
+use crate::tools::{Tool, ToolContext, emit_delegate_run_update, truncated};
 use crate::types::{ToolDefinition, object_schema};
 
 pub struct DelegateTaskTool;
@@ -72,6 +72,7 @@ impl Tool for DelegateTaskTool {
             ctx.current_delegate_run_id.as_deref(),
         );
         save_record(&ctx.data_dir, &record)?;
+        emit_delegate_run_update(&ctx.current_session_id, &record, "delegate_task");
         let provider_kind = if ctx.base_url.contains("/backend-api/codex") {
             "openai-codex".to_string()
         } else {
@@ -114,11 +115,13 @@ impl Tool for DelegateTaskTool {
                 };
                 finalize_record(&mut record, status, &response);
                 save_record(&ctx.data_dir, &record)?;
+                emit_delegate_run_update(&ctx.current_session_id, &record, "delegate_task");
                 response
             }
             Err(error) => {
                 finalize_record(&mut record, "failed", &error.to_string());
                 save_record(&ctx.data_dir, &record)?;
+                emit_delegate_run_update(&ctx.current_session_id, &record, "delegate_task");
                 return Err(error);
             }
         };
@@ -137,8 +140,12 @@ impl Tool for DelegateTaskTool {
 mod tests {
     use super::DelegateTaskTool;
     use crate::delegate_runs::list_records;
-    use crate::tools::{Tool, ToolContext};
+    use crate::tools::{
+        Tool, ToolContext, ToolRuntimeEvent, clear_tool_event_sender, register_tool_event_sender,
+        with_tool_runtime_scope,
+    };
     use serde_json::json;
+    use tokio::sync::mpsc;
 
     #[tokio::test]
     async fn rejects_excessive_delegate_depth() {
@@ -172,26 +179,61 @@ mod tests {
     async fn records_completed_delegate_run() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let tool = DelegateTaskTool;
-        let output = tool
-            .execute(
-                json!({ "prompt": "summarize", "max_iterations": 2 }),
-                &ToolContext {
-                    workspace_root: tmp.path().to_path_buf(),
-                    data_dir: tmp.path().join(".data"),
-                    shell_enabled: false,
-                    skill_platform: "cli".to_string(),
-                    provider_id: "openai".to_string(),
-                    model: "test-model".to_string(),
-                    base_url: "mock://final-response".to_string(),
-                    api_key: None,
-                    max_iterations: 4,
-                    current_session_id: "parent-session".to_string(),
-                    current_delegate_run_id: None,
-                    delegate_depth: 0,
-                },
-            )
-            .await
-            .expect("delegate output");
+        let (sender, mut receiver) = mpsc::unbounded_channel();
+        register_tool_event_sender("parent-session", sender);
+        let ctx = ToolContext {
+            workspace_root: tmp.path().to_path_buf(),
+            data_dir: tmp.path().join(".data"),
+            shell_enabled: false,
+            skill_platform: "cli".to_string(),
+            provider_id: "openai".to_string(),
+            model: "test-model".to_string(),
+            base_url: "mock://final-response".to_string(),
+            api_key: None,
+            max_iterations: 4,
+            current_session_id: "parent-session".to_string(),
+            current_delegate_run_id: None,
+            delegate_depth: 0,
+        };
+        let output = with_tool_runtime_scope(
+            "call-delegate".to_string(),
+            tool.execute(json!({ "prompt": "summarize", "max_iterations": 2 }), &ctx),
+        )
+        .await
+        .expect("delegate output");
+        clear_tool_event_sender("parent-session");
+
+        let mut runtime_events = Vec::new();
+        while let Ok(event) = receiver.try_recv() {
+            runtime_events.push(event);
+        }
+        let delegate_events = runtime_events
+            .iter()
+            .filter_map(|event| match event {
+                ToolRuntimeEvent::DelegateRunUpdated {
+                    tool_call_id,
+                    status,
+                    objective_preview,
+                    result_preview,
+                    ..
+                } => Some((
+                    tool_call_id.as_str(),
+                    status.as_str(),
+                    objective_preview.as_str(),
+                    result_preview.as_str(),
+                )),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(matches!(
+            delegate_events.first(),
+            Some(("call-delegate", "running", objective, _)) if objective.contains("summarize")
+        ));
+        assert!(matches!(
+            delegate_events.last(),
+            Some(("call-delegate", "completed", objective, result))
+                if objective.contains("summarize") && result.contains("mock final response")
+        ));
 
         assert!(output.contains("delegate_status: completed"));
         let records =

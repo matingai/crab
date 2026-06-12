@@ -395,6 +395,7 @@ type ToolEntry = {
   detail: string;
   executionMode?: string;
   batchId?: string | null;
+  durationMs?: number | null;
 };
 
 type ParallelBatchState = {
@@ -403,6 +404,7 @@ type ParallelBatchState = {
   totalCalls: number;
   completedCalls: number;
   status: ParallelBatchStatus;
+  durationMs?: number | null;
 };
 
 type TimelineEntry =
@@ -429,6 +431,7 @@ type TimelineEntry =
       batchId?: string | null;
       batchIndex?: number | null;
       batchTotal?: number | null;
+      durationMs?: number | null;
     }
   | {
       id: string;
@@ -438,6 +441,7 @@ type TimelineEntry =
       totalCalls: number;
       completedCalls: number;
       status: ParallelBatchState["status"];
+      durationMs?: number | null;
     }
   | {
       id: string;
@@ -982,6 +986,7 @@ function timelineToTools(entries: TimelineEntry[]): ToolEntry[] {
       detail: entry.detail,
       executionMode: entry.executionMode,
       batchId: entry.batchId,
+      durationMs: entry.durationMs,
     }));
 }
 
@@ -2970,13 +2975,13 @@ function summarizeEvent(event: Record<string, unknown> & { type?: string }): str
     case "tool_batch_progress":
       return `并发批次 ${String(event.completed_calls || 0)}/${String(event.total_calls || 0)}`;
     case "tool_batch_finished":
-      return `并发批次 ${String(event.status || "")}，${String(event.completed_calls || 0)}/${String(event.total_calls || 0)}`;
+      return `并发批次 ${String(event.status || "")}，${String(event.completed_calls || 0)}/${String(event.total_calls || 0)}${formatEventDuration(event.duration_ms)}`;
     case "tool_call_started":
       return `${String(event.tool_name || "")} ${truncate(String(event.arguments_preview || ""), 60)}`;
     case "tool_call_delta":
       return `${String(event.tool_name || "")} ${truncate(String(event.detail_preview || ""), 60)}`;
     case "tool_call_finished":
-      return `${String(event.tool_name || "")} ${truncate(String(event.output_preview || ""), 60)}`;
+      return `${String(event.tool_name || "")} ${truncate(String(event.output_preview || ""), 60)}${formatEventDuration(event.duration_ms)}`;
     case "assistant_message":
       return truncate(String(event.content || ""), 80);
     case "approval_required":
@@ -3052,6 +3057,32 @@ function formatFileSize(size: number): string {
     return `${(size / 1024).toFixed(1)} KB`;
   }
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function readDurationMs(value: unknown): number | null {
+  const durationMs = Number(value);
+  if (!Number.isFinite(durationMs) || durationMs < 0) {
+    return null;
+  }
+  return durationMs;
+}
+
+function formatDurationMs(durationMs: number | null | undefined): string | null {
+  if (durationMs == null) {
+    return null;
+  }
+  if (durationMs < 1000) {
+    return `${Math.round(durationMs)}ms`;
+  }
+  if (durationMs < 10_000) {
+    return `${(durationMs / 1000).toFixed(1)}s`;
+  }
+  return `${Math.round(durationMs / 1000)}s`;
+}
+
+function formatEventDuration(value: unknown): string {
+  const duration = formatDurationMs(readDurationMs(value));
+  return duration ? ` · ${duration}` : "";
 }
 
 function formatCompactTimestamp(value: number): string {
@@ -4394,18 +4425,19 @@ export default function Page() {
     batchTotal?: number | null,
     commandPreview?: string,
     phase: Extract<ToolPhase, "done" | "error"> = "done",
+    durationMs?: number | null,
   ) {
     clearToolEntryAutoExpanded(id);
     setTools((prev) => {
       const index = prev.findIndex((entry) => entry.id === id);
       if (index === -1) {
         return [
-          { id, name, phase, detail, executionMode, batchId },
+          { id, name, phase, detail, executionMode, batchId, durationMs },
           ...prev,
         ].slice(0, 40);
       }
       const next = [...prev];
-      next[index] = { ...next[index], phase, detail, executionMode, batchId };
+      next[index] = { ...next[index], phase, detail, executionMode, batchId, durationMs };
       return next;
     });
     setTimeline((prev) => {
@@ -4422,6 +4454,7 @@ export default function Page() {
           batchId,
           batchIndex,
           batchTotal,
+          durationMs,
         };
         return [
           ...prev,
@@ -4443,6 +4476,7 @@ export default function Page() {
         batchId,
         batchIndex,
         batchTotal,
+        durationMs,
       };
       next[index] = toolEntry;
       return next;
@@ -4657,6 +4691,7 @@ export default function Page() {
         {
           sealActiveAssistantSegment();
           const status = String(event.status || "");
+          const durationMs = readDurationMs(event.duration_ms);
           setAgentActivity(
             status === "awaiting_approval"
               ? "等待审批"
@@ -4669,6 +4704,7 @@ export default function Page() {
             iteration: Number(event.iteration || 0),
             totalCalls: Number(event.total_calls || 0),
             completedCalls: Number(event.completed_calls || 0),
+            durationMs,
             status:
               status === "awaiting_approval"
                 ? "awaiting_approval"
@@ -4752,6 +4788,7 @@ export default function Page() {
           requestBrowserUiSync(isNavigationBrowserTool(String(event.tool_name || "")));
         }
         const toolPhase = String(event.status || "") === "error" ? "error" : "done";
+        const durationMs = readDurationMs(event.duration_ms);
         setAgentActivity(toolPhase === "error" ? "工具执行失败" : "工具执行完成");
         markToolFinished(
           String(event.tool_call_id || `${envelope.seq}-${String(event.tool_name || "tool")}`),
@@ -4763,6 +4800,7 @@ export default function Page() {
           typeof event.batch_total === "number" ? event.batch_total : null,
           undefined,
           toolPhase,
+          durationMs,
         );
         void loadApprovals();
         if (String(event.tool_name || "") === "delegate_task") {
@@ -6512,6 +6550,14 @@ export default function Page() {
                                                   </span>
                                                 </>
                                               ) : null}
+                                              {formatDurationMs(entry.durationMs) ? (
+                                                <>
+                                                  <span className="mx-1.5 text-slate-300">·</span>
+                                                  <span className="text-slate-400">
+                                                    {formatDurationMs(entry.durationMs)}
+                                                  </span>
+                                                </>
+                                              ) : null}
                                               <span className="mx-1.5 text-slate-300">·</span>
                                               <span className="font-mono text-slate-600">
                                                 {toolCommandLine || toolSummary || "查看详情"}
@@ -6596,6 +6642,9 @@ export default function Page() {
                                           <span>
                                             {entry.completedCalls}/{entry.totalCalls}
                                           </span>
+                                          {formatDurationMs(entry.durationMs) ? (
+                                            <span>{formatDurationMs(entry.durationMs)}</span>
+                                          ) : null}
                                         </div>
                                         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/80">
                                           <div

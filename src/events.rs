@@ -84,6 +84,7 @@ pub enum AgentEvent {
         completed_calls: usize,
         total_calls: usize,
         status: String,
+        duration_ms: u128,
     },
     ToolCallStarted {
         session_id: String,
@@ -113,6 +114,7 @@ pub enum AgentEvent {
         tool_call_id: String,
         tool_name: String,
         status: String,
+        duration_ms: u128,
         output_preview: String,
         execution_mode: String,
         batch_id: Option<String>,

@@ -26,6 +26,8 @@ and uses semantic versioning once stable release boundaries are established.
 - Tool outcomes now carry explicit error status across events, timeline entries, archive
   records, goal-state reconciliation, and the desktop shell; parallel batches report
   `completed_with_errors` when all tools finish but one or more fail.
+- Tool and parallel-batch completion events now include elapsed duration, and the desktop
+  shell surfaces that timing in the live execution timeline.
 - Subdirectory instruction discovery now returns root-to-leaf context stacks, tracks loaded
   hint files instead of permanently marking empty directories, and labels blocked context
   with the exact display path.

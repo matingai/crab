@@ -141,6 +141,10 @@ approval denials, timeouts, cancellations, and non-zero shell exit codes are rec
 batch while reporting `completed_with_errors`, which lets the main loop continue with
 clear evidence about which tool calls need repair.
 
+Completion events also include elapsed duration for each tool call and each parallel
+batch. That timing is shown in the desktop timeline, giving users a concrete feel for
+which parts of the loop are doing work, waiting on tools, or worth optimizing.
+
 The point is to preserve meaning, not just bytes.
 
 ## Context Pressure And Recovery

@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -1726,6 +1727,7 @@ impl Agent {
             batch_index: pending.batch_index,
             batch_total: pending.batch_total,
         });
+        let tool_started_at = Instant::now();
         let result = match approval.status {
             ApprovalStatus::Approved => {
                 self.call_tool_with_live_updates(
@@ -1752,6 +1754,7 @@ impl Agent {
                 bail!("approval `{approval_id}` was already consumed");
             }
         };
+        let duration_ms = elapsed_ms(tool_started_at);
         let result = match parse_tool_args(&pending.raw_arguments) {
             Some(args) => match self
                 .subdir_hint_tracker
@@ -1808,6 +1811,7 @@ impl Agent {
             tool_call_id: pending.tool_call_id.clone(),
             tool_name: pending.tool_name.clone(),
             status: tool_status.to_string(),
+            duration_ms,
             output_preview: redacted_truncated(result.clone(), 500),
             execution_mode: pending.execution_mode.clone(),
             batch_id: pending.batch_id.clone(),
@@ -2051,6 +2055,7 @@ impl Agent {
                     batch_index: None,
                     batch_total: None,
                 });
+                let tool_started_at = Instant::now();
                 let result = self
                     .call_tool_with_live_updates(
                         handler,
@@ -2064,6 +2069,7 @@ impl Agent {
                         None,
                     )
                     .await;
+                let duration_ms = elapsed_ms(tool_started_at);
                 let result = match parse_tool_args(&call.function.arguments) {
                     Some(args) => {
                         match self
@@ -2218,6 +2224,7 @@ impl Agent {
                     tool_call_id: call.id.clone(),
                     tool_name: tool_name.clone(),
                     status: tool_status.to_string(),
+                    duration_ms,
                     output_preview: redacted_truncated(result.clone(), 500),
                     execution_mode: "sequential".to_string(),
                     batch_id: None,
@@ -3450,6 +3457,7 @@ impl Agent {
                 .map(|call| call.id.as_str())
                 .unwrap_or("batch")
         );
+        let batch_started_at = Instant::now();
 
         handler.on_event(AgentEvent::ToolBatchStarted {
             session_id: self.session.session_id.clone(),
@@ -3516,17 +3524,23 @@ impl Agent {
         let results = {
             let (sender, mut receiver) = mpsc::unbounded_channel();
             register_tool_event_sender(&session_id, sender);
+            let tools = &self.tools;
+            let tool_context = &self.tool_context;
             let futures = tool_calls
                 .iter()
                 .map(|call| {
-                    with_tool_runtime_scope(
-                        call.id.clone(),
-                        self.tools.call(
-                            &call.function.name,
-                            &call.function.arguments,
-                            &self.tool_context,
-                        ),
-                    )
+                    let tool_started_at = Instant::now();
+                    let tool_call_id = call.id.clone();
+                    let tool_name = &call.function.name;
+                    let raw_arguments = &call.function.arguments;
+                    async move {
+                        let result = with_tool_runtime_scope(
+                            tool_call_id,
+                            tools.call(tool_name, raw_arguments, tool_context),
+                        )
+                        .await;
+                        (result, elapsed_ms(tool_started_at))
+                    }
                 })
                 .collect::<Vec<_>>();
             let all_futures = join_all(futures);
@@ -3583,14 +3597,18 @@ impl Agent {
             &batch_id,
             completed_calls,
             batch_total,
+            batch_started_at,
         )?;
-        for (index, (call, result)) in tool_calls.into_iter().zip(results.into_iter()).enumerate() {
+        for (index, (call, (result, duration_ms))) in
+            tool_calls.into_iter().zip(results.into_iter()).enumerate()
+        {
             self.finish_parallel_batch_if_stop_requested(
                 handler,
                 iteration,
                 &batch_id,
                 completed_calls,
                 batch_total,
+                batch_started_at,
             )?;
             let result = match parse_tool_args(&call.function.arguments) {
                 Some(args) => match self
@@ -3703,6 +3721,7 @@ impl Agent {
                     completed_calls,
                     total_calls: batch_total,
                     status: "awaiting_approval".to_string(),
+                    duration_ms: elapsed_ms(batch_started_at),
                 });
                 self.session.record_batch_timeline_entry(
                     batch_id.clone(),
@@ -3764,6 +3783,7 @@ impl Agent {
                 tool_call_id: call.id.clone(),
                 tool_name: tool_name.clone(),
                 status: tool_status.to_string(),
+                duration_ms,
                 output_preview: redacted_truncated(result.clone(), 500),
                 execution_mode: "parallel".to_string(),
                 batch_id: Some(batch_id.clone()),
@@ -3804,6 +3824,7 @@ impl Agent {
             &batch_id,
             completed_calls,
             batch_total,
+            batch_started_at,
         )?;
         let batch_status = if error_calls > 0 {
             "completed_with_errors"
@@ -3817,6 +3838,7 @@ impl Agent {
             completed_calls,
             total_calls: batch_total,
             status: batch_status.to_string(),
+            duration_ms: elapsed_ms(batch_started_at),
         });
         self.session.record_batch_timeline_entry(
             batch_id,
@@ -3841,6 +3863,7 @@ impl Agent {
         batch_id: &str,
         completed_calls: usize,
         total_calls: usize,
+        batch_started_at: Instant,
     ) -> Result<()> {
         if !stop_requested(&self.config.data_dir, &self.session.session_id) {
             return Ok(());
@@ -3853,6 +3876,7 @@ impl Agent {
             completed_calls,
             total_calls,
             status: "canceled".to_string(),
+            duration_ms: elapsed_ms(batch_started_at),
         });
         self.session.record_batch_timeline_entry(
             batch_id,
@@ -6519,6 +6543,10 @@ fn unix_now_ms() -> u128 {
         .as_millis()
 }
 
+fn elapsed_ms(started_at: Instant) -> u128 {
+    started_at.elapsed().as_millis()
+}
+
 struct ApprovalRequiredPayload {
     approval_id: String,
     reason: String,
@@ -7247,7 +7275,14 @@ mod tests {
 
         let mut handler = RecordingEventHandler::new();
         let error = agent
-            .finish_parallel_batch_if_stop_requested(&mut handler, 2, "parallel-2-call-list", 1, 3)
+            .finish_parallel_batch_if_stop_requested(
+                &mut handler,
+                2,
+                "parallel-2-call-list",
+                1,
+                3,
+                std::time::Instant::now(),
+            )
             .expect_err("stop should abort batch");
         assert!(error.to_string().contains("stop requested"));
 

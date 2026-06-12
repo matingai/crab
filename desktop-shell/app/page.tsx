@@ -2998,6 +2998,14 @@ function summarizeEvent(event: Record<string, unknown> & { type?: string }): str
         const action = String(event.action_preview || event.observation_preview || "");
         return `求解轨迹${source ? ` · ${source}` : ""}${kind ? ` · ${kind}` : ""}${status ? ` · ${status}` : ""}${action ? ` · ${truncate(action, 54)}` : ""}`;
       }
+    case "learning_state_updated":
+      {
+        const source = formatLearningStateSource(String(event.source || ""));
+        const experiences = Number(event.experience_count || 0);
+        const patterns = Number(event.pattern_count || 0);
+        const preview = String(event.summary_preview || event.pattern_id || event.experience_id || "");
+        return `学习状态${source ? ` · ${source}` : ""} · exp ${experiences} · patterns ${patterns}${preview ? ` · ${truncate(preview, 54)}` : ""}`;
+      }
     case "model_request_started":
       return `请求模型 ${String(event.model || "")}${formatModelRequestMetadata(event)}，${String(event.message_count || 0)} 条消息`;
     case "model_request_finished":
@@ -3265,6 +3273,19 @@ function formatSolveTraceSource(source: string): string {
       return "worker 推进";
     case "turn_outcome":
       return "回合结果";
+    default:
+      return source;
+  }
+}
+
+function formatLearningStateSource(source: string): string {
+  switch (source) {
+    case "experience_episode":
+      return "经验沉淀";
+    case "meta_pattern_rebuild":
+      return "模式重建";
+    case "meta_pattern_summary":
+      return "模型复盘";
     default:
       return source;
   }
@@ -5091,6 +5112,18 @@ export default function Page() {
           const preview = String(event.action_preview || event.observation_preview || "");
           setAgentActivity(
             `求解轨迹已更新${source ? ` · ${source}` : ""}${kind ? ` · ${kind}` : ""}${status ? ` · ${status}` : ""} · steps ${steps} · decisions ${decisions}${preview ? ` · ${truncate(preview, 40)}` : ""}`,
+          );
+        }
+        break;
+      case "learning_state_updated":
+        {
+          const source = formatLearningStateSource(String(event.source || ""));
+          const experiences = Number(event.experience_count || 0);
+          const patterns = Number(event.pattern_count || 0);
+          const sampleCount = Number(event.sample_count || 0);
+          const preview = String(event.summary_preview || event.pattern_id || event.experience_id || "");
+          setAgentActivity(
+            `学习状态已更新${source ? ` · ${source}` : ""} · exp ${experiences} · patterns ${patterns}${sampleCount ? ` · samples ${sampleCount}` : ""}${preview ? ` · ${truncate(preview, 40)}` : ""}`,
           );
         }
         break;

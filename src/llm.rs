@@ -602,8 +602,10 @@ impl OpenAiCompatClient {
                 .map(ChatMessage::content_text)
                 .unwrap_or_default();
             let content = if system_prompt
-                .contains("Generate a short, descriptive conversation title")
+                .contains("You are refining aggregated agent meta-patterns")
             {
+                r#"{"patterns":[{"id":"pattern:build","model_summary":"Shared trait changes tend to fan out across implementors.","match_hints":["trait errors across modules","shared signature changed recently"],"strategy_template":{"applicable_when":["compiler errors cluster around shared trait changes"],"preferred_actions":["compare trait signature with implementors"],"avoid":["patching symptoms first"],"escalate_when":["signature ownership is unclear"]},"confidence":0.86}]}"#.to_string()
+            } else if system_prompt.contains("Generate a short, descriptive conversation title") {
                 if self.base_url == "mock://auxiliary-summary-title" {
                     "Title: Auxiliary Session Title".to_string()
                 } else {

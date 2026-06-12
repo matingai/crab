@@ -195,6 +195,7 @@ fn event_session_id(event: &BridgeEventEnvelope) -> Option<String> {
         | crate::events::AgentEvent::GoalStateUpdated { session_id, .. }
         | crate::events::AgentEvent::TodoStateUpdated { session_id, .. }
         | crate::events::AgentEvent::SolveTraceUpdated { session_id, .. }
+        | crate::events::AgentEvent::LearningStateUpdated { session_id, .. }
         | crate::events::AgentEvent::ContextPrepared { session_id, .. }
         | crate::events::AgentEvent::ContextSourcesUpdated { session_id, .. }
         | crate::events::AgentEvent::ContextCompacted { session_id, .. }

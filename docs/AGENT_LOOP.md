@@ -185,6 +185,9 @@ UI can show:
   worker step updates, with counts and redacted active-item previews.
 - Solve-trace update events for episode starts, tool/delegation steps, decisions, and
   turn outcomes, with compact redacted previews and trace counters.
+- Learning-state update events for experience distillation, meta-pattern rebuilds, and
+  model-assisted pattern summaries, with counts and redacted previews instead of full
+  memory records.
 - Turn interruption events for user-requested stops, including the turn id, runtime phase,
   reason, and redacted display message.
 - Tool call start and completion.

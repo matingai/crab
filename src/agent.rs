@@ -22,7 +22,7 @@ use crate::context_limit_cache::save_context_length;
 use crate::events::{
     AgentEvent, ContextSourceSummary, EventHandler, NoopEventHandler, RecordingEventHandler,
 };
-use crate::experience_store::{ExperienceStore, derive_experience_from_episode};
+use crate::experience_store::{ExperienceState, ExperienceStore, derive_experience_from_episode};
 use crate::goal_state::{
     CognitionItem, EvidenceItem, GoalItem, GoalState, GoalStateStore, HotDataItem,
 };
@@ -817,6 +817,40 @@ impl Agent {
         });
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn emit_learning_state_updated(
+        &self,
+        handler: &mut dyn EventHandler,
+        source: &str,
+        episode_id: Option<&str>,
+        experience_id: Option<&str>,
+        pattern_id: Option<&str>,
+        status: &str,
+        experience_state: Option<&ExperienceState>,
+        meta_pattern_state: Option<&MetaPatternState>,
+        sample_count: Option<usize>,
+        confidence: Option<f32>,
+        summary: &str,
+    ) {
+        handler.on_event(AgentEvent::LearningStateUpdated {
+            session_id: self.session.session_id.clone(),
+            source: source.to_string(),
+            episode_id: episode_id.map(str::to_string),
+            experience_id: experience_id.map(str::to_string),
+            pattern_id: pattern_id.map(str::to_string),
+            status: status.to_string(),
+            experience_count: experience_state
+                .map(|state| state.records.len())
+                .unwrap_or(0),
+            pattern_count: meta_pattern_state
+                .map(|state| state.patterns.len())
+                .unwrap_or(0),
+            sample_count,
+            confidence: confidence.map(|value| value.clamp(0.0, 1.0)),
+            summary_preview: redacted_truncated(summary, 220),
+        });
+    }
+
     fn sync_goal_runtime_state(&self) -> Option<Vec<TodoItem>> {
         let Ok(mut state) = self.goal_state_store.load(&self.session.session_id) else {
             return None;
@@ -1137,10 +1171,10 @@ impl Agent {
                 &outcome_summary,
             );
         }
-        self.update_experience_from_episode(&episode_id);
+        self.update_experience_from_episode(handler, &episode_id);
     }
 
-    fn update_experience_from_episode(&self, episode_id: &str) {
+    fn update_experience_from_episode(&self, handler: &mut dyn EventHandler, episode_id: &str) {
         let Ok(trace) = self.solve_trace_store.load(&self.session.session_id) else {
             return;
         };
@@ -1150,22 +1184,79 @@ impl Agent {
         let Some(record) = derive_experience_from_episode(episode) else {
             return;
         };
+        let experience_id = record.id.clone();
+        let record_confidence = record.confidence;
+        let record_preview = format!("{} -> {}", record.problem_frame, record.outcome);
         if self
             .experience_store
             .upsert_record(&self.session.session_id, record)
             .is_ok()
         {
-            self.rebuild_meta_patterns();
+            let experience_state = self.experience_store.load(&self.session.session_id).ok();
+            self.emit_learning_state_updated(
+                handler,
+                "experience_episode",
+                Some(episode_id),
+                Some(&experience_id),
+                None,
+                "updated",
+                experience_state.as_ref(),
+                None,
+                None,
+                Some(record_confidence),
+                &record_preview,
+            );
+            if let Some(meta_pattern_state) = experience_state
+                .as_ref()
+                .and_then(|state| self.rebuild_meta_patterns(state))
+            {
+                let related_pattern = meta_pattern_state
+                    .patterns
+                    .iter()
+                    .find(|pattern| {
+                        pattern
+                            .source_experience_ids
+                            .iter()
+                            .any(|id| id == &experience_id)
+                    })
+                    .or_else(|| meta_pattern_state.patterns.first());
+                let pattern_id = related_pattern.map(|pattern| pattern.id.as_str());
+                let sample_count = related_pattern.map(|pattern| pattern.sample_count);
+                let confidence = related_pattern.map(|pattern| pattern.confidence);
+                let summary = related_pattern
+                    .map(|pattern| {
+                        pattern
+                            .model_summary
+                            .as_deref()
+                            .unwrap_or(&pattern.problem_cluster)
+                            .to_string()
+                    })
+                    .unwrap_or_else(|| "Meta-pattern state rebuilt".to_string());
+                self.emit_learning_state_updated(
+                    handler,
+                    "meta_pattern_rebuild",
+                    Some(episode_id),
+                    Some(&experience_id),
+                    pattern_id,
+                    "updated",
+                    experience_state.as_ref(),
+                    Some(&meta_pattern_state),
+                    sample_count,
+                    confidence,
+                    &summary,
+                );
+            }
         }
     }
 
-    fn rebuild_meta_patterns(&self) {
-        let Ok(experience_state) = self.experience_store.load(&self.session.session_id) else {
-            return;
-        };
-        let _ = self
-            .meta_pattern_store
-            .rebuild_from_experience_state(&self.session.session_id, &experience_state);
+    fn rebuild_meta_patterns(
+        &self,
+        experience_state: &ExperienceState,
+    ) -> Option<MetaPatternState> {
+        self.meta_pattern_store
+            .rebuild_from_experience_state(&self.session.session_id, experience_state)
+            .ok()?;
+        self.meta_pattern_store.load(&self.session.session_id).ok()
     }
 
     async fn refresh_meta_patterns_with_model(&self, handler: &mut dyn EventHandler) {
@@ -1201,24 +1292,60 @@ impl Agent {
         };
 
         for patch in response.patterns {
-            if patch.id.trim().is_empty() {
+            let pattern_id = patch.id.trim().to_string();
+            if pattern_id.is_empty() {
                 continue;
             }
-            let _ = self.meta_pattern_store.update_pattern(
-                &self.session.session_id,
-                &patch.id,
-                patch.model_summary,
-                patch.match_hints,
-                patch
-                    .strategy_template
-                    .map(|template| MetaPatternStrategyTemplate {
-                        applicable_when: template.applicable_when,
-                        preferred_actions: template.preferred_actions,
-                        avoid: template.avoid,
-                        escalate_when: template.escalate_when,
-                    }),
-                patch.confidence,
-            );
+            if self
+                .meta_pattern_store
+                .update_pattern(
+                    &self.session.session_id,
+                    &pattern_id,
+                    patch.model_summary,
+                    patch.match_hints,
+                    patch
+                        .strategy_template
+                        .map(|template| MetaPatternStrategyTemplate {
+                            applicable_when: template.applicable_when,
+                            preferred_actions: template.preferred_actions,
+                            avoid: template.avoid,
+                            escalate_when: template.escalate_when,
+                        }),
+                    patch.confidence,
+                )
+                .is_ok()
+            {
+                let Ok(meta_pattern_state) = self.meta_pattern_store.load(&self.session.session_id)
+                else {
+                    continue;
+                };
+                let Some(pattern) = meta_pattern_state
+                    .patterns
+                    .iter()
+                    .find(|item| item.id == pattern_id)
+                else {
+                    continue;
+                };
+                let experience_state = self.experience_store.load(&self.session.session_id).ok();
+                let summary = pattern
+                    .model_summary
+                    .as_deref()
+                    .unwrap_or(&pattern.problem_cluster)
+                    .to_string();
+                self.emit_learning_state_updated(
+                    handler,
+                    "meta_pattern_summary",
+                    None,
+                    None,
+                    Some(&pattern_id),
+                    "updated",
+                    experience_state.as_ref(),
+                    Some(&meta_pattern_state),
+                    Some(pattern.sample_count),
+                    Some(pattern.confidence),
+                    &summary,
+                );
+            }
         }
     }
 
@@ -7390,6 +7517,7 @@ mod tests {
     use crate::events::{AgentEvent, RecordingEventHandler};
     use crate::goal_state::{CognitionItem, GoalItem, GoalState, HotDataItem};
     use crate::llm::ApiMode;
+    use crate::meta_pattern_store::{MetaPatternRecord, MetaPatternState};
     use crate::runtime_control::request_stop;
     use crate::runtime_profile::RuntimeProfile;
     use crate::skills::SkillStore;
@@ -8826,6 +8954,105 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn emits_learning_event_for_meta_pattern_model_summary() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut config = build_test_config("mock://final-response", tmp.path());
+        config.auxiliary_model = Some(AuxiliaryModelConfig {
+            model: "gpt-4.1-nano".to_string(),
+            base_url: "mock://auxiliary-summary-title".to_string(),
+            api_key: None,
+            api_mode: ApiMode::ChatCompletions,
+        });
+        let agent = Agent::new(config).expect("agent");
+        let mut handler = RecordingEventHandler::new();
+
+        agent
+            .meta_pattern_store
+            .save(
+                &agent.session.session_id,
+                &MetaPatternState {
+                    patterns: vec![MetaPatternRecord {
+                        id: "pattern:build".to_string(),
+                        kind: "build_fix".to_string(),
+                        problem_cluster: "Fix build after trait signature change".to_string(),
+                        source_experience_ids: vec!["exp:turn-1".to_string()],
+                        signal_patterns: vec!["trait errors across modules".to_string()],
+                        recommended_strategies: vec![
+                            "compare trait signature with implementors".to_string(),
+                        ],
+                        failure_patterns: vec!["patching symptoms first".to_string()],
+                        representative_outcomes: vec!["build fix stays focused".to_string()],
+                        sample_count: 2,
+                        confidence: 0.72,
+                        model_summary: None,
+                        match_hints: Vec::new(),
+                        strategy_template: None,
+                        created_at_unix: 1,
+                        updated_at_unix: 1,
+                    }],
+                },
+            )
+            .expect("save meta patterns");
+
+        agent.refresh_meta_patterns_with_model(&mut handler).await;
+
+        let state = agent
+            .meta_pattern_store
+            .load(&agent.session.session_id)
+            .expect("load meta patterns");
+        let pattern = state
+            .patterns
+            .iter()
+            .find(|pattern| pattern.id == "pattern:build")
+            .expect("pattern");
+        assert!(
+            pattern
+                .model_summary
+                .as_deref()
+                .unwrap_or_default()
+                .contains("Shared trait changes")
+        );
+        assert!(
+            pattern
+                .match_hints
+                .iter()
+                .any(|hint| hint.contains("trait errors"))
+        );
+        assert!(
+            pattern
+                .strategy_template
+                .as_ref()
+                .expect("strategy template")
+                .preferred_actions
+                .iter()
+                .any(|action| action.contains("compare trait signature"))
+        );
+        assert!((pattern.confidence - 0.86).abs() < f32::EPSILON);
+        assert!(handler.events().iter().any(|event| matches!(
+            event,
+            AgentEvent::BackgroundModelRequestStarted { purpose, model, .. }
+            if purpose == "meta_pattern_summary" && model == "gpt-4.1-nano"
+        )));
+        assert!(handler.events().iter().any(|event| matches!(
+            event,
+            AgentEvent::LearningStateUpdated {
+                source,
+                pattern_id,
+                pattern_count,
+                sample_count,
+                confidence,
+                summary_preview,
+                ..
+            } if source == "meta_pattern_summary"
+                && pattern_id.as_deref() == Some("pattern:build")
+                && *pattern_count == 1
+                && *sample_count == Some(2)
+                && confidence.map(|value| value > 0.85).unwrap_or(false)
+                && summary_preview.contains("Shared trait changes")
+        )));
+    }
+
+    #[tokio::test]
     async fn uses_auxiliary_model_for_context_compression() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let mut config = build_test_config("mock://context-overflow-retry", tmp.path());
@@ -9695,6 +9922,38 @@ mod tests {
                 && entry_kind == "outcome"
                 && status == "in_progress"
                 && observation_preview.contains("Investigate compile failures")
+        )));
+        assert!(handler.events().iter().any(|event| matches!(
+            event,
+            AgentEvent::LearningStateUpdated {
+                source,
+                episode_id,
+                experience_id,
+                experience_count,
+                summary_preview,
+                ..
+            } if source == "experience_episode"
+                && episode_id.as_deref() == Some("turn-1")
+                && experience_id.as_deref() == Some("exp:turn-1")
+                && *experience_count >= 1
+                && summary_preview.contains("Fix the build")
+        )));
+        assert!(handler.events().iter().any(|event| matches!(
+            event,
+            AgentEvent::LearningStateUpdated {
+                source,
+                experience_id,
+                pattern_id,
+                pattern_count,
+                sample_count,
+                summary_preview,
+                ..
+            } if source == "meta_pattern_rebuild"
+                && experience_id.as_deref() == Some("exp:turn-1")
+                && pattern_id.is_some()
+                && *pattern_count >= 1
+                && *sample_count == Some(1)
+                && summary_preview.contains("Fix the build")
         )));
         let experiences = agent
             .experience_store

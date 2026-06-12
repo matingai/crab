@@ -66,6 +66,9 @@ and uses semantic versioning once stable release boundaries are established.
 - Solve-trace writes now emit a structured `solve_trace_updated` event for episode starts,
   tool/delegation steps, delegated decisions, and turn outcomes, exposing compact redacted
   previews and trace counters.
+- Experience and meta-pattern writes now emit `learning_state_updated` events for episode
+  distillation, pattern rebuilds, and model-assisted pattern summaries so the learning
+  loop is visible without exposing full memory records.
 - Context compression now emits a structured `context_compacted` event with before/after
   message counts, estimated tokens, summary usage, trigger reason, and pruned-tool-output
   counts without exposing the compacted summary body.

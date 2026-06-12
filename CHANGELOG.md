@@ -10,7 +10,7 @@ and uses semantic versioning once stable release boundaries are established.
 ### Changed
 
 - Tool calls now pass through a local `tool_policy` preflight that can require approval
-  or disable configured tools before execution.
+  or disable configured tools and path patterns before execution.
 - Subdirectory instruction discovery now returns root-to-leaf context stacks, tracks loaded
   hint files instead of permanently marking empty directories, and labels blocked context
   with the exact display path.

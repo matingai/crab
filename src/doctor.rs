@@ -228,9 +228,11 @@ fn push_tool_policy_check(checks: &mut Vec<DoctorCheck>, data_dir: &Path) {
             DoctorLevel::Pass,
             "custom tool policy is configured".to_string(),
             Some(format!(
-                "require_approval=[{}], disabled=[{}]",
+                "require_approval=[{}], disabled=[{}], protected_paths=[{}], disabled_paths=[{}]",
                 policy.require_approval.join(", "),
-                policy.disabled.join(", ")
+                policy.disabled.join(", "),
+                policy.protected_paths.join(", "),
+                policy.disabled_paths.join(", ")
             )),
         ),
         Err(error) => push_check(
@@ -587,6 +589,8 @@ mod tests {
     - terminal
   disabled:
     - browser_eval
+  protected_paths:
+    - .env*
 "#,
         )
         .expect("write config");
@@ -604,6 +608,13 @@ mod tests {
                 .as_deref()
                 .unwrap_or_default()
                 .contains("terminal")
+        );
+        assert!(
+            checks[0]
+                .detail
+                .as_deref()
+                .unwrap_or_default()
+                .contains(".env*")
         );
     }
 }

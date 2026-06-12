@@ -79,8 +79,8 @@ fragment should pause whether it arrives through the terminal tool or through a 
 script runner such as `execute_code`.
 
 The registry also supports local `tool_policy` preflight rules. A workspace can require
-approval for entire tool families such as `browser_*`, or disable a tool before it reaches
-its implementation.
+approval for entire tool families such as `browser_*`, protect path patterns such as
+`.env*`, or disable a tool/path before it reaches its implementation.
 
 ## Delegation Model
 

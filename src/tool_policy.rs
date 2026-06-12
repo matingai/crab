@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use serde::Deserialize;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fs;
@@ -18,6 +19,15 @@ pub struct ToolPolicyConfig {
         alias = "requireApproval"
     )]
     pub require_approval: Vec<String>,
+    #[serde(default, alias = "protectedPaths", alias = "approval_paths")]
+    pub protected_paths: Vec<String>,
+    #[serde(
+        default,
+        alias = "disabledPaths",
+        alias = "blocked_paths",
+        alias = "blockedPaths"
+    )]
+    pub disabled_paths: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -35,7 +45,10 @@ struct RootConfig {
 
 impl ToolPolicyConfig {
     pub fn is_empty(&self) -> bool {
-        self.disabled.is_empty() && self.require_approval.is_empty()
+        self.disabled.is_empty()
+            && self.require_approval.is_empty()
+            && self.protected_paths.is_empty()
+            && self.disabled_paths.is_empty()
     }
 
     pub fn disables(&self, tool_name: &str) -> bool {
@@ -50,10 +63,20 @@ impl ToolPolicyConfig {
             .any(|pattern| matches_tool_pattern(pattern, tool_name))
     }
 
+    pub fn disabled_path_match(&self, paths: &[String]) -> Option<String> {
+        first_path_pattern_match(&self.disabled_paths, paths)
+    }
+
+    pub fn protected_path_match(&self, paths: &[String]) -> Option<String> {
+        first_path_pattern_match(&self.protected_paths, paths)
+    }
+
     fn normalized(self) -> Self {
         Self {
             disabled: normalize_patterns(self.disabled),
             require_approval: normalize_patterns(self.require_approval),
+            protected_paths: normalize_patterns(self.protected_paths),
+            disabled_paths: normalize_patterns(self.disabled_paths),
         }
     }
 }
@@ -82,7 +105,15 @@ pub fn evaluate_tool_policy(
         )));
     }
 
-    if !config.requires_approval(tool_name) {
+    let referenced_paths = extract_policy_paths(raw_arguments);
+    if let Some(pattern) = config.disabled_path_match(&referenced_paths) {
+        return Ok(ToolPolicyPreflight::Deny(format!(
+            "tool `{tool_name}` is blocked by tool_policy for path pattern `{pattern}`"
+        )));
+    }
+
+    let path_approval = config.protected_path_match(&referenced_paths);
+    if !config.requires_approval(tool_name) && path_approval.is_none() {
         return Ok(ToolPolicyPreflight::Allow);
     }
 
@@ -91,7 +122,12 @@ pub fn evaluate_tool_policy(
         return Ok(ToolPolicyPreflight::Allow);
     }
 
-    let reason = format!("tool policy requires approval for `{tool_name}`");
+    let reason = match path_approval {
+        Some(pattern) => {
+            format!("tool policy requires approval for `{tool_name}` path pattern `{pattern}`")
+        }
+        None => format!("tool policy requires approval for `{tool_name}`"),
+    };
     let approval = request_approval(data_dir, session_id, &command, &reason)?;
     Ok(ToolPolicyPreflight::ApprovalRequired(approval))
 }
@@ -115,6 +151,33 @@ pub fn matches_tool_pattern(pattern: &str, tool_name: &str) -> bool {
     }
 }
 
+pub fn matches_path_pattern(pattern: &str, path: &str) -> bool {
+    let pattern = normalize_policy_path(pattern);
+    let path = normalize_policy_path(path);
+    if pattern == "*" {
+        return true;
+    }
+    if !pattern.contains('*') {
+        return path == pattern || path.starts_with(&format!("{pattern}/"));
+    }
+    wildcard_match(&pattern, &path)
+}
+
+pub fn extract_policy_paths(raw_arguments: &str) -> Vec<String> {
+    let Ok(value) = serde_json::from_str::<Value>(raw_arguments) else {
+        return Vec::new();
+    };
+    let mut paths = Vec::new();
+    collect_policy_paths(&value, &mut paths);
+    paths
+        .into_iter()
+        .map(|path| normalize_policy_path(&path))
+        .filter(|path| !path.is_empty())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
 fn normalize_patterns(items: Vec<String>) -> Vec<String> {
     items
         .into_iter()
@@ -123,6 +186,77 @@ fn normalize_patterns(items: Vec<String>) -> Vec<String> {
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect()
+}
+
+fn first_path_pattern_match(patterns: &[String], paths: &[String]) -> Option<String> {
+    patterns.iter().find_map(|pattern| {
+        paths
+            .iter()
+            .any(|path| matches_path_pattern(pattern, path))
+            .then(|| pattern.clone())
+    })
+}
+
+fn collect_policy_paths(value: &Value, paths: &mut Vec<String>) {
+    let Some(map) = value.as_object() else {
+        return;
+    };
+    for key in [
+        "path",
+        "source_path",
+        "destination_path",
+        "workdir",
+        "file_path",
+        "output_path",
+    ] {
+        if let Some(path) = map.get(key).and_then(Value::as_str) {
+            paths.push(path.to_string());
+        }
+    }
+}
+
+fn normalize_policy_path(path: &str) -> String {
+    let path = path.trim().replace('\\', "/");
+    let mut parts = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            other => parts.push(other),
+        }
+    }
+    parts.join("/")
+}
+
+fn wildcard_match(pattern: &str, value: &str) -> bool {
+    let parts = pattern.split('*').collect::<Vec<_>>();
+    if parts.len() == 1 {
+        return pattern == value;
+    }
+
+    let mut cursor = 0;
+    for (index, part) in parts.iter().enumerate() {
+        if part.is_empty() {
+            continue;
+        }
+        let Some(found) = value[cursor..].find(part) else {
+            return false;
+        };
+        if index == 0 && found != 0 {
+            return false;
+        }
+        cursor += found + part.len();
+    }
+
+    if !pattern.ends_with('*') {
+        let last = parts.iter().rev().find(|part| !part.is_empty());
+        if let Some(last) = last {
+            return value.ends_with(last);
+        }
+    }
+    true
 }
 
 fn existing_config_path(data_dir: &Path) -> Option<PathBuf> {
@@ -140,8 +274,8 @@ fn sha256_hex(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        ToolPolicyPreflight, evaluate_tool_policy, load_tool_policy_config, matches_tool_pattern,
-        tool_policy_approval_command,
+        ToolPolicyPreflight, evaluate_tool_policy, extract_policy_paths, load_tool_policy_config,
+        matches_path_pattern, matches_tool_pattern, tool_policy_approval_command,
     };
     use crate::approval::{ApprovalStatus, list_requests, resolve_request};
     use std::fs;
@@ -169,6 +303,11 @@ tool_policy:
     - terminal
     - browser_*
     - terminal
+  protected_paths:
+    - .env*
+    - .github/workflows/*
+  disabled_paths:
+    - secrets/*
 "#,
         )
         .expect("write config");
@@ -176,6 +315,8 @@ tool_policy:
         let config = load_tool_policy_config(tmp.path()).expect("policy");
         assert_eq!(config.disabled, vec!["browser_eval"]);
         assert_eq!(config.require_approval, vec!["browser_*", "terminal"]);
+        assert_eq!(config.protected_paths, vec![".env*", ".github/workflows/*"]);
+        assert_eq!(config.disabled_paths, vec!["secrets/*"]);
     }
 
     #[test]
@@ -185,6 +326,42 @@ tool_policy:
         assert!(matches_tool_pattern("browser_*", "browser_navigate"));
         assert!(!matches_tool_pattern("browser_*", "read_file"));
         assert!(matches_tool_pattern("*", "mcp__docs__search"));
+    }
+
+    #[test]
+    fn path_patterns_match_exact_directory_and_wildcards() {
+        assert!(matches_path_pattern(".env", ".env"));
+        assert!(matches_path_pattern("config", "config/local.yaml"));
+        assert!(matches_path_pattern(".env*", ".env.local"));
+        assert!(matches_path_pattern(
+            ".github/workflows/*",
+            ".github/workflows/release.yml"
+        ));
+        assert!(matches_path_pattern(
+            "secrets/*/prod.json",
+            "secrets/app/prod.json"
+        ));
+        assert!(!matches_path_pattern(
+            ".github/workflows/*",
+            ".github/actions/build.yml"
+        ));
+    }
+
+    #[test]
+    fn extracts_and_normalizes_common_policy_paths() {
+        let paths = extract_policy_paths(
+            r#"{
+                "path": "./.env.local",
+                "source_path": "src/../secrets/input.txt",
+                "destination_path": "dist\\bundle.js",
+                "content": "not a path"
+            }"#,
+        );
+
+        assert_eq!(
+            paths,
+            vec![".env.local", "dist/bundle.js", "secrets/input.txt"]
+        );
     }
 
     #[test]
@@ -229,6 +406,65 @@ tool_policy:
         let requests = list_requests(tmp.path()).expect("requests");
         assert_eq!(requests.len(), 1);
         assert!(!requests[0].command.contains("secret-token"));
+    }
+
+    #[test]
+    fn protected_path_requires_approval_without_leaking_raw_path() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        fs::write(
+            tmp.path().join("config.yaml"),
+            r#"
+tool_policy:
+  protected_paths:
+    - .env*
+"#,
+        )
+        .expect("write config");
+
+        let decision = evaluate_tool_policy(
+            tmp.path(),
+            "session-1",
+            "write_file",
+            r#"{"path":".env.local","content":"OPENAI_API_KEY=secret"}"#,
+        )
+        .expect("policy");
+        let ToolPolicyPreflight::ApprovalRequired(approval) = decision else {
+            panic!("expected approval");
+        };
+
+        assert!(approval.reason.contains("path pattern `.env*`"));
+        assert!(!approval.command.contains(".env.local"));
+        assert!(!approval.command.contains("OPENAI_API_KEY"));
+    }
+
+    #[test]
+    fn disabled_path_blocks_before_approval() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        fs::write(
+            tmp.path().join("config.yaml"),
+            r#"
+tool_policy:
+  disabled_paths:
+    - secrets/*
+  require_approval:
+    - write_file
+"#,
+        )
+        .expect("write config");
+
+        let decision = evaluate_tool_policy(
+            tmp.path(),
+            "session-1",
+            "write_file",
+            r#"{"path":"secrets/prod.env","content":"secret"}"#,
+        )
+        .expect("policy");
+
+        let ToolPolicyPreflight::Deny(reason) = decision else {
+            panic!("expected deny");
+        };
+        assert!(reason.contains("path pattern `secrets/*`"));
+        assert!(list_requests(tmp.path()).expect("requests").is_empty());
     }
 
     #[test]

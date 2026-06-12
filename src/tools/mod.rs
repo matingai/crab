@@ -1042,6 +1042,56 @@ mod tests {
         assert!(list_requests(tmp.path()).expect("requests").is_empty());
     }
 
+    #[tokio::test]
+    async fn registry_applies_protected_path_policy_before_execution() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("config.yaml"),
+            r#"tool_policy:
+  protected_paths:
+    - .env*
+"#,
+        )
+        .expect("write config");
+        let registry = ToolRegistry::hermes_default(tmp.path());
+        let ctx = ToolContext {
+            workspace_root: tmp.path().to_path_buf(),
+            data_dir: tmp.path().to_path_buf(),
+            shell_enabled: false,
+            skill_platform: "cli".to_string(),
+            provider_id: "openai".to_string(),
+            model: "test-model".to_string(),
+            base_url: "https://example.invalid/v1".to_string(),
+            api_key: None,
+            max_iterations: 4,
+            current_session_id: "session".to_string(),
+            current_delegate_run_id: None,
+            delegate_depth: 0,
+        };
+        let args = json!({
+            "path": ".env.local",
+            "content": "OPENAI_API_KEY=secret"
+        })
+        .to_string();
+
+        let first = registry.call("write_file", &args, &ctx).await;
+        assert!(first.contains("approval_required"));
+        assert!(first.contains("path pattern `.env*`"));
+        assert!(!tmp.path().join(".env.local").exists());
+        assert!(!first.contains("OPENAI_API_KEY"));
+        let requests = list_requests(tmp.path()).expect("requests");
+        assert_eq!(requests.len(), 1);
+        assert!(!requests[0].command.contains(".env.local"));
+
+        resolve_request(tmp.path(), &requests[0].id, true).expect("approve");
+        let second = registry.call("write_file", &args, &ctx).await;
+        assert!(second.contains("bytes_written"));
+        assert_eq!(
+            std::fs::read_to_string(tmp.path().join(".env.local")).expect("read env"),
+            "OPENAI_API_KEY=secret"
+        );
+    }
+
     #[test]
     fn primary_model_definitions_condense_cold_tools_only() {
         let tmp = tempfile::tempdir().expect("tempdir");

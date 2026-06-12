@@ -76,7 +76,7 @@ provides:
 - Condensed primary-model definitions for colder tools.
 - Workspace path handling.
 - Integration with plugins and cached MCP tools.
-- A local `tool_policy` preflight for approval-required and disabled tools.
+- A local `tool_policy` preflight for approval-required and disabled tools/path patterns.
 
 Tool groups currently include file operations, Git, browser automation, Office/PDF
 handling, memory, skills, MCP, cron, delegation, Slidev, archive/session search, and an

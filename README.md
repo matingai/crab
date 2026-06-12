@@ -189,7 +189,8 @@ The loop is designed around these ideas:
   resume through the same session/event path. Terminal commands and `execute_code`
   snippets share the same destructive shell-risk checks.
 - **Configurable tool policy**: local config can require approval for selected tools or
-  disable tools entirely, with exact names or prefix patterns such as `browser_*`.
+  disable tools entirely, with exact names, prefix patterns such as `browser_*`, and
+  path-scoped rules for sensitive files.
 - **Dirty-worktree protection**: file mutation tools refuse to overwrite, patch, delete,
   or move existing Git paths with uncommitted changes unless the tool call explicitly opts
   into `allow_dirty`.
@@ -215,6 +216,8 @@ Important safety notes:
   trusted workspace and review model outputs before approving sensitive actions.
 - `execute_code` is also gated by shell access and pauses for approval when inline or
   file-backed scripts contain obvious destructive shell fragments.
+- Local `tool_policy` can protect sensitive paths such as `.env*` or
+  `.github/workflows/*` before any matching tool implementation runs.
 - In Git workspaces, file mutation tools protect existing paths with uncommitted changes
   by default. Use an explicit `allow_dirty` tool argument only when intentionally modifying
   local user changes.
@@ -430,8 +433,9 @@ skills:
   include_bundled: false
 ```
 
-Local tool policy can require approval or disable selected tools. Patterns are exact tool
-names, `*`, or prefix wildcards ending in `*`:
+Local tool policy can require approval or disable selected tools and paths. Tool patterns
+are exact names, `*`, or prefix wildcards ending in `*`; path patterns support exact
+directories and `*` wildcards:
 
 ```yaml
 tool_policy:
@@ -441,6 +445,11 @@ tool_policy:
     - browser_*
   disabled:
     - browser_eval
+  protected_paths:
+    - .env*
+    - .github/workflows/*
+  disabled_paths:
+    - secrets/*
 ```
 
 The `.hermes-agent-rs/` directory is intentionally ignored by Git. It is a legacy-compatible

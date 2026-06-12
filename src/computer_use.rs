@@ -40,6 +40,14 @@ pub fn click_frontmost_app_ref(
     platform::click_frontmost_app_ref(reference, max_items, max_depth)
 }
 
+pub fn focus_frontmost_app_ref(
+    reference: &str,
+    max_items: usize,
+    max_depth: usize,
+) -> Result<String> {
+    platform::focus_frontmost_app_ref(reference, max_items, max_depth)
+}
+
 pub fn set_frontmost_app_ref_text(
     reference: &str,
     text: &str,
@@ -341,6 +349,49 @@ mod platform {
         ))
     }
 
+    pub fn focus_frontmost_app_ref(
+        reference: &str,
+        max_items: usize,
+        max_depth: usize,
+    ) -> Result<String> {
+        if !accessibility_trusted(false) {
+            bail!(
+                "computer_use focus requires macOS Accessibility permission. Run action=request_permission, then enable Crab or the launching terminal in System Settings > Privacy & Security > Accessibility."
+            );
+        }
+
+        let target_index = parse_ui_ref(reference)?;
+        let max_items = max_items.clamp(1, 50);
+        if target_index > max_items {
+            bail!(
+                "computer_use ref @u{target_index} is outside max_items={max_items}; use a ref from the latest bounded snapshot or increase max_items up to 50"
+            );
+        }
+        let max_depth = max_depth.clamp(1, 6);
+        let script = frontmost_focus_script(target_index, max_items, max_depth);
+        let mut command = Command::new("osascript");
+        for line in &script {
+            command.arg("-e").arg(line);
+        }
+        let output = command
+            .output()
+            .context("failed to run osascript for Accessibility focus")?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!(
+                "Accessibility focus failed: {}",
+                stderr.trim().trim_end_matches('.')
+            );
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let post_snapshot = frontmost_app_snapshot(max_items, max_depth)?;
+        Ok(format!(
+            "{}\n\npost_focus_snapshot:\n{}",
+            stdout.trim(),
+            post_snapshot
+        ))
+    }
+
     fn frontmost_snapshot_script(max_items: usize, max_depth: usize) -> Vec<String> {
         [
             "global itemIndex, maxItems, maxDepth",
@@ -433,6 +484,61 @@ mod platform {
             "end repeat",
             "if itemIndex is 0 then set output to output & linefeed & \"(no accessibility elements returned)\"",
             "return output",
+            "end tell",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+    }
+
+    fn frontmost_focus_script(
+        target_index: usize,
+        max_items: usize,
+        max_depth: usize,
+    ) -> Vec<String> {
+        [
+            "global itemIndex, maxItems, maxDepth, targetIndex, didFocus",
+            &format!("set targetIndex to {target_index}"),
+            &format!("set maxItems to {max_items}"),
+            &format!("set maxDepth to {max_depth}"),
+            "set itemIndex to 0",
+            "set didFocus to false",
+            "on visitElement(elementRef, depth)",
+            "global itemIndex, maxItems, maxDepth, targetIndex, didFocus",
+            "if itemIndex is greater than or equal to maxItems then return false",
+            "tell application \"System Events\"",
+            "set itemIndex to itemIndex + 1",
+            "if itemIndex is targetIndex then",
+            "try",
+            "set focused of elementRef to true",
+            "delay 0.15",
+            "set didFocus to true",
+            "return true",
+            "on error errMsg",
+            "error \"failed to focus @u\" & targetIndex & \": \" & errMsg",
+            "end try",
+            "end if",
+            "if depth is less than maxDepth then",
+            "try",
+            "set childElements to UI elements of elementRef",
+            "repeat with childElement in childElements",
+            "if itemIndex is greater than or equal to maxItems then exit repeat",
+            "if my visitElement(childElement, depth + 1) then return true",
+            "end repeat",
+            "end try",
+            "end if",
+            "end tell",
+            "return false",
+            "end visitElement",
+            "tell application \"System Events\"",
+            "set frontApp to first application process whose frontmost is true",
+            "set appName to name of frontApp",
+            "repeat with windowRef in windows of frontApp",
+            "if itemIndex is greater than or equal to maxItems then exit repeat",
+            "if my visitElement(windowRef, 0) then exit repeat",
+            "end repeat",
+            "if didFocus is false then error \"UI ref @u\" & targetIndex & \" was not found in the current Accessibility snapshot\"",
+            "return \"focused_ref: @u\" & targetIndex & linefeed & \"frontmost_app_before_focus: \" & appName",
             "end tell",
         ]
         .into_iter()
@@ -608,8 +714,8 @@ mod platform {
     #[cfg(test)]
     mod tests {
         use super::{
-            frontmost_click_script, frontmost_press_key_script, frontmost_set_text_script,
-            frontmost_snapshot_script,
+            frontmost_click_script, frontmost_focus_script, frontmost_press_key_script,
+            frontmost_set_text_script, frontmost_snapshot_script,
         };
         use crate::computer_use::normalize_computer_use_key;
         use std::process::Command;
@@ -650,6 +756,26 @@ mod platform {
             let script = frontmost_click_script(2, 8, 2);
             let tmp = tempfile::tempdir().expect("tempdir");
             let output_path = tmp.path().join("computer-use-click.scpt");
+            let mut command = Command::new("osacompile");
+            command.arg("-o").arg(&output_path);
+            for line in script {
+                command.arg("-e").arg(line);
+            }
+
+            let output = command.output().expect("run osacompile");
+            assert!(
+                output.status.success(),
+                "osacompile failed\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        #[test]
+        fn focus_script_compiles() {
+            let script = frontmost_focus_script(2, 8, 2);
+            let tmp = tempfile::tempdir().expect("tempdir");
+            let output_path = tmp.path().join("computer-use-focus.scpt");
             let mut command = Command::new("osacompile");
             command.arg("-o").arg(&output_path);
             for line in script {
@@ -730,6 +856,14 @@ mod platform {
     }
 
     pub fn click_frontmost_app_ref(
+        _reference: &str,
+        _max_items: usize,
+        _max_depth: usize,
+    ) -> Result<String> {
+        bail!("native Accessibility-backed computer use currently supports macOS only")
+    }
+
+    pub fn focus_frontmost_app_ref(
         _reference: &str,
         _max_items: usize,
         _max_depth: usize,

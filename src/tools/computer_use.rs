@@ -8,8 +8,9 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::computer_use::{
-    ComputerUseKey, click_frontmost_app_ref, frontmost_app_snapshot, inspect_computer_use,
-    normalize_computer_use_key, press_frontmost_app_key, set_frontmost_app_ref_text,
+    ComputerUseKey, click_frontmost_app_ref, focus_frontmost_app_ref, frontmost_app_snapshot,
+    inspect_computer_use, normalize_computer_use_key, press_frontmost_app_key,
+    set_frontmost_app_ref_text,
 };
 use crate::tools::{Tool, ToolContext};
 use crate::types::{ToolDefinition, object_schema};
@@ -51,13 +52,13 @@ impl Tool for ComputerUseTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::function(
             "computer_use",
-            "Inspect and prepare native computer-use automation. On macOS, this checks Accessibility trust, can request the permission prompt, can return a shallow Accessibility UI tree for the frontmost app, can click a UI ref after tool-policy approval, can set text on a UI ref after approval, and can press a small whitelist of non-text keys after approval. Broad keyboard and app-control actions are intentionally not enabled yet.",
+            "Inspect and prepare native computer-use automation. On macOS, this checks Accessibility trust, can request the permission prompt, can return a shallow Accessibility UI tree for the frontmost app, can focus or click a UI ref after tool-policy approval, can set text on a UI ref after approval, and can press a small whitelist of non-text keys after approval. Broad keyboard and app-control actions are intentionally not enabled yet.",
             object_schema(
                 json!({
                     "action": {
                         "type": "string",
-                        "enum": ["status", "request_permission", "snapshot", "click", "set_text", "press_key"],
-                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; click activates a snapshot ref such as @u2 after approval; set_text sets the Accessibility value for a ref after approval; press_key sends one whitelisted non-text key to the frontmost app after approval."
+                        "enum": ["status", "request_permission", "snapshot", "focus", "click", "set_text", "press_key"],
+                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; focus sets keyboard focus to a snapshot ref such as @u2 after approval; click activates a snapshot ref after approval; set_text sets the Accessibility value for a ref after approval; press_key sends one whitelisted non-text key to the frontmost app after approval."
                     },
                     "max_items": {
                         "type": "integer",
@@ -73,7 +74,7 @@ impl Tool for ComputerUseTool {
                     },
                     "reference": {
                         "type": "string",
-                        "description": "UI ref from the latest computer_use snapshot, such as @u2. Required for click."
+                        "description": "UI ref from the latest computer_use snapshot, such as @u2. Required for focus, click, and set_text."
                     },
                     "ref": {
                         "type": "string",
@@ -138,6 +139,23 @@ impl Tool for ComputerUseTool {
                     result.trim()
                 ))
             }
+            "focus" => {
+                let reference = args.reference()?;
+                let max_items = args.max_items.clamp(1, 50);
+                let max_depth = args.max_depth.clamp(1, 6);
+                let snapshot_record = resolve_snapshot_record(ctx, args.snapshot_id.as_deref())?;
+                let status = inspect_computer_use(false);
+                if !status.ready() {
+                    bail!("{}", status.guidance);
+                }
+                let result = focus_frontmost_app_ref(reference, max_items, max_depth)?;
+                Ok(format!(
+                    "using_snapshot_id: {}\n{}\n\n{}",
+                    snapshot_record.snapshot_id,
+                    render_status(false),
+                    result.trim()
+                ))
+            }
             "set_text" => {
                 let reference = args.reference()?;
                 let text = args.text()?;
@@ -174,7 +192,7 @@ impl Tool for ComputerUseTool {
                 ))
             }
             other => bail!(
-                "unsupported computer_use action `{other}`; use status, request_permission, snapshot, click, set_text, or press_key"
+                "unsupported computer_use action `{other}`; use status, request_permission, snapshot, focus, click, set_text, or press_key"
             ),
         }
     }
@@ -391,6 +409,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn focus_requires_reference() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tool = ComputerUseTool;
+        let error = tool
+            .execute(json!({ "action": "focus" }), &ctx(tmp.path()))
+            .await
+            .expect_err("missing ref");
+
+        assert!(format!("{error:#}").contains("requires a non-empty"));
+    }
+
+    #[tokio::test]
     async fn set_text_requires_text() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let tool = ComputerUseTool;
@@ -457,6 +487,7 @@ mod tests {
         assert!(schema.contains("\"max_items\""));
         assert!(schema.contains("\"max_depth\""));
         assert!(schema.contains("\"snapshot\""));
+        assert!(schema.contains("\"focus\""));
         assert!(schema.contains("\"click\""));
         assert!(schema.contains("\"set_text\""));
         assert!(schema.contains("\"press_key\""));

@@ -63,9 +63,9 @@ pub use bridge::{
 };
 pub use cli::{Cli, Commands};
 pub use computer_use::{
-    ComputerUseKey, ComputerUseStatus, click_frontmost_app_ref, frontmost_app_snapshot,
-    inspect_computer_use, normalize_computer_use_key, parse_ui_ref, press_frontmost_app_key,
-    set_frontmost_app_ref_text,
+    ComputerUseKey, ComputerUseStatus, click_frontmost_app_ref, focus_frontmost_app_ref,
+    frontmost_app_snapshot, inspect_computer_use, normalize_computer_use_key, parse_ui_ref,
+    press_frontmost_app_key, set_frontmost_app_ref_text,
 };
 pub use config::AppConfig;
 pub use cron::{CronJobRunRecord, CronJobSummary};

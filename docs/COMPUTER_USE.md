@@ -10,6 +10,7 @@ The current implementation is deliberately conservative:
 - A permission-prompt path for first-time setup.
 - A shallow frontmost-app Accessibility UI tree when permission is granted, with stable
   element references such as `@u1`.
+- Approval-gated focus support for a current `@u` ref.
 - Approval-gated click support for a current `@u` ref.
 - Approval-gated text setting for a current `@u` ref when the target Accessibility element
   supports a writable value.
@@ -23,13 +24,14 @@ side effect of ordinary chat.
 
 ## Tool Surface
 
-The built-in `computer_use` tool supports six actions:
+The built-in `computer_use` tool supports seven actions:
 
 | Action | Behavior |
 | --- | --- |
 | `status` | Reports platform support, Accessibility trust, prompt support, and setup guidance. |
 | `request_permission` | Calls the macOS Accessibility prompt API and reports the resulting state. |
 | `snapshot` | Reads a compact Accessibility UI tree for the frontmost application and its windows. |
+| `focus` | Sets keyboard focus to a snapshot ref such as `@u2`, then returns a post-focus snapshot. |
 | `click` | Activates a snapshot ref such as `@u2`, then returns a post-click snapshot. |
 | `set_text` | Sets the Accessibility value for a snapshot ref, then returns a post-action snapshot. |
 | `press_key` | Presses one whitelisted non-text key in the frontmost app, then returns a post-action snapshot. |
@@ -85,6 +87,16 @@ action fails and the agent must observe the desktop again.
 
 ```json
 {
+  "action": "focus",
+  "ref": "@u5",
+  "snapshot_id": "cu_7d3c0a5d21a9e472",
+  "max_items": 40,
+  "max_depth": 3
+}
+```
+
+```json
+{
   "action": "set_text",
   "ref": "@u5",
   "snapshot_id": "cu_7d3c0a5d21a9e472",
@@ -104,7 +116,7 @@ action fails and the agent must observe the desktop again.
 }
 ```
 
-`click`, `set_text`, and `press_key` are write actions. Crab's default tool policy
+`focus`, `click`, `set_text`, and `press_key` are write actions. Crab's default tool policy
 requires approval before they run, even if the user has not configured a custom
 `tool_policy`. Read-only actions stay available without approval. `set_text` does not send
 global keystrokes; it attempts to set the target Accessibility element's value directly,
@@ -144,6 +156,7 @@ gives it a bounded, inspectable desktop UI tree. Future write actions should sta
 
 - explicit tool names and arguments;
 - snapshot-bound refs instead of coordinate guessing;
+- focused UI targets before key-driven navigation;
 - a narrow key whitelist instead of arbitrary keyboard injection;
 - local `tool_policy` approval rules;
 - redacted event and archive records;

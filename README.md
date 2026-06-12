@@ -571,7 +571,7 @@ The built-in registry currently includes tool groups for:
 - Git inspection and branch operations.
 - Browser navigation, snapshots, screenshots, interaction, extraction, and image discovery.
 - Native computer-use preparation through macOS Accessibility status, permission prompt,
-  and frontmost-app UI tree snapshots.
+  frontmost-app UI tree snapshots, and approval-gated ref clicks.
 - PDF and Office document inspection, preview, extraction, and generation paths.
 - Session search, archive query, memory query, memory digest, and wiki-style notes.
 - Skills listing, viewing, and management.

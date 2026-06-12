@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::computer_use::{frontmost_app_snapshot, inspect_computer_use};
+use crate::computer_use::{click_frontmost_app_ref, frontmost_app_snapshot, inspect_computer_use};
 use crate::tools::{Tool, ToolContext};
 use crate::types::{ToolDefinition, object_schema};
 
@@ -17,6 +17,9 @@ struct ComputerUseArgs {
     max_items: usize,
     #[serde(default = "default_max_depth")]
     max_depth: usize,
+    reference: Option<String>,
+    #[serde(rename = "ref")]
+    ref_alias: Option<String>,
 }
 
 fn default_action() -> String {
@@ -36,13 +39,13 @@ impl Tool for ComputerUseTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::function(
             "computer_use",
-            "Inspect and prepare native computer-use automation. On macOS, this checks Accessibility trust, can request the permission prompt, and can return a shallow Accessibility UI tree for the frontmost app. Write actions such as click and typing are intentionally not enabled yet.",
+            "Inspect and prepare native computer-use automation. On macOS, this checks Accessibility trust, can request the permission prompt, can return a shallow Accessibility UI tree for the frontmost app, and can click a UI ref after tool-policy approval. Typing and other write actions are intentionally not enabled yet.",
             object_schema(
                 json!({
                     "action": {
                         "type": "string",
-                        "enum": ["status", "request_permission", "snapshot"],
-                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree when permission is granted."
+                        "enum": ["status", "request_permission", "snapshot", "click"],
+                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; click activates a snapshot ref such as @u2 after approval."
                     },
                     "max_items": {
                         "type": "integer",
@@ -55,6 +58,14 @@ impl Tool for ComputerUseTool {
                         "minimum": 1,
                         "maximum": 6,
                         "description": "Maximum Accessibility UI tree depth to traverse from each frontmost app window."
+                    },
+                    "reference": {
+                        "type": "string",
+                        "description": "UI ref from the latest computer_use snapshot, such as @u2. Required for click."
+                    },
+                    "ref": {
+                        "type": "string",
+                        "description": "Alias for reference."
                     }
                 }),
                 &[],
@@ -79,9 +90,35 @@ impl Tool for ComputerUseTool {
                 )?;
                 Ok(format!("{}\n\n{}", render_status(false), snapshot.trim()))
             }
+            "click" => {
+                let reference = args.reference()?;
+                let status = inspect_computer_use(false);
+                if !status.ready() {
+                    bail!("{}", status.guidance);
+                }
+                let result = click_frontmost_app_ref(
+                    reference,
+                    args.max_items.clamp(1, 50),
+                    args.max_depth.clamp(1, 6),
+                )?;
+                Ok(format!("{}\n\n{}", render_status(false), result.trim()))
+            }
             other => bail!(
-                "unsupported computer_use action `{other}`; use status, request_permission, or snapshot"
+                "unsupported computer_use action `{other}`; use status, request_permission, snapshot, or click"
             ),
+        }
+    }
+}
+
+impl ComputerUseArgs {
+    fn reference(&self) -> Result<&str> {
+        match (self.reference.as_deref(), self.ref_alias.as_deref()) {
+            (Some(reference), Some(ref_alias)) if reference != ref_alias => {
+                bail!("computer_use received conflicting `reference` and `ref` values")
+            }
+            (Some(reference), _) if !reference.trim().is_empty() => Ok(reference.trim()),
+            (_, Some(ref_alias)) if !ref_alias.trim().is_empty() => Ok(ref_alias.trim()),
+            _ => bail!("computer_use click requires a non-empty `reference` or `ref`"),
         }
     }
 }
@@ -141,11 +178,23 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let tool = ComputerUseTool;
         let error = tool
-            .execute(json!({ "action": "click" }), &ctx(tmp.path()))
+            .execute(json!({ "action": "drag" }), &ctx(tmp.path()))
             .await
             .expect_err("unsupported action");
 
         assert!(format!("{error:#}").contains("unsupported computer_use action"));
+    }
+
+    #[tokio::test]
+    async fn click_requires_reference() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tool = ComputerUseTool;
+        let error = tool
+            .execute(json!({ "action": "click" }), &ctx(tmp.path()))
+            .await
+            .expect_err("missing ref");
+
+        assert!(format!("{error:#}").contains("requires a non-empty"));
     }
 
     #[test]
@@ -157,5 +206,7 @@ mod tests {
         assert!(schema.contains("\"max_items\""));
         assert!(schema.contains("\"max_depth\""));
         assert!(schema.contains("\"snapshot\""));
+        assert!(schema.contains("\"click\""));
+        assert!(schema.contains("\"reference\""));
     }
 }

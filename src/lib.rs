@@ -62,7 +62,10 @@ pub use bridge::{
     SessionCommandRequest, SharedProviderConfigRequest, SimpleSessionResponse,
 };
 pub use cli::{Cli, Commands};
-pub use computer_use::{ComputerUseStatus, frontmost_app_snapshot, inspect_computer_use};
+pub use computer_use::{
+    ComputerUseStatus, click_frontmost_app_ref, frontmost_app_snapshot, inspect_computer_use,
+    parse_ui_ref,
+};
 pub use config::AppConfig;
 pub use cron::{CronJobRunRecord, CronJobSummary};
 pub use delegate_runs::DelegateRunRecord;

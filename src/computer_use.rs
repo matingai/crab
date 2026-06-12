@@ -26,9 +26,31 @@ pub fn frontmost_app_snapshot(max_items: usize, max_depth: usize) -> Result<Stri
     platform::frontmost_app_snapshot(max_items, max_depth)
 }
 
+pub fn click_frontmost_app_ref(
+    reference: &str,
+    max_items: usize,
+    max_depth: usize,
+) -> Result<String> {
+    platform::click_frontmost_app_ref(reference, max_items, max_depth)
+}
+
+pub fn parse_ui_ref(reference: &str) -> Result<usize> {
+    let trimmed = reference.trim().trim_start_matches('@');
+    let number = trimmed
+        .strip_prefix('u')
+        .ok_or_else(|| anyhow::anyhow!("computer_use ref must look like @u1"))?;
+    let index = number
+        .parse::<usize>()
+        .map_err(|_| anyhow::anyhow!("computer_use ref must look like @u1"))?;
+    if index == 0 {
+        anyhow::bail!("computer_use ref indexes start at @u1");
+    }
+    Ok(index)
+}
+
 #[cfg(target_os = "macos")]
 mod platform {
-    use super::{ComputerUseStatus, Result};
+    use super::{ComputerUseStatus, Result, parse_ui_ref};
     use anyhow::{Context, bail};
     use std::ffi::c_void;
     use std::process::Command;
@@ -105,6 +127,49 @@ mod platform {
         }
         let stdout = String::from_utf8_lossy(&output.stdout);
         Ok(stdout.trim().to_string())
+    }
+
+    pub fn click_frontmost_app_ref(
+        reference: &str,
+        max_items: usize,
+        max_depth: usize,
+    ) -> Result<String> {
+        if !accessibility_trusted(false) {
+            bail!(
+                "computer_use click requires macOS Accessibility permission. Run action=request_permission, then enable Crab or the launching terminal in System Settings > Privacy & Security > Accessibility."
+            );
+        }
+
+        let target_index = parse_ui_ref(reference)?;
+        let max_items = max_items.clamp(1, 50);
+        if target_index > max_items {
+            bail!(
+                "computer_use ref @u{target_index} is outside max_items={max_items}; use a ref from the latest bounded snapshot or increase max_items up to 50"
+            );
+        }
+        let max_depth = max_depth.clamp(1, 6);
+        let script = frontmost_click_script(target_index, max_items, max_depth);
+        let mut command = Command::new("osascript");
+        for line in &script {
+            command.arg("-e").arg(line);
+        }
+        let output = command
+            .output()
+            .context("failed to run osascript for Accessibility click")?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!(
+                "Accessibility click failed: {}",
+                stderr.trim().trim_end_matches('.')
+            );
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let post_snapshot = frontmost_app_snapshot(max_items, max_depth)?;
+        Ok(format!(
+            "{}\n\npost_click_snapshot:\n{}",
+            stdout.trim(),
+            post_snapshot
+        ))
     }
 
     fn frontmost_snapshot_script(max_items: usize, max_depth: usize) -> Vec<String> {
@@ -206,6 +271,61 @@ mod platform {
         .collect()
     }
 
+    fn frontmost_click_script(
+        target_index: usize,
+        max_items: usize,
+        max_depth: usize,
+    ) -> Vec<String> {
+        [
+            "global itemIndex, maxItems, maxDepth, targetIndex, didClick",
+            &format!("set targetIndex to {target_index}"),
+            &format!("set maxItems to {max_items}"),
+            &format!("set maxDepth to {max_depth}"),
+            "set itemIndex to 0",
+            "set didClick to false",
+            "on visitElement(elementRef, depth)",
+            "global itemIndex, maxItems, maxDepth, targetIndex, didClick",
+            "if itemIndex is greater than or equal to maxItems then return false",
+            "tell application \"System Events\"",
+            "set itemIndex to itemIndex + 1",
+            "if itemIndex is targetIndex then",
+            "try",
+            "click elementRef",
+            "delay 0.15",
+            "set didClick to true",
+            "return true",
+            "on error errMsg",
+            "error \"failed to click @u\" & targetIndex & \": \" & errMsg",
+            "end try",
+            "end if",
+            "if depth is less than maxDepth then",
+            "try",
+            "set childElements to UI elements of elementRef",
+            "repeat with childElement in childElements",
+            "if itemIndex is greater than or equal to maxItems then exit repeat",
+            "if my visitElement(childElement, depth + 1) then return true",
+            "end repeat",
+            "end try",
+            "end if",
+            "end tell",
+            "return false",
+            "end visitElement",
+            "tell application \"System Events\"",
+            "set frontApp to first application process whose frontmost is true",
+            "set appName to name of frontApp",
+            "repeat with windowRef in windows of frontApp",
+            "if itemIndex is greater than or equal to maxItems then exit repeat",
+            "if my visitElement(windowRef, 0) then exit repeat",
+            "end repeat",
+            "if didClick is false then error \"UI ref @u\" & targetIndex & \" was not found in the current Accessibility snapshot\"",
+            "return \"clicked_ref: @u\" & targetIndex & linefeed & \"frontmost_app_before_click: \" & appName",
+            "end tell",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+    }
+
     fn accessibility_trusted(prompt: bool) -> bool {
         if prompt {
             return accessibility_trusted_with_prompt();
@@ -239,7 +359,7 @@ mod platform {
 
     #[cfg(test)]
     mod tests {
-        use super::frontmost_snapshot_script;
+        use super::{frontmost_click_script, frontmost_snapshot_script};
         use std::process::Command;
 
         #[test]
@@ -258,6 +378,26 @@ mod platform {
             let script = frontmost_snapshot_script(8, 2);
             let tmp = tempfile::tempdir().expect("tempdir");
             let output_path = tmp.path().join("computer-use-snapshot.scpt");
+            let mut command = Command::new("osacompile");
+            command.arg("-o").arg(&output_path);
+            for line in script {
+                command.arg("-e").arg(line);
+            }
+
+            let output = command.output().expect("run osacompile");
+            assert!(
+                output.status.success(),
+                "osacompile failed\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        #[test]
+        fn click_script_compiles() {
+            let script = frontmost_click_script(2, 8, 2);
+            let tmp = tempfile::tempdir().expect("tempdir");
+            let output_path = tmp.path().join("computer-use-click.scpt");
             let mut command = Command::new("osacompile");
             command.arg("-o").arg(&output_path);
             for line in script {
@@ -295,11 +435,19 @@ mod platform {
     pub fn frontmost_app_snapshot(_max_items: usize, _max_depth: usize) -> Result<String> {
         bail!("native Accessibility-backed computer use currently supports macOS only")
     }
+
+    pub fn click_frontmost_app_ref(
+        _reference: &str,
+        _max_items: usize,
+        _max_depth: usize,
+    ) -> Result<String> {
+        bail!("native Accessibility-backed computer use currently supports macOS only")
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::inspect_computer_use;
+    use super::{inspect_computer_use, parse_ui_ref};
 
     #[test]
     fn status_reports_current_platform_without_prompt() {
@@ -307,5 +455,13 @@ mod tests {
         assert_eq!(status.prompt_requested, false);
         assert!(!status.platform.is_empty());
         assert!(!status.guidance.is_empty());
+    }
+
+    #[test]
+    fn parses_ui_refs() {
+        assert_eq!(parse_ui_ref("@u12").expect("ref"), 12);
+        assert_eq!(parse_ui_ref("u3").expect("ref"), 3);
+        assert!(parse_ui_ref("@e1").is_err());
+        assert!(parse_ui_ref("@u0").is_err());
     }
 }

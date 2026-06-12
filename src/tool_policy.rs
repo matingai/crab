@@ -201,7 +201,9 @@ pub fn evaluate_tool_policy(
     }
 
     let path_approval = config.protected_path_match(&referenced_paths);
-    if !config.requires_approval(tool_name) && path_approval.is_none() {
+    let requires_approval = config.requires_approval(tool_name)
+        || default_tool_call_requires_approval(tool_name, raw_arguments);
+    if !requires_approval && path_approval.is_none() {
         return Ok(ToolPolicyPreflight::Allow);
     }
 
@@ -218,6 +220,21 @@ pub fn evaluate_tool_policy(
     };
     let approval = request_approval(data_dir, session_id, &command, &reason)?;
     Ok(ToolPolicyPreflight::ApprovalRequired(approval))
+}
+
+fn default_tool_call_requires_approval(tool_name: &str, raw_arguments: &str) -> bool {
+    if tool_name != "computer_use" {
+        return false;
+    }
+    let Ok(value) = serde_json::from_str::<Value>(raw_arguments) else {
+        return false;
+    };
+    let action = value
+        .get("action")
+        .and_then(Value::as_str)
+        .unwrap_or("status")
+        .trim();
+    matches!(action, "click")
 }
 
 pub fn tool_policy_approval_command(tool_name: &str, raw_arguments: &str) -> String {
@@ -629,6 +646,44 @@ tool_policy:
         assert!(approval.reason.contains("path pattern `.env*`"));
         assert!(!approval.command.contains(".env.local"));
         assert!(!approval.command.contains("OPENAI_API_KEY"));
+    }
+
+    #[test]
+    fn computer_use_click_requires_approval_by_default() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+
+        let decision = evaluate_tool_policy(
+            tmp.path(),
+            "session-1",
+            "computer_use",
+            r#"{"action":"click","ref":"@u2"}"#,
+        )
+        .expect("policy");
+        let ToolPolicyPreflight::ApprovalRequired(approval) = decision else {
+            panic!("expected approval");
+        };
+
+        assert!(approval.reason.contains("computer_use"));
+        assert!(approval.command.contains("args_hash="));
+        assert!(!approval.command.contains("@u2"));
+    }
+
+    #[test]
+    fn computer_use_read_actions_are_allowed_by_default() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+
+        for raw_args in [
+            r#"{"action":"status"}"#,
+            r#"{"action":"request_permission"}"#,
+            r#"{"action":"snapshot","max_items":10}"#,
+        ] {
+            let decision = evaluate_tool_policy(tmp.path(), "session-1", "computer_use", raw_args)
+                .expect("policy");
+            assert!(
+                matches!(decision, ToolPolicyPreflight::Allow),
+                "expected allow for {raw_args}, got {decision:?}"
+            );
+        }
     }
 
     #[test]

@@ -10,7 +10,8 @@ The current implementation is deliberately conservative:
 - A permission-prompt path for first-time setup.
 - A shallow frontmost-app Accessibility UI tree when permission is granted, with stable
   element references such as `@u1`.
-- No mouse, keyboard, file, or app-control write actions yet.
+- Approval-gated click support for a current `@u` ref.
+- No keyboard text entry, file, or broad app-control write actions yet.
 
 That shape is intentional. System-level automation should be introduced behind explicit
 permission, observable tool calls, and approval policy instead of appearing as a hidden
@@ -18,13 +19,14 @@ side effect of ordinary chat.
 
 ## Tool Surface
 
-The built-in `computer_use` tool supports three actions:
+The built-in `computer_use` tool supports four actions:
 
 | Action | Behavior |
 | --- | --- |
 | `status` | Reports platform support, Accessibility trust, prompt support, and setup guidance. |
 | `request_permission` | Calls the macOS Accessibility prompt API and reports the resulting state. |
 | `snapshot` | Reads a compact Accessibility UI tree for the frontmost application and its windows. |
+| `click` | Activates a snapshot ref such as `@u2`, then returns a post-click snapshot. |
 
 Example tool arguments:
 
@@ -55,8 +57,24 @@ ui_tree:
 ```
 
 The refs are observation handles only in the current milestone. They are designed so
-future approval-gated click and typing actions can target a concrete element without
-guessing coordinates.
+approval-gated actions can target a concrete element without guessing coordinates.
+
+Click refs are deliberately ephemeral: take a fresh `snapshot`, choose a visible `@u`
+reference from that output, then call `click` immediately. If the app changes before the
+click, the ref may resolve to a different UI element in the new tree.
+
+```json
+{
+  "action": "click",
+  "ref": "@u2",
+  "max_items": 40,
+  "max_depth": 3
+}
+```
+
+`click` is a write action. Crab's default tool policy requires approval before it runs,
+even if the user has not configured a custom `tool_policy`. Read-only actions stay
+available without approval.
 
 ## macOS Permission Flow
 
@@ -77,9 +95,10 @@ not a core runtime failure.
 
 ## Safety Model
 
-The first milestone is read-only. It lets the agent know whether native automation is
-possible and gives it a bounded, inspectable desktop UI tree. Future write actions should
-stay gated by:
+The first milestone is mostly read-only, with the first tiny write path limited to
+approval-gated clicks on observed refs. It lets the agent know whether native automation
+is possible and gives it a bounded, inspectable desktop UI tree. Future write actions
+should stay gated by:
 
 - explicit tool names and arguments;
 - local `tool_policy` approval rules;

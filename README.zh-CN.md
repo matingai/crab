@@ -177,6 +177,8 @@ agent loop 是这个项目真正的中心。Crab 把主 agent 设计成一个面
 - 本地 `tool_policy` 默认会在具体工具执行前保护 `.env*`、`.ssh/*`、`.aws/*` 和私钥文件等常见敏感路径；
   preflight 会递归检查 path-like 工具参数，包括嵌套数组和 camelCase key，因此复杂工具也走同一套护栏。
   你可以扩展这些规则，也可以在本地配置中显式关闭默认规则。
+- 本地 `network_policy` 默认阻止直接 web-fetch 工具访问 loopback、内网、link-local 和 metadata 类 host。
+  只有可信工作流确实需要时，才建议显式允许本地/内网 host。
 - 运行时 redaction 是 best-effort，主要处理常见 key/token/password 格式；它不能替代从源头避免把密钥写进
   prompt 或生成文件。
 - 在 Git 工作区中，文件修改类工具默认保护已有未提交改动的路径；只有确认要改动本地用户改动时，
@@ -405,6 +407,20 @@ tool_policy:
     - .github/workflows/*
   disabled_paths:
     - secrets/*
+```
+
+直接 web-fetch 工具也会走本地网络策略。默认情况下，`web_extract` 会在发起请求前阻止 loopback、内网、
+link-local 和 metadata 类 host。浏览器导航仍可用于有意的本地应用预览；这个护栏主要约束 runtime 自己发起的
+server-side fetch：
+
+```yaml
+network_policy:
+  # 默认值为 false。只有可信工作区确实需要时才设为 true。
+  allow_private_network: false
+  allowed_hosts:
+    - localhost
+  blocked_hosts:
+    - "*.internal.example"
 ```
 
 `.hermes-agent-rs/` 已被 Git 忽略。它是当前兼容运行时目录，未来 breaking release 可以再迁移为

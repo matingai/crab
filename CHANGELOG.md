@@ -13,6 +13,9 @@ and uses semantic versioning once stable release boundaries are established.
   sensitive paths by default and can require approval or disable configured tools/path
   patterns before execution. Path-like arguments are now inspected recursively, including
   nested arrays/objects and camelCase aliases.
+- Direct web-fetch tools now pass through `network_policy`, which blocks loopback,
+  private, link-local, and metadata-style hosts by default unless local config allows
+  them.
 - Tool observations, live previews, session timeline details, archive records, and saved
   assistant tool-call arguments now redact common credential patterns before persistence.
 - Subdirectory instruction discovery now returns root-to-leaf context stacks, tracks loaded

@@ -51,6 +51,9 @@ Reports are especially valuable when they involve:
   nested arrays/objects and camelCase aliases. Local config can extend those protections,
   require approval for selected tools, opt out of the defaults, or disable tools/paths
   entirely before execution.
+- Local `network_policy` blocks direct web-fetch tools from accessing loopback, private,
+  link-local, and metadata-style hosts by default. Trusted workspaces can explicitly
+  allow private network fetches or selected hosts in local config.
 - Tool outputs, live previews, timeline details, archive records, and stored assistant
   tool-call arguments redact common credential patterns before becoming durable context.
 - In Git workspaces, file mutation tools refuse to overwrite, patch, delete, or move

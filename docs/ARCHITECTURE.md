@@ -79,6 +79,8 @@ provides:
 - A local `tool_policy` preflight that recursively inspects path-like arguments,
   default-protects common sensitive paths, and can require approval or disable tools/path
   patterns before dispatch.
+- A local `network_policy` preflight that blocks direct web-fetch tools from reaching
+  loopback, private, link-local, and metadata-style hosts unless local config allows it.
 
 Tool groups currently include file operations, Git, browser automation, Office/PDF
 handling, memory, skills, MCP, cron, delegation, Slidev, archive/session search, and an

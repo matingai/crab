@@ -4,6 +4,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::time::Duration;
 
+use crate::network_policy::{NetworkPolicyPreflight, evaluate_network_policy};
 use crate::tools::{Tool, ToolContext, truncated};
 use crate::types::{ToolDefinition, object_schema};
 use crate::web_content::{fetch_web_page, indent_block};
@@ -54,7 +55,7 @@ impl Tool for WebExtractTool {
         )
     }
 
-    async fn execute(&self, args: Value, _ctx: &ToolContext) -> Result<String> {
+    async fn execute(&self, args: Value, ctx: &ToolContext) -> Result<String> {
         let args: WebExtractArgs =
             serde_json::from_value(args).context("invalid web_extract arguments")?;
         if args.urls.is_empty() {
@@ -77,15 +78,20 @@ impl Tool for WebExtractTool {
 
         let mut results = Vec::new();
         for url in args.urls {
-            results.push(fetch_one(&client, &url, max_chars).await);
+            results.push(fetch_one(&client, ctx, &url, max_chars).await);
         }
 
         Ok(results.join("\n\n"))
     }
 }
 
-async fn fetch_one(client: &reqwest::Client, url: &str, max_chars: usize) -> String {
-    match fetch_one_inner(client, url, max_chars).await {
+async fn fetch_one(
+    client: &reqwest::Client,
+    ctx: &ToolContext,
+    url: &str,
+    max_chars: usize,
+) -> String {
+    match fetch_one_inner(client, ctx, url, max_chars).await {
         Ok(result) => result,
         Err(error) => format!(
             "- url: {url}\n  status: error\n  error: {}",
@@ -94,7 +100,16 @@ async fn fetch_one(client: &reqwest::Client, url: &str, max_chars: usize) -> Str
     }
 }
 
-async fn fetch_one_inner(client: &reqwest::Client, url: &str, max_chars: usize) -> Result<String> {
+async fn fetch_one_inner(
+    client: &reqwest::Client,
+    ctx: &ToolContext,
+    url: &str,
+    max_chars: usize,
+) -> Result<String> {
+    match evaluate_network_policy(&ctx.data_dir, "web_extract", url)? {
+        NetworkPolicyPreflight::Allow => {}
+        NetworkPolicyPreflight::Deny(reason) => bail!("{reason}"),
+    }
     let page = fetch_web_page(client, url, max_chars, MAX_BODY_BYTES).await?;
 
     Ok(format!(
@@ -164,5 +179,22 @@ mod tests {
 
         assert!(output.contains("status: error"));
         assert!(output.contains("unsupported URL scheme"));
+    }
+
+    #[tokio::test]
+    async fn blocks_private_network_urls_before_fetch() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tool = WebExtractTool;
+        let output = tool
+            .execute(
+                json!({ "urls": ["http://127.0.0.1:9/private"] }),
+                &ctx(tmp.path()),
+            )
+            .await
+            .expect("extract");
+
+        assert!(output.contains("status: error"));
+        assert!(output.contains("blocked by network_policy"));
+        assert!(output.contains("private/local host `127.0.0.1`"));
     }
 }

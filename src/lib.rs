@@ -22,6 +22,7 @@ pub mod memory;
 pub mod memory_cards;
 pub mod memory_semantic;
 pub mod meta_pattern_store;
+pub mod network_policy;
 pub mod office;
 pub mod office_render;
 pub mod pdf;

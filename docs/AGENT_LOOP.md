@@ -86,6 +86,11 @@ the same guardrail. A workspace can extend those rules, require approval for ent
 families such as `browser_*`, opt out of the defaults, or disable a tool/path before it
 reaches its implementation.
 
+Direct web-fetch tools also pass through `network_policy`. By default, loopback, private,
+link-local, and metadata-style hosts are denied before the runtime issues an HTTP request.
+Trusted workspaces can opt into selected local hosts or private network fetches through
+local config.
+
 ## Delegation Model
 
 Delegation is not a gimmick. It is a way to protect the main loop's attention.

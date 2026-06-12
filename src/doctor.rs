@@ -4,6 +4,7 @@ use std::path::Path;
 use std::process::Command;
 
 use crate::config::AppConfig;
+use crate::network_policy::load_network_policy_config;
 use crate::runtime::{RuntimeStatus, RuntimeStatusDetail};
 use crate::tool_policy::load_tool_policy_config;
 
@@ -187,6 +188,7 @@ pub fn build_doctor_report(config: &AppConfig, runtime_status: RuntimeStatus) ->
     );
 
     push_tool_policy_check(&mut checks, &config.data_dir);
+    push_network_policy_check(&mut checks, &config.data_dir);
     push_runtime_check(&mut checks, runtime_status);
     push_profile_checks(&mut checks, config);
     push_toolchain_checks(&mut checks);
@@ -252,6 +254,43 @@ fn push_tool_policy_check(checks: &mut Vec<DoctorCheck>, data_dir: &Path) {
             "Tool policy",
             DoctorLevel::Fail,
             "tool policy config could not be loaded".to_string(),
+            Some(format!("{error:#}")),
+        ),
+    }
+}
+
+fn push_network_policy_check(checks: &mut Vec<DoctorCheck>, data_dir: &Path) {
+    match load_network_policy_config(data_dir) {
+        Ok(policy) if policy.is_default() => push_check(
+            checks,
+            "safety",
+            "Network policy",
+            DoctorLevel::Pass,
+            "private network fetches are blocked for direct web tools".to_string(),
+            Some(
+                "Set network_policy in the local config to allow specific hosts or private network fetches."
+                    .to_string(),
+            ),
+        ),
+        Ok(policy) => push_check(
+            checks,
+            "safety",
+            "Network policy",
+            DoctorLevel::Pass,
+            "custom network policy is configured".to_string(),
+            Some(format!(
+                "allow_private_network={}, allowed_hosts=[{}], blocked_hosts=[{}]",
+                policy.allow_private_network,
+                policy.allowed_hosts.join(", "),
+                policy.blocked_hosts.join(", ")
+            )),
+        ),
+        Err(error) => push_check(
+            checks,
+            "safety",
+            "Network policy",
+            DoctorLevel::Fail,
+            "network policy config could not be loaded".to_string(),
             Some(format!("{error:#}")),
         ),
     }
@@ -646,6 +685,54 @@ mod tests {
                 .as_deref()
                 .unwrap_or_default()
                 .contains(".env*")
+        );
+    }
+
+    #[test]
+    fn network_policy_check_reports_default_private_network_guard() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut checks = Vec::new();
+
+        push_network_policy_check(&mut checks, tmp.path());
+
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].level, DoctorLevel::Pass);
+        assert_eq!(checks[0].name, "Network policy");
+        assert!(
+            checks[0]
+                .message
+                .contains("private network fetches are blocked")
+        );
+    }
+
+    #[test]
+    fn network_policy_check_reports_custom_policy() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("config.yaml"),
+            r#"network_policy:
+  allow_private_network: true
+  allowed_hosts:
+    - localhost
+  blocked_hosts:
+    - "*.internal.example"
+"#,
+        )
+        .expect("write config");
+        let mut checks = Vec::new();
+
+        push_network_policy_check(&mut checks, tmp.path());
+
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].level, DoctorLevel::Pass);
+        assert_eq!(checks[0].name, "Network policy");
+        assert!(checks[0].message.contains("custom network policy"));
+        assert!(
+            checks[0]
+                .detail
+                .as_deref()
+                .unwrap_or_default()
+                .contains("allow_private_network=true")
         );
     }
 }

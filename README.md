@@ -223,6 +223,9 @@ Important safety notes:
   runs. The preflight recursively inspects path-like tool arguments, including nested
   arrays and camelCase keys, so complex tools get the same guardrail. You can extend
   those rules or opt out explicitly in local config.
+- Local `network_policy` blocks direct web-fetch tools from accessing loopback, private,
+  link-local, and metadata-style hosts by default. Allow local/private hosts only when a
+  trusted workflow needs them.
 - Runtime redaction is best-effort and targets common key/token/password formats. It is
   not a replacement for keeping secrets out of prompts and generated files.
 - In Git workspaces, file mutation tools protect existing paths with uncommitted changes
@@ -463,6 +466,21 @@ tool_policy:
     - .github/workflows/*
   disabled_paths:
     - secrets/*
+```
+
+Direct web-fetch tools also use a local network policy. By default, `web_extract` blocks
+loopback, private, link-local, and metadata-style hosts before issuing a request. Browser
+navigation can still be used for intentional local app previews; this guardrail targets
+server-side fetches made by the runtime:
+
+```yaml
+network_policy:
+  # Defaults to false. Set true only in trusted workspaces.
+  allow_private_network: false
+  allowed_hosts:
+    - localhost
+  blocked_hosts:
+    - "*.internal.example"
 ```
 
 The `.hermes-agent-rs/` directory is intentionally ignored by Git. It is a legacy-compatible

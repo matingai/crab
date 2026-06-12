@@ -204,7 +204,10 @@ reference from that output, then call `click` or `set_text` immediately. If the 
 changes before the action, the ref may resolve to a different UI element in the new tree.
 Write actions validate the latest `snapshot_id` before acting. If the id is omitted, Crab
 uses the latest snapshot record for the current session; if a stale id is supplied, the
-action fails and the agent must observe the desktop again.
+action fails and the agent must observe the desktop again. When a write action succeeds,
+Crab saves the returned post-action observation as the new latest snapshot record and
+returns `post_snapshot_id`, so the next step can continue from fresh UI evidence instead
+of the pre-action id.
 
 For safer targeting, write actions can also include optional ref guards. `expect_role`,
 `expect_text`, and `expect_state` make Crab take one more read-only snapshot before the

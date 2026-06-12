@@ -334,8 +334,10 @@ impl Tool for ComputerUseTool {
                 let ref_guard =
                     run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
                 let result = click_frontmost_app_ref(reference, max_items, max_depth)?;
+                let post_record = save_snapshot_record(ctx, max_items, max_depth, &result)?;
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
+                    &post_record.snapshot_id,
                     ref_guard.as_ref(),
                     None,
                     &result,
@@ -366,8 +368,10 @@ impl Tool for ComputerUseTool {
                     max_items,
                     max_depth,
                 )?;
+                let post_record = save_snapshot_record(ctx, max_items, max_depth, &result)?;
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
+                    &post_record.snapshot_id,
                     ref_guard.as_ref(),
                     Some(&native_action_guard),
                     &result,
@@ -386,8 +390,10 @@ impl Tool for ComputerUseTool {
                 let ref_guard =
                     run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
                 let result = focus_frontmost_app_ref(reference, max_items, max_depth)?;
+                let post_record = save_snapshot_record(ctx, max_items, max_depth, &result)?;
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
+                    &post_record.snapshot_id,
                     ref_guard.as_ref(),
                     None,
                     &result,
@@ -407,8 +413,10 @@ impl Tool for ComputerUseTool {
                 let ref_guard =
                     run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
                 let result = set_frontmost_app_ref_text(reference, text, max_items, max_depth)?;
+                let post_record = save_snapshot_record(ctx, max_items, max_depth, &result)?;
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
+                    &post_record.snapshot_id,
                     ref_guard.as_ref(),
                     None,
                     &result,
@@ -434,8 +442,10 @@ impl Tool for ComputerUseTool {
                     max_items,
                     max_depth,
                 )?;
+                let post_record = save_snapshot_record(ctx, max_items, max_depth, &result)?;
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
+                    &post_record.snapshot_id,
                     ref_guard.as_ref(),
                     None,
                     &result,
@@ -451,11 +461,13 @@ impl Tool for ComputerUseTool {
                     bail!("{}", status.guidance);
                 }
                 let result = press_frontmost_app_key(key.label, max_items, max_depth)?;
-                Ok(format!(
-                    "using_snapshot_id: {}\n{}\n\n{}",
-                    snapshot_record.snapshot_id,
-                    render_status(false),
-                    result.trim()
+                let post_record = save_snapshot_record(ctx, max_items, max_depth, &result)?;
+                Ok(render_write_result(
+                    &snapshot_record.snapshot_id,
+                    &post_record.snapshot_id,
+                    None,
+                    None,
+                    &result,
                 ))
             }
             other => bail!(
@@ -1371,11 +1383,13 @@ fn check_ref_guard_line(
 
 fn render_write_result(
     snapshot_id: &str,
+    post_snapshot_id: &str,
     ref_guard: Option<&ComputerUseRefGuardOutcome>,
     native_action_guard: Option<&ComputerUseNativeActionGuardOutcome>,
     result: &str,
 ) -> String {
-    let mut output = format!("using_snapshot_id: {snapshot_id}\n");
+    let mut output =
+        format!("using_snapshot_id: {snapshot_id}\npost_snapshot_id: {post_snapshot_id}\n");
     if let Some(ref_guard) = ref_guard {
         output.push_str(&format!(
             "ref_guard: passed\nref_guard_ref: {}\nref_guard_line_sha256: {}\n",
@@ -2166,8 +2180,16 @@ available_actions: AXPress
         let action = normalize_computer_use_native_action("press").expect("action");
         let guard =
             check_native_action_guard_details("@u3", details, action).expect("native guard");
-        let rendered = render_write_result("cu_test", None, Some(&guard), "frontmost_app: TestApp");
+        let rendered = render_write_result(
+            "cu_test_before",
+            "cu_test_after",
+            None,
+            Some(&guard),
+            "frontmost_app: TestApp",
+        );
 
+        assert!(rendered.contains("using_snapshot_id: cu_test_before"));
+        assert!(rendered.contains("post_snapshot_id: cu_test_after"));
         assert!(rendered.contains("native_action_guard: passed"));
         assert!(rendered.contains("native_action_guard_ref: @u3"));
         assert!(rendered.contains("native_action_guard_action: AXPress"));
@@ -2245,6 +2267,31 @@ available_actions: AXPress
         let raw = std::fs::read_to_string(snapshot_record_path(&ctx)).expect("read record");
         assert!(!raw.contains("SecretApp"));
         assert!(!raw.contains("SECRET_TOKEN"));
+    }
+
+    #[test]
+    fn post_action_snapshot_record_replaces_latest_without_raw_ui() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let ctx = ctx(tmp.path());
+        let before = save_snapshot_record(&ctx, 40, 3, "frontmost_app: Before")
+            .expect("save before snapshot");
+        let after = save_snapshot_record(
+            &ctx,
+            40,
+            3,
+            "frontmost_app: After\nvalue='POST_ACTION_SECRET'",
+        )
+        .expect("save post-action snapshot");
+
+        assert_ne!(before.snapshot_id, after.snapshot_id);
+        let loaded = load_snapshot_record(&ctx)
+            .expect("load snapshot record")
+            .expect("record exists");
+        assert_eq!(loaded.snapshot_id, after.snapshot_id);
+
+        let raw = std::fs::read_to_string(snapshot_record_path(&ctx)).expect("read record");
+        assert!(!raw.contains("After"));
+        assert!(!raw.contains("POST_ACTION_SECRET"));
     }
 
     #[test]

@@ -34,6 +34,15 @@ pub fn click_frontmost_app_ref(
     platform::click_frontmost_app_ref(reference, max_items, max_depth)
 }
 
+pub fn set_frontmost_app_ref_text(
+    reference: &str,
+    text: &str,
+    max_items: usize,
+    max_depth: usize,
+) -> Result<String> {
+    platform::set_frontmost_app_ref_text(reference, text, max_items, max_depth)
+}
+
 pub fn parse_ui_ref(reference: &str) -> Result<usize> {
     let trimmed = reference.trim().trim_start_matches('@');
     let number = trimmed
@@ -66,6 +75,51 @@ mod platform {
         fn AXIsProcessTrusted() -> Boolean;
         fn AXIsProcessTrustedWithOptions(options: CFDictionaryRef) -> Boolean;
         static kAXTrustedCheckOptionPrompt: CFTypeRef;
+    }
+
+    pub fn set_frontmost_app_ref_text(
+        reference: &str,
+        text: &str,
+        max_items: usize,
+        max_depth: usize,
+    ) -> Result<String> {
+        if !accessibility_trusted(false) {
+            bail!(
+                "computer_use set_text requires macOS Accessibility permission. Run action=request_permission, then enable Crab or the launching terminal in System Settings > Privacy & Security > Accessibility."
+            );
+        }
+
+        let target_index = parse_ui_ref(reference)?;
+        let max_items = max_items.clamp(1, 50);
+        if target_index > max_items {
+            bail!(
+                "computer_use ref @u{target_index} is outside max_items={max_items}; use a ref from the latest bounded snapshot or increase max_items up to 50"
+            );
+        }
+        let max_depth = max_depth.clamp(1, 6);
+        let script = frontmost_set_text_script(target_index, max_items, max_depth);
+        let mut command = Command::new("osascript");
+        for line in &script {
+            command.arg("-e").arg(line);
+        }
+        command.arg(text);
+        let output = command
+            .output()
+            .context("failed to run osascript for Accessibility set_text")?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!(
+                "Accessibility set_text failed: {}",
+                stderr.trim().trim_end_matches('.')
+            );
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let post_snapshot = frontmost_app_snapshot(max_items, max_depth)?;
+        Ok(format!(
+            "{}\n\npost_set_text_snapshot:\n{}",
+            stdout.trim(),
+            post_snapshot
+        ))
     }
 
     #[link(name = "CoreFoundation", kind = "framework")]
@@ -326,6 +380,67 @@ mod platform {
         .collect()
     }
 
+    fn frontmost_set_text_script(
+        target_index: usize,
+        max_items: usize,
+        max_depth: usize,
+    ) -> Vec<String> {
+        [
+            "global itemIndex, maxItems, maxDepth, targetIndex, didSetText, replacementText",
+            "on visitElement(elementRef, depth)",
+            "global itemIndex, maxItems, maxDepth, targetIndex, didSetText, replacementText",
+            "if itemIndex is greater than or equal to maxItems then return false",
+            "tell application \"System Events\"",
+            "set itemIndex to itemIndex + 1",
+            "if itemIndex is targetIndex then",
+            "try",
+            "set value of elementRef to replacementText",
+            "delay 0.15",
+            "set didSetText to true",
+            "return true",
+            "on error errMsg",
+            "error \"failed to set text for @u\" & targetIndex & \": \" & errMsg",
+            "end try",
+            "end if",
+            "if depth is less than maxDepth then",
+            "try",
+            "set childElements to UI elements of elementRef",
+            "repeat with childElement in childElements",
+            "if itemIndex is greater than or equal to maxItems then exit repeat",
+            "if my visitElement(childElement, depth + 1) then return true",
+            "end repeat",
+            "end try",
+            "end if",
+            "end tell",
+            "return false",
+            "end visitElement",
+            "on run argv",
+            "global itemIndex, maxItems, maxDepth, targetIndex, didSetText, replacementText",
+            &format!("set targetIndex to {target_index}"),
+            &format!("set maxItems to {max_items}"),
+            &format!("set maxDepth to {max_depth}"),
+            "if (count of argv) is less than 1 then error \"missing replacement text argument\"",
+            "set replacementText to item 1 of argv",
+            "set itemIndex to 0",
+            "set didSetText to false",
+            "tell application \"System Events\"",
+            "set frontApp to first application process whose frontmost is true",
+            "set appName to name of frontApp",
+            "repeat with windowRef in windows of frontApp",
+            "if itemIndex is greater than or equal to maxItems then exit repeat",
+            "if my visitElement(windowRef, 0) then exit repeat",
+            "end repeat",
+            "if didSetText is false then error \"UI ref @u\" & targetIndex & \" was not found in the current Accessibility snapshot\"",
+            "set replacementLength to length of replacementText",
+            "return \"set_text_ref: @u\" & targetIndex & linefeed & \"frontmost_app_before_set_text: \" & appName & linefeed & \"text_chars: \" & replacementLength",
+            "end tell",
+            "end run",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+    }
+
     fn accessibility_trusted(prompt: bool) -> bool {
         if prompt {
             return accessibility_trusted_with_prompt();
@@ -359,7 +474,7 @@ mod platform {
 
     #[cfg(test)]
     mod tests {
-        use super::{frontmost_click_script, frontmost_snapshot_script};
+        use super::{frontmost_click_script, frontmost_set_text_script, frontmost_snapshot_script};
         use std::process::Command;
 
         #[test]
@@ -412,6 +527,26 @@ mod platform {
                 String::from_utf8_lossy(&output.stderr)
             );
         }
+
+        #[test]
+        fn set_text_script_compiles() {
+            let script = frontmost_set_text_script(2, 8, 2);
+            let tmp = tempfile::tempdir().expect("tempdir");
+            let output_path = tmp.path().join("computer-use-set-text.scpt");
+            let mut command = Command::new("osacompile");
+            command.arg("-o").arg(&output_path);
+            for line in script {
+                command.arg("-e").arg(line);
+            }
+
+            let output = command.output().expect("run osacompile");
+            assert!(
+                output.status.success(),
+                "osacompile failed\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
     }
 }
 
@@ -438,6 +573,15 @@ mod platform {
 
     pub fn click_frontmost_app_ref(
         _reference: &str,
+        _max_items: usize,
+        _max_depth: usize,
+    ) -> Result<String> {
+        bail!("native Accessibility-backed computer use currently supports macOS only")
+    }
+
+    pub fn set_frontmost_app_ref_text(
+        _reference: &str,
+        _text: &str,
         _max_items: usize,
         _max_depth: usize,
     ) -> Result<String> {

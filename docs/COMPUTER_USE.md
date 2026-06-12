@@ -11,7 +11,9 @@ The current implementation is deliberately conservative:
 - A shallow frontmost-app Accessibility UI tree when permission is granted, with stable
   element references such as `@u1`.
 - Approval-gated click support for a current `@u` ref.
-- No keyboard text entry, file, or broad app-control write actions yet.
+- Approval-gated text setting for a current `@u` ref when the target Accessibility element
+  supports a writable value.
+- No global keyboard typing, file, or broad app-control write actions yet.
 
 That shape is intentional. System-level automation should be introduced behind explicit
 permission, observable tool calls, and approval policy instead of appearing as a hidden
@@ -19,7 +21,7 @@ side effect of ordinary chat.
 
 ## Tool Surface
 
-The built-in `computer_use` tool supports four actions:
+The built-in `computer_use` tool supports five actions:
 
 | Action | Behavior |
 | --- | --- |
@@ -27,6 +29,7 @@ The built-in `computer_use` tool supports four actions:
 | `request_permission` | Calls the macOS Accessibility prompt API and reports the resulting state. |
 | `snapshot` | Reads a compact Accessibility UI tree for the frontmost application and its windows. |
 | `click` | Activates a snapshot ref such as `@u2`, then returns a post-click snapshot. |
+| `set_text` | Sets the Accessibility value for a snapshot ref, then returns a post-action snapshot. |
 
 Example tool arguments:
 
@@ -59,9 +62,9 @@ ui_tree:
 The refs are observation handles only in the current milestone. They are designed so
 approval-gated actions can target a concrete element without guessing coordinates.
 
-Click refs are deliberately ephemeral: take a fresh `snapshot`, choose a visible `@u`
-reference from that output, then call `click` immediately. If the app changes before the
-click, the ref may resolve to a different UI element in the new tree.
+Action refs are deliberately ephemeral: take a fresh `snapshot`, choose a visible `@u`
+reference from that output, then call `click` or `set_text` immediately. If the app
+changes before the action, the ref may resolve to a different UI element in the new tree.
 
 ```json
 {
@@ -72,9 +75,21 @@ click, the ref may resolve to a different UI element in the new tree.
 }
 ```
 
-`click` is a write action. Crab's default tool policy requires approval before it runs,
-even if the user has not configured a custom `tool_policy`. Read-only actions stay
-available without approval.
+```json
+{
+  "action": "set_text",
+  "ref": "@u5",
+  "text": "hello",
+  "max_items": 40,
+  "max_depth": 3
+}
+```
+
+`click` and `set_text` are write actions. Crab's default tool policy requires approval
+before they run, even if the user has not configured a custom `tool_policy`. Read-only
+actions stay available without approval. `set_text` does not send global keystrokes; it
+attempts to set the target Accessibility element's value directly, so it is mainly for
+text fields and similar controls.
 
 ## macOS Permission Flow
 
@@ -95,10 +110,9 @@ not a core runtime failure.
 
 ## Safety Model
 
-The first milestone is mostly read-only, with the first tiny write path limited to
-approval-gated clicks on observed refs. It lets the agent know whether native automation
-is possible and gives it a bounded, inspectable desktop UI tree. Future write actions
-should stay gated by:
+The first milestone is mostly read-only, with tiny write paths limited to approval-gated
+actions on observed refs. It lets the agent know whether native automation is possible and
+gives it a bounded, inspectable desktop UI tree. Future write actions should stay gated by:
 
 - explicit tool names and arguments;
 - local `tool_policy` approval rules;

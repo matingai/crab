@@ -3,7 +3,10 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::computer_use::{click_frontmost_app_ref, frontmost_app_snapshot, inspect_computer_use};
+use crate::computer_use::{
+    click_frontmost_app_ref, frontmost_app_snapshot, inspect_computer_use,
+    set_frontmost_app_ref_text,
+};
 use crate::tools::{Tool, ToolContext};
 use crate::types::{ToolDefinition, object_schema};
 
@@ -20,7 +23,10 @@ struct ComputerUseArgs {
     reference: Option<String>,
     #[serde(rename = "ref")]
     ref_alias: Option<String>,
+    text: Option<String>,
 }
+
+const MAX_SET_TEXT_CHARS: usize = 4_000;
 
 fn default_action() -> String {
     "status".to_string()
@@ -39,13 +45,13 @@ impl Tool for ComputerUseTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::function(
             "computer_use",
-            "Inspect and prepare native computer-use automation. On macOS, this checks Accessibility trust, can request the permission prompt, can return a shallow Accessibility UI tree for the frontmost app, and can click a UI ref after tool-policy approval. Typing and other write actions are intentionally not enabled yet.",
+            "Inspect and prepare native computer-use automation. On macOS, this checks Accessibility trust, can request the permission prompt, can return a shallow Accessibility UI tree for the frontmost app, can click a UI ref after tool-policy approval, and can set text on a UI ref after approval. Broad keyboard and app-control actions are intentionally not enabled yet.",
             object_schema(
                 json!({
                     "action": {
                         "type": "string",
-                        "enum": ["status", "request_permission", "snapshot", "click"],
-                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; click activates a snapshot ref such as @u2 after approval."
+                        "enum": ["status", "request_permission", "snapshot", "click", "set_text"],
+                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; click activates a snapshot ref such as @u2 after approval; set_text sets the Accessibility value for a ref after approval."
                     },
                     "max_items": {
                         "type": "integer",
@@ -66,6 +72,11 @@ impl Tool for ComputerUseTool {
                     "ref": {
                         "type": "string",
                         "description": "Alias for reference."
+                    },
+                    "text": {
+                        "type": "string",
+                        "maxLength": 4000,
+                        "description": "Text to set on the referenced Accessibility element. Required for set_text."
                     }
                 }),
                 &[],
@@ -103,8 +114,23 @@ impl Tool for ComputerUseTool {
                 )?;
                 Ok(format!("{}\n\n{}", render_status(false), result.trim()))
             }
+            "set_text" => {
+                let reference = args.reference()?;
+                let text = args.text()?;
+                let status = inspect_computer_use(false);
+                if !status.ready() {
+                    bail!("{}", status.guidance);
+                }
+                let result = set_frontmost_app_ref_text(
+                    reference,
+                    text,
+                    args.max_items.clamp(1, 50),
+                    args.max_depth.clamp(1, 6),
+                )?;
+                Ok(format!("{}\n\n{}", render_status(false), result.trim()))
+            }
             other => bail!(
-                "unsupported computer_use action `{other}`; use status, request_permission, snapshot, or click"
+                "unsupported computer_use action `{other}`; use status, request_permission, snapshot, click, or set_text"
             ),
         }
     }
@@ -118,8 +144,20 @@ impl ComputerUseArgs {
             }
             (Some(reference), _) if !reference.trim().is_empty() => Ok(reference.trim()),
             (_, Some(ref_alias)) if !ref_alias.trim().is_empty() => Ok(ref_alias.trim()),
-            _ => bail!("computer_use click requires a non-empty `reference` or `ref`"),
+            _ => bail!("computer_use action requires a non-empty `reference` or `ref`"),
         }
+    }
+
+    fn text(&self) -> Result<&str> {
+        let Some(text) = self.text.as_deref() else {
+            bail!("computer_use set_text requires a `text` value");
+        };
+        if text.chars().count() > MAX_SET_TEXT_CHARS {
+            bail!(
+                "computer_use set_text text is too long; maximum is {MAX_SET_TEXT_CHARS} characters"
+            );
+        }
+        Ok(text)
     }
 }
 
@@ -138,7 +176,7 @@ fn render_status(prompt: bool) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::ComputerUseTool;
+    use super::{ComputerUseTool, MAX_SET_TEXT_CHARS};
     use crate::tools::{Tool, ToolContext};
     use serde_json::json;
 
@@ -197,6 +235,37 @@ mod tests {
         assert!(format!("{error:#}").contains("requires a non-empty"));
     }
 
+    #[tokio::test]
+    async fn set_text_requires_text() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tool = ComputerUseTool;
+        let error = tool
+            .execute(
+                json!({ "action": "set_text", "ref": "@u1" }),
+                &ctx(tmp.path()),
+            )
+            .await
+            .expect_err("missing text");
+
+        assert!(format!("{error:#}").contains("requires a `text` value"));
+    }
+
+    #[tokio::test]
+    async fn set_text_rejects_oversized_text() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tool = ComputerUseTool;
+        let oversized = "x".repeat(MAX_SET_TEXT_CHARS + 1);
+        let error = tool
+            .execute(
+                json!({ "action": "set_text", "ref": "@u1", "text": oversized }),
+                &ctx(tmp.path()),
+            )
+            .await
+            .expect_err("oversized text");
+
+        assert!(format!("{error:#}").contains("too long"));
+    }
+
     #[test]
     fn definition_exposes_snapshot_bounds() {
         let tool = ComputerUseTool;
@@ -207,6 +276,8 @@ mod tests {
         assert!(schema.contains("\"max_depth\""));
         assert!(schema.contains("\"snapshot\""));
         assert!(schema.contains("\"click\""));
+        assert!(schema.contains("\"set_text\""));
         assert!(schema.contains("\"reference\""));
+        assert!(schema.contains("\"text\""));
     }
 }

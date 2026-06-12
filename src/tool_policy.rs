@@ -234,7 +234,7 @@ fn default_tool_call_requires_approval(tool_name: &str, raw_arguments: &str) -> 
         .and_then(Value::as_str)
         .unwrap_or("status")
         .trim();
-    matches!(action, "click")
+    matches!(action, "click" | "set_text")
 }
 
 pub fn tool_policy_approval_command(tool_name: &str, raw_arguments: &str) -> String {
@@ -666,6 +666,27 @@ tool_policy:
         assert!(approval.reason.contains("computer_use"));
         assert!(approval.command.contains("args_hash="));
         assert!(!approval.command.contains("@u2"));
+    }
+
+    #[test]
+    fn computer_use_set_text_requires_approval_by_default_without_leaking_text() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+
+        let decision = evaluate_tool_policy(
+            tmp.path(),
+            "session-1",
+            "computer_use",
+            r#"{"action":"set_text","ref":"@u2","text":"private note"}"#,
+        )
+        .expect("policy");
+        let ToolPolicyPreflight::ApprovalRequired(approval) = decision else {
+            panic!("expected approval");
+        };
+
+        assert!(approval.reason.contains("computer_use"));
+        assert!(approval.command.contains("args_hash="));
+        assert!(!approval.command.contains("@u2"));
+        assert!(!approval.command.contains("private note"));
     }
 
     #[test]

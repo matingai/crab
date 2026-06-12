@@ -74,6 +74,10 @@ This is different from asking the main model to do every low-level activity itse
 main loop is strongest when it keeps the goal coherent and uses tools or workers for
 bounded execution.
 
+Approval boundaries apply across equivalent execution surfaces. A destructive shell
+fragment should pause whether it arrives through the terminal tool or through a local
+script runner such as `execute_code`.
+
 ## Delegation Model
 
 Delegation is not a gimmick. It is a way to protect the main loop's attention.

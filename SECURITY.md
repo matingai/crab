@@ -43,6 +43,8 @@ Reports are especially valuable when they involve:
 ## Current Safety Posture
 
 - The terminal tool is disabled by default and must be enabled explicitly.
+- The terminal tool and `execute_code` share destructive shell-risk checks; obvious
+  dangerous command fragments pause for approval before execution.
 - In Git workspaces, file mutation tools refuse to overwrite, patch, delete, or move
   existing paths with uncommitted changes unless the tool call explicitly opts into
   `allow_dirty`.

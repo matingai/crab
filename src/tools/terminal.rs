@@ -6,7 +6,7 @@ use tokio::time::Duration;
 
 use crate::approval::{consume_approved_request, request_approval};
 use crate::runtime;
-use crate::tools::{Tool, ToolContext, truncated};
+use crate::tools::{Tool, ToolContext, classify_shell_risk, truncated};
 use crate::types::{ToolDefinition, object_schema};
 
 pub struct TerminalTool;
@@ -48,7 +48,7 @@ impl Tool for TerminalTool {
             bail!("terminal command cannot be empty");
         }
 
-        if let Some(reason) = command_requires_approval(command) {
+        if let Some(reason) = classify_shell_risk(command) {
             if consume_approved_request(&ctx.data_dir, &ctx.current_session_id, command)?.is_none()
             {
                 let approval =
@@ -85,33 +85,6 @@ impl Tool for TerminalTool {
             status_line, stdout, stderr
         ))
     }
-}
-
-fn command_requires_approval(command: &str) -> Option<&'static str> {
-    let lowered = command.trim().to_ascii_lowercase();
-    let patterns = [
-        ("rm -rf", "destructive file deletion"),
-        ("rm -fr", "destructive file deletion"),
-        ("git reset --hard", "destructive git reset"),
-        ("git clean -fd", "destructive git clean"),
-        ("sudo ", "privileged command"),
-        ("mkfs", "disk formatting command"),
-        ("dd ", "raw disk write command"),
-        ("chmod -r", "recursive permission change"),
-        ("chown -r", "recursive ownership change"),
-    ];
-
-    for (pattern, reason) in patterns {
-        if lowered.contains(pattern) {
-            return Some(reason);
-        }
-    }
-
-    if (lowered.contains("curl ") || lowered.contains("wget ")) && lowered.contains("| sh") {
-        return Some("piped remote shell command");
-    }
-
-    None
 }
 
 #[cfg(test)]

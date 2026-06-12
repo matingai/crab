@@ -150,6 +150,7 @@ agent loop 是这个项目真正的中心。Crab 把主 agent 设计成一个面
 - **长期任务有状态**：session、memory、todos、goal state、solve trace、archive、approval 和
   delegated runs 都会在本地持久化，方便跨轮次、跨桌面重启继续工作。
 - **审批感知执行**：敏感操作可以暂停等待 approval，用户确认后再通过同一条 session/event 路径恢复。
+  terminal 命令和 `execute_code` 片段共用同一套破坏性 shell 风险识别。
 - **保护未提交改动**：文件修改类工具默认拒绝覆盖、patch、删除或移动 Git 工作区里已有未提交改动的路径；
   只有工具调用显式传入 `allow_dirty` 时才会继续。
 - **上下文压力处理**：loop 能识别 context overflow，压缩旧历史，调整输出预算，并用更稳妥的 prompt
@@ -167,6 +168,8 @@ agent loop 是这个项目真正的中心。Crab 把主 agent 设计成一个面
 
 - terminal 工具默认关闭，需要通过 `--enable-shell` 或 `HERMES_RS_ENABLE_SHELL=1` 显式启用。
 - 浏览器、文件、Office、shell 相关工具会在本机执行。请只在可信工作区使用，并在敏感操作前审阅模型输出。
+- `execute_code` 同样受 shell 开关约束；当 inline 或文件脚本里包含明显破坏性 shell 片段时，会先暂停等待
+  approval。
 - 在 Git 工作区中，文件修改类工具默认保护已有未提交改动的路径；只有确认要改动本地用户改动时，
   才应显式使用 `allow_dirty`。
 - 本地 session、memory、日志、运行时数据库和 provider 配置应保存在被忽略的本地目录中。不要提交

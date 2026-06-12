@@ -7,9 +7,12 @@ use std::path::{Path, PathBuf};
 use tokio::time::Duration;
 use uuid::Uuid;
 
+use crate::approval::{consume_approved_request, request_approval};
 use crate::runtime;
 use crate::runtime_profile::RuntimeProfile;
-use crate::tools::{Tool, ToolContext, relative_display, resolve_existing_path, truncated};
+use crate::tools::{
+    Tool, ToolContext, classify_shell_risk, relative_display, resolve_existing_path, truncated,
+};
 use crate::types::{ToolDefinition, object_schema};
 
 pub struct ExecuteCodeTool;
@@ -97,6 +100,9 @@ impl Tool for ExecuteCodeTool {
 
         let args: ExecuteCodeArgs =
             serde_json::from_value(args).context("invalid execute_code arguments")?;
+        if let Some(response) = maybe_request_execution_approval(&args, ctx)? {
+            return Ok(response);
+        }
         let timeout_seconds = args
             .timeout_seconds
             .unwrap_or(DEFAULT_TIMEOUT_SECONDS)
@@ -152,6 +158,114 @@ impl Tool for ExecuteCodeTool {
             stderr
         ))
     }
+}
+
+fn maybe_request_execution_approval(
+    args: &ExecuteCodeArgs,
+    ctx: &ToolContext,
+) -> Result<Option<String>> {
+    let Some((approval_command, reason)) = classify_execution_risk(args, ctx)? else {
+        return Ok(None);
+    };
+    if consume_approved_request(&ctx.data_dir, &ctx.current_session_id, &approval_command)?
+        .is_some()
+    {
+        return Ok(None);
+    }
+
+    let approval = request_approval(
+        &ctx.data_dir,
+        &ctx.current_session_id,
+        &approval_command,
+        reason,
+    )?;
+    Ok(Some(format!(
+        "approval_required\napproval_id: {}\nsession_id: {}\nreason: {}\ncommand: {}",
+        approval.id, approval.session_id, approval.reason, approval.command
+    )))
+}
+
+fn classify_execution_risk(
+    args: &ExecuteCodeArgs,
+    ctx: &ToolContext,
+) -> Result<Option<(String, &'static str)>> {
+    let code = args
+        .code
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let path = args
+        .path
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    match (code, path) {
+        (Some(_), Some(_)) | (None, None) => Ok(None),
+        (Some(code), None) => {
+            let Some(language) = args
+                .language
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+            else {
+                return Ok(None);
+            };
+            let spec = execution_spec(language)?;
+            let Some(reason) = classify_shell_risk(code) else {
+                return Ok(None);
+            };
+            Ok(Some((
+                format!(
+                    "execute_code {} inline: {}",
+                    spec.language,
+                    one_line_preview(code, 320)
+                ),
+                reason,
+            )))
+        }
+        (None, Some(path)) => {
+            let script_path = resolve_existing_path(&ctx.workspace_root, path)?;
+            if !script_path.is_file() {
+                return Ok(None);
+            }
+            let spec = match args
+                .language
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                Some(language) => execution_spec(language)?,
+                None => execution_spec_from_path(&script_path)?,
+            };
+            let Ok(script) = std::fs::read_to_string(&script_path) else {
+                return Ok(None);
+            };
+            let Some(reason) = classify_shell_risk(&script) else {
+                return Ok(None);
+            };
+            Ok(Some((
+                format!(
+                    "execute_code {} file {}: {}",
+                    spec.language,
+                    relative_display(&ctx.workspace_root, &script_path),
+                    one_line_preview(&script, 320)
+                ),
+                reason,
+            )))
+        }
+    }
+}
+
+fn one_line_preview(text: &str, max_chars: usize) -> String {
+    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.chars().count() <= max_chars {
+        return collapsed;
+    }
+    let mut clipped = collapsed
+        .chars()
+        .take(max_chars.saturating_sub(3))
+        .collect::<String>();
+    clipped.push_str("...");
+    clipped
 }
 
 fn execution_spec(language: &str) -> Result<ExecutionSpec> {
@@ -322,6 +436,7 @@ fn execute_code_root(ctx: &ToolContext) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::ExecuteCodeTool;
+    use crate::approval::{ApprovalStatus, list_requests, resolve_request};
     use crate::runtime_control::request_stop;
     use crate::tools::{Tool, ToolContext};
     use serde_json::json;
@@ -402,6 +517,84 @@ mod tests {
             .expect("execute");
 
         assert!(output.contains("status: timeout"));
+    }
+
+    #[tokio::test]
+    async fn dangerous_inline_code_requires_approval_before_execution() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let victim = tmp.path().join("victim.txt");
+        fs::write(&victim, "keep me").expect("write victim");
+        let tool = ExecuteCodeTool;
+        let output = tool
+            .execute(
+                json!({
+                    "language": "bash",
+                    "code": "rm -rf victim.txt"
+                }),
+                &ctx(tmp.path()),
+            )
+            .await
+            .expect("approval response");
+
+        assert!(output.contains("approval_required"));
+        assert!(output.contains("destructive file deletion"));
+        assert!(
+            victim.exists(),
+            "dangerous code must not execute before approval"
+        );
+        assert!(
+            !tmp.path()
+                .join(".data")
+                .join("runtime")
+                .join("execute-code")
+                .exists(),
+            "inline script should not be materialized before approval"
+        );
+        let requests = list_requests(&tmp.path().join(".data")).expect("requests");
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].status, ApprovalStatus::Pending);
+        assert!(requests[0].command.contains("execute_code bash inline"));
+    }
+
+    #[tokio::test]
+    async fn approved_dangerous_inline_code_can_run_once() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let victim = tmp.path().join("victim.txt");
+        fs::write(&victim, "remove me").expect("write victim");
+        let tool = ExecuteCodeTool;
+        let ctx = ctx(tmp.path());
+        let first = tool
+            .execute(
+                json!({
+                    "language": "bash",
+                    "code": "rm -rf victim.txt"
+                }),
+                &ctx,
+            )
+            .await
+            .expect("approval response");
+        let approval_id = first
+            .lines()
+            .find_map(|line| line.strip_prefix("approval_id: "))
+            .expect("approval id")
+            .to_string();
+        resolve_request(&ctx.data_dir, &approval_id, true).expect("approve");
+
+        let second = tool
+            .execute(
+                json!({
+                    "language": "bash",
+                    "code": "rm -rf victim.txt"
+                }),
+                &ctx,
+            )
+            .await
+            .expect("execution result");
+
+        assert!(second.contains("status: completed"));
+        assert!(!victim.exists());
+        let requests = list_requests(&ctx.data_dir).expect("requests");
+        assert_eq!(requests[0].status, ApprovalStatus::Consumed);
     }
 
     #[tokio::test]

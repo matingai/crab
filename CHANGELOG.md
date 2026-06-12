@@ -12,6 +12,8 @@ and uses semantic versioning once stable release boundaries are established.
 - Subdirectory instruction discovery now returns root-to-leaf context stacks, tracks loaded
   hint files instead of permanently marking empty directories, and labels blocked context
   with the exact display path.
+- `execute_code` now shares the terminal tool's destructive shell-risk checks and pauses
+  for approval before running obvious dangerous inline or file-backed scripts.
 - File mutation tools now protect Git paths with uncommitted changes by default and require
   an explicit `allow_dirty` argument before modifying user-owned dirty worktree content.
 

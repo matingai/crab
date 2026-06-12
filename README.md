@@ -186,7 +186,8 @@ The loop is designed around these ideas:
   archive records, approvals, and delegated runs are persisted locally so long tasks can
   continue across turns and desktop restarts.
 - **Approval-aware execution**: sensitive operations can pause for approval and later
-  resume through the same session/event path.
+  resume through the same session/event path. Terminal commands and `execute_code`
+  snippets share the same destructive shell-risk checks.
 - **Dirty-worktree protection**: file mutation tools refuse to overwrite, patch, delete,
   or move existing Git paths with uncommitted changes unless the tool call explicitly opts
   into `allow_dirty`.
@@ -210,6 +211,8 @@ Important safety notes:
   `HERMES_RS_ENABLE_SHELL=1`.
 - Browser, file, Office, and shell-related tools operate on the local machine. Use a
   trusted workspace and review model outputs before approving sensitive actions.
+- `execute_code` is also gated by shell access and pauses for approval when inline or
+  file-backed scripts contain obvious destructive shell fragments.
 - In Git workspaces, file mutation tools protect existing paths with uncommitted changes
   by default. Use an explicit `allow_dirty` tool argument only when intentionally modifying
   local user changes.

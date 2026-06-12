@@ -1,6 +1,16 @@
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
+pub struct ContextSourceSummary {
+    pub label: String,
+    pub status: String,
+    pub original_chars: usize,
+    pub final_chars: usize,
+    pub max_chars: usize,
+    pub preview: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentEvent {
     SessionReady {
@@ -100,6 +110,18 @@ pub enum AgentEvent {
         clipped_labels: Vec<String>,
         skipped_labels: Vec<String>,
         duration_ms: u128,
+    },
+    ContextSourcesUpdated {
+        session_id: String,
+        phase: String,
+        iteration: Option<usize>,
+        total_blocks: usize,
+        kept_blocks: usize,
+        clipped_count: usize,
+        skipped_count: usize,
+        original_chars: usize,
+        final_chars: usize,
+        sources: Vec<ContextSourceSummary>,
     },
     ContextCompacted {
         session_id: String,
@@ -289,6 +311,7 @@ impl AgentEvent {
             Self::TodoStateUpdated { .. } => "todo_state_updated",
             Self::SolveTraceUpdated { .. } => "solve_trace_updated",
             Self::ContextPrepared { .. } => "context_prepared",
+            Self::ContextSourcesUpdated { .. } => "context_sources_updated",
             Self::ContextCompacted { .. } => "context_compacted",
             Self::ModelRecovery { .. } => "model_recovery",
             Self::ModelRequestStarted { .. } => "model_request_started",

@@ -19,7 +19,9 @@ use crate::browser_state::BrowserStateStore;
 use crate::config::AppConfig;
 use crate::context_compression::{ContextCompressor, estimate_messages_tokens};
 use crate::context_limit_cache::save_context_length;
-use crate::events::{AgentEvent, EventHandler, NoopEventHandler, RecordingEventHandler};
+use crate::events::{
+    AgentEvent, ContextSourceSummary, EventHandler, NoopEventHandler, RecordingEventHandler,
+};
 use crate::experience_store::{ExperienceStore, derive_experience_from_episode};
 use crate::goal_state::{
     CognitionItem, EvidenceItem, GoalItem, GoalState, GoalStateStore, HotDataItem,
@@ -110,6 +112,7 @@ struct ContextInjectionStats {
     final_chars: usize,
     clipped_labels: Vec<&'static str>,
     skipped_labels: Vec<&'static str>,
+    sources: Vec<ContextSourceSummary>,
 }
 
 impl ContextInjectionStats {
@@ -3664,6 +3667,7 @@ impl Agent {
         stats: &ContextInjectionStats,
         started_at: Instant,
     ) {
+        let duration_ms = elapsed_ms(started_at);
         handler.on_event(AgentEvent::ContextPrepared {
             session_id: self.session.session_id.clone(),
             phase: phase.to_string(),
@@ -3686,7 +3690,19 @@ impl Agent {
                 .iter()
                 .map(|label| (*label).to_string())
                 .collect(),
-            duration_ms: elapsed_ms(started_at),
+            duration_ms,
+        });
+        handler.on_event(AgentEvent::ContextSourcesUpdated {
+            session_id: self.session.session_id.clone(),
+            phase: phase.to_string(),
+            iteration,
+            total_blocks: stats.total_blocks,
+            kept_blocks: stats.kept_blocks,
+            clipped_count: stats.clipped_labels.len(),
+            skipped_count: stats.skipped_labels.len(),
+            original_chars: stats.original_chars,
+            final_chars: stats.final_chars,
+            sources: stats.sources.clone(),
         });
     }
 
@@ -6379,22 +6395,50 @@ fn finalize_context_injections(
             .min(total_budget_chars.saturating_sub(used));
         if block_budget < CONTEXT_INJECTION_MIN_BLOCK_CHARS {
             stats.skipped_labels.push(injection.label);
+            stats.sources.push(ContextSourceSummary {
+                label: injection.label.to_string(),
+                status: "skipped".to_string(),
+                original_chars: normalized.chars().count(),
+                final_chars: 0,
+                max_chars: injection.max_chars,
+                preview: redacted_truncated(normalized, 160),
+            });
             continue;
         }
 
         let clipped = clip_block_chars(normalized, block_budget);
         if clipped.is_empty() {
             stats.skipped_labels.push(injection.label);
+            stats.sources.push(ContextSourceSummary {
+                label: injection.label.to_string(),
+                status: "skipped".to_string(),
+                original_chars: normalized.chars().count(),
+                final_chars: 0,
+                max_chars: injection.max_chars,
+                preview: redacted_truncated(normalized, 160),
+            });
             continue;
         }
 
+        let original_chars = normalized.chars().count();
         let final_chars = clipped.chars().count();
-        if final_chars < normalized.chars().count() {
+        let status = if final_chars < original_chars {
             stats.clipped_labels.push(injection.label);
-        }
+            "clipped"
+        } else {
+            "kept"
+        };
         used += final_chars;
         stats.final_chars += final_chars;
         stats.kept_blocks += 1;
+        stats.sources.push(ContextSourceSummary {
+            label: injection.label.to_string(),
+            status: status.to_string(),
+            original_chars,
+            final_chars,
+            max_chars: injection.max_chars,
+            preview: redacted_truncated(clipped.clone(), 160),
+        });
         rendered.push(clipped);
     }
 
@@ -7496,6 +7540,7 @@ mod tests {
             final_chars: 10,
             clipped_labels: Vec::new(),
             skipped_labels: Vec::new(),
+            sources: Vec::new(),
         };
 
         agent.persist_debug_context_snapshot(
@@ -8082,6 +8127,30 @@ mod tests {
                 && *message_count > 0
                 && *tool_count > 0
                 && *duration_ms < 30_000
+        ));
+        assert!(matches!(
+            handler
+                .events()
+                .iter()
+                .find(|event| matches!(event, AgentEvent::ContextSourcesUpdated { .. })),
+            Some(AgentEvent::ContextSourcesUpdated {
+                phase,
+                iteration,
+                total_blocks,
+                kept_blocks,
+                sources,
+                ..
+            }) if phase == "main_request_preflight"
+                && *iteration == Some(1)
+                && *total_blocks >= 1
+                && *kept_blocks >= 1
+                && sources.iter().any(|source| source.label == "goal_state")
+                && sources
+                    .iter()
+                    .all(|source| !source.preview.contains("test-redaction-fixture"))
+                && sources
+                    .iter()
+                    .any(|source| source.preview.contains("OPENAI_API_KEY=[REDACTED]"))
         ));
     }
 
@@ -9633,7 +9702,7 @@ mod tests {
         let injections = vec![
             ContextInjection {
                 label: "goal_state",
-                content: "A".repeat(260),
+                content: "OPENAI_API_KEY=test-redaction-fixture\n".repeat(10),
                 max_chars: 220,
             },
             ContextInjection {
@@ -9658,6 +9727,18 @@ mod tests {
         assert!(stats.skipped_labels.contains(&"plugin_context"));
         assert!(stats.final_chars <= 500);
         assert!(render_context_budget_nudge(&stats).contains("plugin_context"));
+        assert_eq!(stats.sources.len(), 3);
+        assert_eq!(stats.sources[0].label, "goal_state");
+        assert_eq!(stats.sources[0].status, "clipped");
+        assert!(
+            stats.sources[0]
+                .preview
+                .contains("OPENAI_API_KEY=[REDACTED]")
+        );
+        assert!(!stats.sources[0].preview.contains("test-redaction-fixture"));
+        assert_eq!(stats.sources[1].status, "clipped");
+        assert_eq!(stats.sources[2].status, "skipped");
+        assert_eq!(stats.sources[2].final_chars, 0);
     }
 
     #[test]

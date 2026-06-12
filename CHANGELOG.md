@@ -49,6 +49,8 @@ and uses semantic versioning once stable release boundaries are established.
 - Prompt context preparation now emits a structured `context_prepared` event with projected
   tokens, request budget, message counts, retained context blocks, trim labels, and elapsed
   preparation time without exposing raw prompt content.
+- Prompt context preparation now also emits `context_sources_updated` with kept/clipped/
+  skipped source metadata and compact redacted previews for optional context blocks.
 - Goal-state writes now emit a structured `goal_state_updated` event for user-input seeds,
   tool observations, tool-result reconcile, and turn-end reconcile, exposing focus-goal
   metadata and counts without streaming the full working memory.

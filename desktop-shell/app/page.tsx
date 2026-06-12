@@ -3013,6 +3013,11 @@ function summarizeEvent(event: Record<string, unknown> & { type?: string }): str
       return `后台 ${String(event.purpose || "")} ${String(event.status || "")}${formatEventDuration(event.duration_ms)}${formatTokenUsageSummary(event)} ${truncate(String(event.content_preview || ""), 60)}`;
     case "context_prepared":
       return `上下文 ${String(event.projected_tokens || 0)}/${String(event.request_budget_tokens || 0)} tokens，块 ${String(event.kept_blocks || 0)}/${String(event.total_blocks || 0)}${formatContextTrimSummary(event)}${formatEventDuration(event.duration_ms)}`;
+    case "context_sources_updated":
+      {
+        const labels = formatContextSourceLabels(event);
+        return `上下文来源 ${String(event.kept_blocks || 0)}/${String(event.total_blocks || 0)}${labels ? ` · ${labels}` : ""}`;
+      }
     case "context_compacted":
       return `上下文压缩 ${String(event.original_message_count || 0)} -> ${String(event.compressed_message_count || 0)} 条消息，tokens ${String(event.original_estimated_tokens || 0)} -> ${String(event.compressed_estimated_tokens || 0)}${Number(event.pruned_tool_messages || 0) > 0 ? `，裁剪 ${String(event.pruned_tool_messages)} 条工具输出` : ""}`;
     case "model_recovery":
@@ -3326,6 +3331,38 @@ function formatContextTrimSummary(event: Record<string, unknown>): string {
     parts.push(`跳过 ${skipped}`);
   }
   return `，${parts.join("，")}`;
+}
+
+function formatContextSourceLabels(event: Record<string, unknown>): string {
+  if (!Array.isArray(event.sources)) {
+    return "";
+  }
+  return event.sources
+    .slice(0, 4)
+    .map((source) => {
+      if (!source || typeof source !== "object") {
+        return "";
+      }
+      const record = source as Record<string, unknown>;
+      const label = String(record.label || "");
+      const status = formatContextSourceStatus(String(record.status || ""));
+      return label ? `${label}${status ? `/${status}` : ""}` : "";
+    })
+    .filter(Boolean)
+    .join(", ");
+}
+
+function formatContextSourceStatus(status: string): string {
+  switch (status) {
+    case "kept":
+      return "保留";
+    case "clipped":
+      return "裁剪";
+    case "skipped":
+      return "跳过";
+    default:
+      return status;
+  }
 }
 
 function formatInterruptedSessionSummary(
@@ -4941,6 +4978,14 @@ export default function Page() {
           const duration = formatDurationMs(readDurationMs(event.duration_ms));
           const suffix = duration ? ` · ${duration}` : "";
           setAgentActivity(`上下文已准备 ${projected}/${budget} tokens · ${kept}/${total} 块${suffix}`);
+        }
+        break;
+      case "context_sources_updated":
+        {
+          const kept = Number(event.kept_blocks || 0);
+          const total = Number(event.total_blocks || 0);
+          const labels = formatContextSourceLabels(event);
+          setAgentActivity(`上下文来源已更新 · ${kept}/${total} 块${labels ? ` · ${labels}` : ""}`);
         }
         break;
       case "context_compacted":

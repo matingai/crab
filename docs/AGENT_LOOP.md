@@ -174,6 +174,9 @@ UI can show:
   context-overflow compression, without exposing full provider errors.
 - Prompt context preparation budgets, retained blocks, trimming labels, and preparation
   duration without exposing raw prompt content.
+- Context-source update events for optional memory, goal-state, todo, solve-trace, and
+  plugin blocks, with kept/clipped/skipped status, compact redacted previews, and per-block
+  character counts.
 - Context compaction events with before/after message counts, estimated token counts,
   summary usage, and pruned-tool-output counts.
 - Goal-state update events for user-seeded goals, tool evidence, tool-result reconcile,

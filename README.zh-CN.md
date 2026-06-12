@@ -151,6 +151,8 @@ agent loop 是这个项目真正的中心。Crab 把主 agent 设计成一个面
   delegated runs 都会在本地持久化，方便跨轮次、跨桌面重启继续工作。
 - **审批感知执行**：敏感操作可以暂停等待 approval，用户确认后再通过同一条 session/event 路径恢复。
   terminal 命令和 `execute_code` 片段共用同一套破坏性 shell 风险识别。
+- **可配置工具策略**：本地配置可以要求指定工具先审批，也可以完全禁用某些工具；支持精确工具名和
+  `browser_*` 这类前缀模式。
 - **保护未提交改动**：文件修改类工具默认拒绝覆盖、patch、删除或移动 Git 工作区里已有未提交改动的路径；
   只有工具调用显式传入 `allow_dirty` 时才会继续。
 - **上下文压力处理**：loop 能识别 context overflow，压缩旧历史，调整输出预算，并用更稳妥的 prompt
@@ -374,6 +376,18 @@ model:
 ```yaml
 skills:
   include_bundled: false
+```
+
+本地工具策略可以要求审批或禁用指定工具。模式可以是精确工具名、`*`，或以 `*` 结尾的前缀通配：
+
+```yaml
+tool_policy:
+  require_approval:
+    - terminal
+    - execute_code
+    - browser_*
+  disabled:
+    - browser_eval
 ```
 
 `.hermes-agent-rs/` 已被 Git 忽略。它是当前兼容运行时目录，未来 breaking release 可以再迁移为

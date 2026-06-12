@@ -78,6 +78,10 @@ Approval boundaries apply across equivalent execution surfaces. A destructive sh
 fragment should pause whether it arrives through the terminal tool or through a local
 script runner such as `execute_code`.
 
+The registry also supports local `tool_policy` preflight rules. A workspace can require
+approval for entire tool families such as `browser_*`, or disable a tool before it reaches
+its implementation.
+
 ## Delegation Model
 
 Delegation is not a gimmick. It is a way to protect the main loop's attention.

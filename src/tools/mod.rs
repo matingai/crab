@@ -71,6 +71,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::mcp::list_cached_inspections;
 use crate::plugins::{PluginHookRegistry, load_plugin_catalog};
+use crate::tool_policy::{ToolPolicyPreflight, evaluate_tool_policy};
 use crate::types::ToolDefinition;
 
 pub use archive_query_tool::ArchiveQueryTool;
@@ -456,6 +457,24 @@ impl ToolRegistry {
             }
         };
 
+        match evaluate_tool_policy(&ctx.data_dir, &ctx.current_session_id, name, raw_arguments) {
+            Ok(ToolPolicyPreflight::Allow) => {}
+            Ok(ToolPolicyPreflight::Deny(reason)) => {
+                return format!("tool_error: {reason}");
+            }
+            Ok(ToolPolicyPreflight::ApprovalRequired(approval)) => {
+                return format!(
+                    "approval_required\napproval_id: {}\nsession_id: {}\nreason: {}\ncommand: {}",
+                    approval.id, approval.session_id, approval.reason, approval.command
+                );
+            }
+            Err(error) => {
+                return format!(
+                    "tool_error: failed to evaluate tool policy for `{name}`: {error:#}"
+                );
+            }
+        }
+
         let pre_payload = serde_json::json!({
             "event": "pre_tool_call",
             "tool_name": name,
@@ -793,6 +812,7 @@ mod tests {
         ToolContext, ToolRegistry, classify_shell_risk, ensure_clean_worktree_path,
         ensure_within_root, normalize_path, primary_model_tool_should_stay_detailed,
     };
+    use crate::approval::{ApprovalStatus, list_requests, resolve_request};
     use crate::mcp::{McpCachedInspection, local_tool_name};
     use serde_json::json;
     use std::path::Path;
@@ -935,6 +955,91 @@ mod tests {
 
         assert!(output.contains("proxy:"));
         assert!(output.contains("patterns"));
+    }
+
+    #[tokio::test]
+    async fn registry_applies_tool_policy_before_execution() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("config.yaml"),
+            r#"tool_policy:
+  require_approval:
+    - read_file
+"#,
+        )
+        .expect("write config");
+        std::fs::write(tmp.path().join("secret-token.txt"), "classified").expect("write secret");
+        let registry = ToolRegistry::hermes_default(tmp.path());
+        let ctx = ToolContext {
+            workspace_root: tmp.path().to_path_buf(),
+            data_dir: tmp.path().to_path_buf(),
+            shell_enabled: false,
+            skill_platform: "cli".to_string(),
+            provider_id: "openai".to_string(),
+            model: "test-model".to_string(),
+            base_url: "https://example.invalid/v1".to_string(),
+            api_key: None,
+            max_iterations: 4,
+            current_session_id: "session".to_string(),
+            current_delegate_run_id: None,
+            delegate_depth: 0,
+        };
+        let args = json!({ "path": "secret-token.txt" }).to_string();
+
+        let first = registry.call("read_file", &args, &ctx).await;
+        assert!(first.contains("approval_required"));
+        assert!(first.contains("tool policy requires approval"));
+        assert!(!first.contains("classified"));
+        assert!(!first.contains("secret-token.txt"));
+        let requests = list_requests(tmp.path()).expect("requests");
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].status, ApprovalStatus::Pending);
+        assert!(!requests[0].command.contains("secret-token.txt"));
+
+        resolve_request(tmp.path(), &requests[0].id, true).expect("approve");
+        let second = registry.call("read_file", &args, &ctx).await;
+        assert!(second.contains("classified"));
+    }
+
+    #[tokio::test]
+    async fn registry_blocks_disabled_tool_policy() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("config.yaml"),
+            r#"tool_policy:
+  disabled:
+    - read_file
+"#,
+        )
+        .expect("write config");
+        std::fs::write(tmp.path().join("demo.txt"), "hello").expect("write file");
+        let registry = ToolRegistry::hermes_default(tmp.path());
+        let output = registry
+            .call(
+                "read_file",
+                &json!({ "path": "demo.txt" }).to_string(),
+                &ToolContext {
+                    workspace_root: tmp.path().to_path_buf(),
+                    data_dir: tmp.path().to_path_buf(),
+                    shell_enabled: false,
+                    skill_platform: "cli".to_string(),
+                    provider_id: "openai".to_string(),
+                    model: "test-model".to_string(),
+                    base_url: "https://example.invalid/v1".to_string(),
+                    api_key: None,
+                    max_iterations: 4,
+                    current_session_id: "session".to_string(),
+                    current_delegate_run_id: None,
+                    delegate_depth: 0,
+                },
+            )
+            .await;
+
+        assert_eq!(
+            output,
+            "tool_error: tool `read_file` is disabled by tool_policy"
+        );
+        assert!(list_requests(tmp.path()).expect("requests").is_empty());
     }
 
     #[test]

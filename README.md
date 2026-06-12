@@ -188,6 +188,8 @@ The loop is designed around these ideas:
 - **Approval-aware execution**: sensitive operations can pause for approval and later
   resume through the same session/event path. Terminal commands and `execute_code`
   snippets share the same destructive shell-risk checks.
+- **Configurable tool policy**: local config can require approval for selected tools or
+  disable tools entirely, with exact names or prefix patterns such as `browser_*`.
 - **Dirty-worktree protection**: file mutation tools refuse to overwrite, patch, delete,
   or move existing Git paths with uncommitted changes unless the tool call explicitly opts
   into `allow_dirty`.
@@ -426,6 +428,19 @@ embeddings can disable them explicitly:
 ```yaml
 skills:
   include_bundled: false
+```
+
+Local tool policy can require approval or disable selected tools. Patterns are exact tool
+names, `*`, or prefix wildcards ending in `*`:
+
+```yaml
+tool_policy:
+  require_approval:
+    - terminal
+    - execute_code
+    - browser_*
+  disabled:
+    - browser_eval
 ```
 
 The `.hermes-agent-rs/` directory is intentionally ignored by Git. It is a legacy-compatible

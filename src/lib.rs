@@ -42,6 +42,7 @@ pub mod subdir_hints;
 pub mod tauri_adapter;
 pub mod title_generation;
 pub mod todo;
+pub mod tool_policy;
 pub mod tools;
 pub mod types;
 pub mod web_content;
@@ -83,3 +84,4 @@ pub use tauri_adapter::{
     RecordingTauriEmitter, TAURI_AGENT_CLEARED_EVENT, TAURI_AGENT_DONE_EVENT, TAURI_AGENT_EVENT,
     TauriEmitter, TauriEventBridge, tauri_session_done_event_name, tauri_session_event_name,
 };
+pub use tool_policy::{ToolPolicyConfig, ToolPolicyPreflight};

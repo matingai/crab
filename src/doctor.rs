@@ -5,6 +5,7 @@ use std::process::Command;
 
 use crate::config::AppConfig;
 use crate::runtime::{RuntimeStatus, RuntimeStatusDetail};
+use crate::tool_policy::load_tool_policy_config;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -185,6 +186,7 @@ pub fn build_doctor_report(config: &AppConfig, runtime_status: RuntimeStatus) ->
         },
     );
 
+    push_tool_policy_check(&mut checks, &config.data_dir);
     push_runtime_check(&mut checks, runtime_status);
     push_profile_checks(&mut checks, config);
     push_toolchain_checks(&mut checks);
@@ -203,6 +205,42 @@ pub fn build_doctor_report(config: &AppConfig, runtime_status: RuntimeStatus) ->
         status,
         version: env!("CARGO_PKG_VERSION").to_string(),
         checks,
+    }
+}
+
+fn push_tool_policy_check(checks: &mut Vec<DoctorCheck>, data_dir: &Path) {
+    match load_tool_policy_config(data_dir) {
+        Ok(policy) if policy.is_empty() => push_check(
+            checks,
+            "safety",
+            "Tool policy",
+            DoctorLevel::Pass,
+            "default tool policy is active".to_string(),
+            Some(
+                "Set tool_policy in the local config to require approval or disable tools."
+                    .to_string(),
+            ),
+        ),
+        Ok(policy) => push_check(
+            checks,
+            "safety",
+            "Tool policy",
+            DoctorLevel::Pass,
+            "custom tool policy is configured".to_string(),
+            Some(format!(
+                "require_approval=[{}], disabled=[{}]",
+                policy.require_approval.join(", "),
+                policy.disabled.join(", ")
+            )),
+        ),
+        Err(error) => push_check(
+            checks,
+            "safety",
+            "Tool policy",
+            DoctorLevel::Fail,
+            "tool policy config could not be loaded".to_string(),
+            Some(format!("{error:#}")),
+        ),
     }
 }
 
@@ -537,5 +575,35 @@ mod tests {
         assert!(rendered.contains("Status: fail"));
         assert!(rendered.contains("1 failures"));
         assert!(rendered.contains("1 warnings"));
+    }
+
+    #[test]
+    fn tool_policy_check_reports_custom_policy() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("config.yaml"),
+            r#"tool_policy:
+  require_approval:
+    - terminal
+  disabled:
+    - browser_eval
+"#,
+        )
+        .expect("write config");
+
+        let mut checks = Vec::new();
+        push_tool_policy_check(&mut checks, tmp.path());
+
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].level, DoctorLevel::Pass);
+        assert_eq!(checks[0].name, "Tool policy");
+        assert!(checks[0].message.contains("custom tool policy"));
+        assert!(
+            checks[0]
+                .detail
+                .as_deref()
+                .unwrap_or_default()
+                .contains("terminal")
+        );
     }
 }

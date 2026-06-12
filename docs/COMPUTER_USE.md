@@ -72,13 +72,20 @@ Example tool arguments:
 }
 ```
 
-Snapshot output includes the frontmost app name, process id, and a bounded UI tree. Each
-snapshot also returns a `snapshot_id`. Each visible element line uses a stable reference
-for that snapshot and includes the best available role, name, value, bounds, and compact
-state flags:
+Snapshot output includes non-sensitive record metadata, the frontmost app name, process
+id, and a bounded UI tree. `snapshot`, `find`, `wait`, `wait_ref`, and `inspect_ref`
+return the same `snapshot_*` metadata header so the agent can carry explicit evidence
+between observation and action. Each visible element line uses a stable reference for that
+snapshot and includes the best available role, name, value, bounds, and compact state
+flags:
 
 ```text
 snapshot_id: cu_7d3c0a5d21a9e472
+snapshot_max_items: 40
+snapshot_max_depth: 3
+snapshot_sha256: 5b2f...
+snapshot_app_line_sha256: 9d8e...
+snapshot_pid: 123
 frontmost_app: Finder
 pid: 123
 ui_tree:

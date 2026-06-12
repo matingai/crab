@@ -251,8 +251,8 @@ impl Tool for ComputerUseTool {
                 let snapshot = frontmost_app_snapshot(max_items, max_depth)?;
                 let record = save_snapshot_record(ctx, max_items, max_depth, &snapshot)?;
                 Ok(format!(
-                    "snapshot_id: {}\n{}\n\n{}",
-                    record.snapshot_id,
+                    "{}{}\n\n{}",
+                    render_snapshot_record_metadata(&record, "snapshot"),
                     render_status(false),
                     snapshot.trim()
                 ))
@@ -268,8 +268,8 @@ impl Tool for ComputerUseTool {
                 let outcome = wait_for_frontmost_app(&request, max_items, max_depth).await?;
                 let record = save_snapshot_record(ctx, max_items, max_depth, &outcome.snapshot)?;
                 Ok(format!(
-                    "snapshot_id: {}\nwait_result: {}\nwait_until: {}\nattempts: {}\nelapsed_ms: {}\n{}\n\n{}",
-                    record.snapshot_id,
+                    "{}wait_result: {}\nwait_until: {}\nattempts: {}\nelapsed_ms: {}\n{}\n\n{}",
+                    render_snapshot_record_metadata(&record, "snapshot"),
                     outcome.result,
                     request.mode.label(),
                     outcome.attempts,
@@ -291,8 +291,8 @@ impl Tool for ComputerUseTool {
                     wait_for_frontmost_app_ref(reference, &request, max_items, max_depth).await?;
                 let record = save_snapshot_record(ctx, max_items, max_depth, &outcome.details)?;
                 Ok(format!(
-                    "snapshot_id: {}\nwait_result: {}\nwait_until: ref_matches\nattempts: {}\nelapsed_ms: {}\n{}\n\n{}",
-                    record.snapshot_id,
+                    "{}wait_result: {}\nwait_until: ref_matches\nattempts: {}\nelapsed_ms: {}\n{}\n\n{}",
+                    render_snapshot_record_metadata(&record, "snapshot"),
                     outcome.result,
                     outcome.attempts,
                     outcome.elapsed_ms,
@@ -312,8 +312,8 @@ impl Tool for ComputerUseTool {
                 let record = save_snapshot_record(ctx, max_items, max_depth, &snapshot)?;
                 let outcome = find_snapshot_lines(&snapshot, &request, max_items, max_depth)?;
                 Ok(format!(
-                    "snapshot_id: {}\nfind_result_count: {}\nfind_truncated: {}\n{}\n\n{}",
-                    record.snapshot_id,
+                    "{}find_result_count: {}\nfind_truncated: {}\n{}\n\n{}",
+                    render_snapshot_record_metadata(&record, "snapshot"),
                     outcome.matches.len(),
                     outcome.truncated,
                     render_status(false),
@@ -331,8 +331,8 @@ impl Tool for ComputerUseTool {
                 let details = frontmost_app_ref_details(reference, max_items, max_depth)?;
                 let record = save_snapshot_record(ctx, max_items, max_depth, &details)?;
                 Ok(format!(
-                    "snapshot_id: {}\n{}\n\n{}",
-                    record.snapshot_id,
+                    "{}{}\n\n{}",
+                    render_snapshot_record_metadata(&record, "snapshot"),
                     render_status(false),
                     details.trim()
                 ))
@@ -1098,6 +1098,24 @@ fn post_action_snapshot_from_result(result: &str) -> Result<&str> {
     bail!("computer_use write action result did not include a post-action snapshot")
 }
 
+fn render_snapshot_record_metadata(record: &ComputerUseSnapshotRecord, prefix: &str) -> String {
+    format!(
+        "{prefix}_id: {}\n{prefix}_max_items: {}\n{prefix}_max_depth: {}\n{prefix}_sha256: {}\n{prefix}_app_line_sha256: {}\n{prefix}_pid: {}\n",
+        record.snapshot_id,
+        record.max_items,
+        record.max_depth,
+        record.output_sha256,
+        record
+            .frontmost_app_line_sha256
+            .as_deref()
+            .unwrap_or("unknown"),
+        record
+            .pid
+            .map(|pid| pid.to_string())
+            .unwrap_or_else(|| "unknown".to_string())
+    )
+}
+
 fn resolve_snapshot_record(
     ctx: &ToolContext,
     requested_snapshot_id: Option<&str>,
@@ -1724,19 +1742,8 @@ fn render_write_result(
     result: &str,
 ) -> String {
     let mut output = format!(
-        "using_snapshot_id: {snapshot_id}\npost_snapshot_id: {}\npost_snapshot_max_items: {}\npost_snapshot_max_depth: {}\npost_snapshot_sha256: {}\npost_snapshot_app_line_sha256: {}\npost_snapshot_pid: {}\n",
-        post_snapshot_record.snapshot_id,
-        post_snapshot_record.max_items,
-        post_snapshot_record.max_depth,
-        post_snapshot_record.output_sha256,
-        post_snapshot_record
-            .frontmost_app_line_sha256
-            .as_deref()
-            .unwrap_or("unknown"),
-        post_snapshot_record
-            .pid
-            .map(|pid| pid.to_string())
-            .unwrap_or_else(|| "unknown".to_string())
+        "using_snapshot_id: {snapshot_id}\n{}",
+        render_snapshot_record_metadata(post_snapshot_record, "post_snapshot")
     );
     output.push_str(&format!(
         "snapshot_origin_guard: passed\nsnapshot_origin_guard_app_line_sha256: {}\nsnapshot_origin_guard_pid: {}\nsnapshot_origin_guard_snapshot_sha256: {}\n",
@@ -1800,10 +1807,10 @@ mod tests {
         check_app_guard_snapshot, check_native_action_guard_details, check_ref_guard_line,
         check_snapshot_origin_guard, details_have_native_action, details_match_wait_ref,
         find_snapshot_lines, load_snapshot_record, post_action_snapshot_from_result,
-        ref_line_from_details, render_wait_ref_unavailable, render_write_result,
-        resolve_snapshot_record, save_post_action_snapshot_record, save_snapshot_record,
-        snapshot_contains_text, snapshot_frontmost_app_line, snapshot_line_for_ref, snapshot_pid,
-        snapshot_record_path, ui_ref_from_snapshot_line,
+        ref_line_from_details, render_snapshot_record_metadata, render_wait_ref_unavailable,
+        render_write_result, resolve_snapshot_record, save_post_action_snapshot_record,
+        save_snapshot_record, snapshot_contains_text, snapshot_frontmost_app_line,
+        snapshot_line_for_ref, snapshot_pid, snapshot_record_path, ui_ref_from_snapshot_line,
     };
     use crate::computer_use::normalize_computer_use_native_action;
     use crate::tools::{Tool, ToolContext};
@@ -2684,6 +2691,42 @@ available_actions: AXPress
 
         assert!(rendered.contains("wait_ref_last_error_sha256:"));
         assert!(!rendered.contains("Private Window Title"));
+    }
+
+    #[test]
+    fn snapshot_record_metadata_renders_non_sensitive_evidence() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let ctx = ctx(tmp.path());
+        let record = save_snapshot_record(
+            &ctx,
+            12,
+            2,
+            "frontmost_app: Private App\npid: 123\nui_tree:\n- @u1 role='window'",
+        )
+        .expect("save snapshot record");
+
+        let rendered = render_snapshot_record_metadata(&record, "snapshot");
+
+        assert!(rendered.contains(&format!("snapshot_id: {}", record.snapshot_id)));
+        assert!(rendered.contains("snapshot_max_items: 12"));
+        assert!(rendered.contains("snapshot_max_depth: 2"));
+        assert!(rendered.contains(&format!("snapshot_sha256: {}", record.output_sha256)));
+        assert!(rendered.contains("snapshot_app_line_sha256:"));
+        assert!(rendered.contains("snapshot_pid: 123"));
+        assert!(!rendered.contains("Private App"));
+    }
+
+    #[test]
+    fn snapshot_record_metadata_uses_unknown_for_missing_origin() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let ctx = ctx(tmp.path());
+        let record = save_snapshot_record(&ctx, 12, 2, "ref: @u3\nwait_ref_last_error_sha256: abc")
+            .expect("save snapshot record");
+
+        let rendered = render_snapshot_record_metadata(&record, "snapshot");
+
+        assert!(rendered.contains("snapshot_app_line_sha256: unknown"));
+        assert!(rendered.contains("snapshot_pid: unknown"));
     }
 
     #[test]

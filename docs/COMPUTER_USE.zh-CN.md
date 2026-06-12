@@ -62,11 +62,18 @@ tool call 和 approval policy。
 }
 ```
 
-snapshot 输出包含 `snapshot_id`、前台应用名称、进程 id 和有界 UI tree。每一行可见元素都会带上
-本次快照内稳定的引用，并尽量包含 role、name、value、bounds 和紧凑状态标记：
+snapshot 输出包含非敏感 record 元数据、前台应用名称、进程 id 和有界 UI tree。`snapshot`、`find`、
+`wait`、`wait_ref` 和 `inspect_ref` 都会返回同一组 `snapshot_*` 元数据头，让 agent 可以在观察和行动
+之间携带明确证据。每一行可见元素都会带上本次快照内稳定的引用，并尽量包含 role、name、value、bounds
+和紧凑状态标记：
 
 ```text
 snapshot_id: cu_7d3c0a5d21a9e472
+snapshot_max_items: 40
+snapshot_max_depth: 3
+snapshot_sha256: 5b2f...
+snapshot_app_line_sha256: 9d8e...
+snapshot_pid: 123
 frontmost_app: Finder
 pid: 123
 ui_tree:

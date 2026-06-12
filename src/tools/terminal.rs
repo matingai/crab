@@ -14,7 +14,11 @@ pub struct TerminalTool;
 #[derive(Debug, Deserialize)]
 struct TerminalArgs {
     command: String,
+    timeout_seconds: Option<u64>,
 }
+
+const DEFAULT_TIMEOUT_SECONDS: u64 = 300;
+const MAX_TIMEOUT_SECONDS: u64 = 300;
 
 #[async_trait]
 impl Tool for TerminalTool {
@@ -27,6 +31,12 @@ impl Tool for TerminalTool {
                     "command": {
                         "type": "string",
                         "description": "Shell command to run from the workspace root."
+                    },
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 300,
+                        "description": "Command timeout in seconds. Defaults to 300."
                     }
                 }),
                 &["command"],
@@ -47,6 +57,10 @@ impl Tool for TerminalTool {
         if command.is_empty() {
             bail!("terminal command cannot be empty");
         }
+        let timeout_seconds = args
+            .timeout_seconds
+            .unwrap_or(DEFAULT_TIMEOUT_SECONDS)
+            .clamp(1, MAX_TIMEOUT_SECONDS);
 
         if let Some(reason) = classify_shell_risk(command) {
             if consume_approved_request(&ctx.data_dir, &ctx.current_session_id, command)?.is_none()
@@ -64,7 +78,7 @@ impl Tool for TerminalTool {
             ctx,
             command,
             &ctx.workspace_root,
-            Some(Duration::from_secs(300)),
+            Some(Duration::from_secs(timeout_seconds)),
         )
         .await?;
         let stdout = truncated(String::from_utf8_lossy(&outcome.stdout).to_string(), 12_000);
@@ -72,7 +86,7 @@ impl Tool for TerminalTool {
         let status_line = if outcome.canceled {
             "status: canceled\nexit_code: -1".to_string()
         } else if outcome.timed_out {
-            "status: timeout\nexit_code: -1".to_string()
+            format!("status: timeout\nexit_code: -1\ntimeout_seconds: {timeout_seconds}")
         } else {
             format!(
                 "status: completed\nexit_code: {}",
@@ -199,5 +213,37 @@ mod tests {
         stop_task.await.expect("stop task");
 
         assert!(output.contains("status: canceled"));
+    }
+
+    #[tokio::test]
+    async fn command_respects_timeout_seconds() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tool = TerminalTool;
+        let output = tool
+            .execute(
+                json!({
+                    "command": "sleep 2",
+                    "timeout_seconds": 1
+                }),
+                &ToolContext {
+                    workspace_root: tmp.path().to_path_buf(),
+                    data_dir: tmp.path().join(".data"),
+                    shell_enabled: true,
+                    skill_platform: "cli".to_string(),
+                    provider_id: "openai".to_string(),
+                    model: "test-model".to_string(),
+                    base_url: "https://example.invalid/v1".to_string(),
+                    api_key: None,
+                    max_iterations: 4,
+                    current_session_id: "test-session".to_string(),
+                    current_delegate_run_id: None,
+                    delegate_depth: 0,
+                },
+            )
+            .await
+            .expect("command result");
+
+        assert!(output.contains("status: timeout"));
+        assert!(output.contains("timeout_seconds: 1"));
     }
 }

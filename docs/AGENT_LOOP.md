@@ -76,7 +76,9 @@ bounded execution.
 
 Approval boundaries apply across equivalent execution surfaces. A destructive shell
 fragment should pause whether it arrives through the terminal tool or through a local
-script runner such as `execute_code`.
+script runner such as `execute_code`. Terminal commands also carry an explicit bounded
+timeout, so short trusted commands can fail fast instead of occupying the loop for the
+default command window.
 
 The registry also supports local `tool_policy` preflight rules. Common sensitive paths
 such as `.env*`, `.ssh/*`, `.aws/*`, private keys, and credential config files are

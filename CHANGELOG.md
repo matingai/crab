@@ -16,6 +16,8 @@ and uses semantic versioning once stable release boundaries are established.
 - Direct web-fetch tools now pass through `network_policy`, which blocks loopback,
   private, link-local, and metadata-style hosts by default unless local config allows
   them.
+- The `terminal` tool now accepts a bounded `timeout_seconds` argument, matching the
+  controlled timeout surface already available in `execute_code`.
 - Tool observations, live previews, session timeline details, archive records, and saved
   assistant tool-call arguments now redact common credential patterns before persistence.
 - Subdirectory instruction discovery now returns root-to-leaf context stacks, tracks loaded

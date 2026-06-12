@@ -171,6 +171,7 @@ agent loop 是这个项目真正的中心。Crab 把主 agent 设计成一个面
 重要安全说明：
 
 - terminal 工具默认关闭，需要通过 `--enable-shell` 或 `HERMES_RS_ENABLE_SHELL=1` 显式启用。
+  terminal 调用支持 1 到 300 秒的受限 `timeout_seconds` 参数。
 - 浏览器、文件、Office、shell 相关工具会在本机执行。请只在可信工作区使用，并在敏感操作前审阅模型输出。
 - `execute_code` 同样受 shell 开关约束；当 inline 或文件脚本里包含明显破坏性 shell 片段时，会先暂停等待
   approval。

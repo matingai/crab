@@ -213,7 +213,8 @@ schemas, and local data formats may change before a stable release.
 Important safety notes:
 
 - The terminal tool is disabled by default. Enable it explicitly with `--enable-shell` or
-  `HERMES_RS_ENABLE_SHELL=1`.
+  `HERMES_RS_ENABLE_SHELL=1`. Terminal calls accept a bounded `timeout_seconds` parameter
+  from 1 to 300 seconds.
 - Browser, file, Office, and shell-related tools operate on the local machine. Use a
   trusted workspace and review model outputs before approving sensitive actions.
 - `execute_code` is also gated by shell access and pauses for approval when inline or

@@ -42,7 +42,8 @@ Reports are especially valuable when they involve:
 
 ## Current Safety Posture
 
-- The terminal tool is disabled by default and must be enabled explicitly.
+- The terminal tool is disabled by default and must be enabled explicitly. Terminal calls
+  use a bounded timeout and can be shortened per call with `timeout_seconds`.
 - The terminal tool and `execute_code` share destructive shell-risk checks; obvious
   dangerous command fragments pause for approval before execution.
 - Local `tool_policy` config protects common sensitive paths by default, including

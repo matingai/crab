@@ -145,9 +145,12 @@ Completion events also include elapsed duration for each tool call and each para
 batch. Failed tool calls carry a stable `error_kind` such as `invalid_json_arguments`,
 `invalid_arguments`, `tool_policy_denied`, `approval_denied`, `process_exit`, or
 `timeout`, so a UI and the next model turn can distinguish malformed arguments from
-environment, policy, and execution failures. That timing and error metadata is shown in
-the desktop timeline, giving users a concrete feel for which parts of the loop are doing
-work, waiting on tools, repairable by the model, or worth optimizing.
+environment, policy, and execution failures. Malformed JSON and typed argument failures
+also include a compact `expected_arguments_schema` hint, giving the next model turn a
+direct repair target instead of asking it to infer the tool shape from memory. That timing
+and error metadata is shown in the desktop timeline, giving users a concrete feel for
+which parts of the loop are doing work, waiting on tools, repairable by the model, or
+worth optimizing.
 
 The point is to preserve meaning, not just bytes.
 

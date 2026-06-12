@@ -29,6 +29,9 @@ and uses semantic versioning once stable release boundaries are established.
 - Tool completion events now include a stable `error_kind` for malformed JSON arguments,
   invalid tool arguments, tool-policy denials, approval denials, non-zero process exits,
   timeouts, and generic execution failures.
+- Malformed JSON and typed tool-argument errors now include a compact
+  `expected_arguments_schema` hint so the next model turn can repair the tool call with
+  less guesswork.
 - Tool and parallel-batch completion events now include elapsed duration, and the desktop
   shell surfaces that timing in the live execution timeline.
 - Turn start events now include a turn id, resumed flag, input character count, and

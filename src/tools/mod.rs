@@ -304,6 +304,7 @@ const PRIMARY_MODEL_DETAILED_TOOLS: &[&str] = &[
     "web_extract",
     "write_file",
 ];
+const TOOL_ARGUMENT_SCHEMA_HINT_MAX_CHARS: usize = 1200;
 
 fn insert_tool<T>(
     tools: &mut BTreeMap<String, Box<dyn Tool>>,
@@ -498,11 +499,15 @@ impl ToolRegistry {
         let Some(tool) = self.tools.get(name) else {
             return format!("tool_error: unknown tool `{name}`");
         };
+        let definition = tool.definition();
 
         let arguments = match parse_tool_args(raw_arguments) {
             Ok(value) => value,
             Err(error) => {
-                return format!("tool_error: invalid JSON arguments for `{name}`: {error}");
+                return redact_secrets(append_argument_schema_hint(
+                    format!("tool_error: invalid JSON arguments for `{name}`: {error:#}"),
+                    &definition,
+                ));
             }
         };
 
@@ -536,7 +541,14 @@ impl ToolRegistry {
 
         let result = match tool.execute(arguments, ctx).await {
             Ok(output) => output,
-            Err(error) => format!("tool_error: {error:#}"),
+            Err(error) => {
+                let message = format!("tool_error: {error:#}");
+                if is_invalid_argument_error(&message) {
+                    append_argument_schema_hint(message, &definition)
+                } else {
+                    message
+                }
+            }
         };
         let result = redact_secrets(result);
 
@@ -655,6 +667,37 @@ fn strip_schema_annotations(value: Value) -> Value {
         }
         other => other,
     }
+}
+
+fn append_argument_schema_hint(message: String, definition: &ToolDefinition) -> String {
+    let Some(schema) = tool_argument_schema_hint(definition) else {
+        return message;
+    };
+    format!("{message}\nexpected_arguments_schema: {schema}")
+}
+
+fn tool_argument_schema_hint(definition: &ToolDefinition) -> Option<String> {
+    let schema = strip_schema_annotations(definition.function.parameters.clone());
+    let serialized = serde_json::to_string(&schema).ok()?;
+    Some(truncate_inline(
+        serialized,
+        TOOL_ARGUMENT_SCHEMA_HINT_MAX_CHARS,
+    ))
+}
+
+fn is_invalid_argument_error(message: &str) -> bool {
+    let lowered = message.to_ascii_lowercase();
+    lowered.contains("invalid ") && lowered.contains(" arguments")
+}
+
+fn truncate_inline(text: String, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text;
+    }
+    let keep = max_chars.saturating_sub(3);
+    let mut clipped = text.chars().take(keep).collect::<String>();
+    clipped.push_str("...");
+    clipped
 }
 
 fn parse_tool_args(raw_arguments: &str) -> Result<Value> {
@@ -1177,6 +1220,57 @@ mod tests {
         assert!(!output.contains("sk-test0123456789abcdef"));
     }
 
+    #[tokio::test]
+    async fn invalid_json_arguments_include_schema_hint() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let registry = ToolRegistry::hermes_default(tmp.path());
+        let output = registry
+            .call(
+                "read_file",
+                r#"{"path":"README.md""#,
+                &test_tool_context(tmp.path()),
+            )
+            .await;
+
+        assert!(output.contains("tool_error: invalid JSON arguments for `read_file`"));
+        assert!(output.contains("expected_arguments_schema:"));
+        assert!(output.contains("\"path\""));
+        assert!(output.contains("\"max_bytes\""));
+    }
+
+    #[tokio::test]
+    async fn typed_argument_errors_include_schema_hint() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let registry = ToolRegistry::hermes_default(tmp.path());
+        let output = registry
+            .call(
+                "read_file",
+                &json!({}).to_string(),
+                &test_tool_context(tmp.path()),
+            )
+            .await;
+
+        assert!(output.contains("tool_error: invalid read_file arguments"));
+        assert!(output.contains("expected_arguments_schema:"));
+        assert!(output.contains("\"path\""));
+    }
+
+    #[tokio::test]
+    async fn execution_errors_do_not_include_schema_hint() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let registry = ToolRegistry::hermes_default(tmp.path());
+        let output = registry
+            .call(
+                "read_file",
+                &json!({ "path": "missing.txt" }).to_string(),
+                &test_tool_context(tmp.path()),
+            )
+            .await;
+
+        assert!(output.contains("tool_error: path does not exist"));
+        assert!(!output.contains("expected_arguments_schema:"));
+    }
+
     #[test]
     fn primary_model_definitions_condense_cold_tools_only() {
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -1209,6 +1303,23 @@ mod tests {
                 .description
                 .contains("Office document capability")
         );
+    }
+
+    fn test_tool_context(root: &Path) -> ToolContext {
+        ToolContext {
+            workspace_root: root.to_path_buf(),
+            data_dir: root.to_path_buf(),
+            shell_enabled: false,
+            skill_platform: "cli".to_string(),
+            provider_id: "openai".to_string(),
+            model: "test-model".to_string(),
+            base_url: "https://example.invalid/v1".to_string(),
+            api_key: None,
+            max_iterations: 4,
+            current_session_id: "session".to_string(),
+            current_delegate_run_id: None,
+            delegate_depth: 0,
+        }
     }
 
     fn init_git_repo(root: &Path) {

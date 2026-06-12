@@ -1348,6 +1348,7 @@ impl Agent {
     ) -> Option<ChatMessage> {
         let client = self.background_client();
         let model = self.background_model();
+        let api_mode = self.background_api_mode();
         self.persist_debug_context_snapshot(
             "background_request",
             None,
@@ -1363,6 +1364,7 @@ impl Agent {
             session_id: self.session.session_id.clone(),
             purpose: purpose.to_string(),
             model: model.clone(),
+            api_mode: api_mode.as_str().to_string(),
             message_count: messages.len(),
         });
 
@@ -2991,13 +2993,18 @@ impl Agent {
             let mut request_options = self.take_request_options();
             request_options.previous_response_id =
                 self.response_continuation_id_for_runtime(&runtime);
+            let output_budget_tokens = request_options.max_output_tokens;
+            let uses_response_continuation = request_options.previous_response_id.is_some();
             let session_id = self.session.session_id.clone();
             handler.on_event(AgentEvent::ModelRequestStarted {
                 session_id: session_id.clone(),
                 iteration,
                 model: runtime.model.clone(),
+                api_mode: runtime.api_mode.as_str().to_string(),
                 message_count: messages.len(),
                 tool_count: tool_definitions.len(),
+                output_budget_tokens,
+                uses_response_continuation,
             });
             let request_started_at = Instant::now();
             let assistant_result = match self
@@ -3585,6 +3592,14 @@ impl Agent {
             .as_ref()
             .map(|auxiliary| auxiliary.model.clone())
             .unwrap_or_else(|| self.config.model.clone())
+    }
+
+    fn background_api_mode(&self) -> ApiMode {
+        self.config
+            .auxiliary_model
+            .as_ref()
+            .map(|auxiliary| auxiliary.api_mode)
+            .unwrap_or(self.config.api_mode)
     }
 
     fn rebuild_retry_messages(
@@ -4229,10 +4244,12 @@ impl Agent {
         }
         let background_client = self.background_client();
         let background_model = self.background_model();
+        let background_api_mode = self.background_api_mode();
         handler.on_event(AgentEvent::BackgroundModelRequestStarted {
             session_id: self.session.session_id.clone(),
             purpose: "title_generation".to_string(),
             model: background_model.clone(),
+            api_mode: background_api_mode.as_str().to_string(),
             message_count: 2,
         });
         let request_started_at = Instant::now();
@@ -7660,6 +7677,20 @@ mod tests {
                 && response_preview == "mock final response"
         ));
         assert!(matches!(
+            handler
+                .events()
+                .iter()
+                .find(|event| matches!(event, AgentEvent::ModelRequestStarted { .. })),
+            Some(AgentEvent::ModelRequestStarted {
+                api_mode,
+                output_budget_tokens,
+                uses_response_continuation,
+                ..
+            }) if api_mode == "chat_completions"
+                && output_budget_tokens.is_none()
+                && !uses_response_continuation
+        ));
+        assert!(matches!(
             handler.events().iter().find(|event| matches!(
                 event,
                 AgentEvent::ModelRequestFinished { .. }
@@ -7911,6 +7942,14 @@ mod tests {
                 && *attempt == 1
                 && *output_budget_tokens == Some(9_936)
                 && error_preview.contains("available_tokens")
+        )));
+        assert!(handler.events().iter().any(|event| matches!(
+            event,
+            AgentEvent::ModelRequestStarted {
+                output_budget_tokens,
+                uses_response_continuation,
+                ..
+            } if *output_budget_tokens == Some(9_936) && !uses_response_continuation
         )));
     }
 
@@ -8176,6 +8215,14 @@ mod tests {
             agent.session.title.as_deref(),
             Some("Auxiliary Session Title")
         );
+        assert!(handler.events().iter().any(|event| matches!(
+            event,
+            AgentEvent::BackgroundModelRequestStarted {
+                purpose,
+                api_mode,
+                ..
+            } if purpose == "title_generation" && api_mode == "chat_completions"
+        )));
         assert!(handler.events().iter().any(|event| matches!(
             event,
             AgentEvent::BackgroundModelRequestFinished {

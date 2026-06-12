@@ -38,6 +38,8 @@ and uses semantic versioning once stable release boundaries are established.
   making retry, routing fallback, and auxiliary-model latency visible in the desktop shell.
 - Main and background model completion events now include provider token usage when the
   model API returns it, and the desktop shell displays usage in the live event stream.
+- Model request start events now expose safe request-shape metadata such as API mode,
+  response-continuation usage, and temporary output budgets for live debugging.
 - Model request recovery now emits a structured `model_recovery` event for output-budget
   reduction, retry backoff, and context-overflow compression with a redacted provider-error
   preview.

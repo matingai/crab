@@ -168,8 +168,8 @@ UI can show:
 
 - Turn start and resume boundaries, including turn id and redacted user-input preview.
 - Model request and streaming output.
-- Main and background model request completion status, duration, and provider token usage
-  when available.
+- Main and background model request mode, continuation/budget metadata, completion status,
+  duration, and provider token usage when available.
 - Model recovery attempts for output-budget reduction, transient retry backoff, and
   context-overflow compression, without exposing full provider errors.
 - Prompt context preparation budgets, retained blocks, trimming labels, and preparation

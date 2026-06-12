@@ -2979,7 +2979,7 @@ function summarizeEvent(event: Record<string, unknown> & { type?: string }): str
     case "assistant_delta":
       return truncate(String(event.delta || ""), 80);
     case "model_request_started":
-      return `请求模型 ${String(event.model || "")}，${String(event.message_count || 0)} 条消息`;
+      return `请求模型 ${String(event.model || "")}${formatModelRequestMetadata(event)}，${String(event.message_count || 0)} 条消息`;
     case "model_request_finished":
       if (String(event.status || "ok") !== "ok") {
         return `模型请求${formatModelRequestStatus(String(event.status || ""))}${formatEventDuration(event.duration_ms)}${formatTokenUsageSummary(event)} ${truncate(String(event.content_preview || ""), 60)}`;
@@ -2988,7 +2988,7 @@ function summarizeEvent(event: Record<string, unknown> & { type?: string }): str
         ? `模型返回 ${String(event.tool_call_count || 0)} 个工具调用${formatEventDuration(event.duration_ms)}${formatTokenUsageSummary(event)}`
         : `模型返回回复 ${truncate(String(event.content_preview || ""), 60)}${formatEventDuration(event.duration_ms)}${formatTokenUsageSummary(event)}`;
     case "background_model_request_started":
-      return `后台 ${String(event.purpose || "")} 请求 ${String(event.model || "")}`;
+      return `后台 ${String(event.purpose || "")} 请求 ${String(event.model || "")}${formatModelRequestMetadata(event)}`;
     case "background_model_request_finished":
       return `后台 ${String(event.purpose || "")} ${String(event.status || "")}${formatEventDuration(event.duration_ms)}${formatTokenUsageSummary(event)} ${truncate(String(event.content_preview || ""), 60)}`;
     case "context_prepared":
@@ -3218,6 +3218,33 @@ function formatModelRequestStatus(status: string): string {
     default:
       return status ? ` ${status}` : "结束";
   }
+}
+
+function formatApiMode(value: unknown): string {
+  switch (String(value || "")) {
+    case "responses":
+      return "Responses";
+    case "chat_completions":
+      return "Chat";
+    default:
+      return String(value || "");
+  }
+}
+
+function formatModelRequestMetadata(event: Record<string, unknown>): string {
+  const parts: string[] = [];
+  const apiMode = formatApiMode(event.api_mode);
+  if (apiMode) {
+    parts.push(apiMode);
+  }
+  if (event.uses_response_continuation) {
+    parts.push("续接");
+  }
+  const outputBudget = readPositiveNumber(event.output_budget_tokens);
+  if (outputBudget != null) {
+    parts.push(`输出 ${outputBudget}`);
+  }
+  return parts.length ? ` · ${parts.join(" · ")}` : "";
 }
 
 function formatContextTrimSummary(event: Record<string, unknown>): string {
@@ -4807,7 +4834,7 @@ export default function Page() {
         setAgentActivity(`正在准备第 ${String(event.iteration || 1)} 轮`);
         break;
       case "model_request_started":
-        setAgentActivity(`正在请求 ${String(event.model || "模型")}`);
+        setAgentActivity(`正在请求 ${String(event.model || "模型")}${formatModelRequestMetadata(event)}`);
         break;
       case "model_request_finished":
         {
@@ -4824,7 +4851,9 @@ export default function Page() {
         }
         break;
       case "background_model_request_started":
-        setAgentActivity(`后台 ${String(event.purpose || "任务")} 正在请求 ${String(event.model || "模型")}`);
+        setAgentActivity(
+          `后台 ${String(event.purpose || "任务")} 正在请求 ${String(event.model || "模型")}${formatModelRequestMetadata(event)}`,
+        );
         break;
       case "background_model_request_finished":
         {

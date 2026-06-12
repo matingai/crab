@@ -85,8 +85,11 @@ pub enum AgentEvent {
         session_id: String,
         iteration: usize,
         model: String,
+        api_mode: String,
         message_count: usize,
         tool_count: usize,
+        output_budget_tokens: Option<usize>,
+        uses_response_continuation: bool,
     },
     ModelRequestFinished {
         session_id: String,
@@ -104,6 +107,7 @@ pub enum AgentEvent {
         session_id: String,
         purpose: String,
         model: String,
+        api_mode: String,
         message_count: usize,
     },
     BackgroundModelRequestFinished {

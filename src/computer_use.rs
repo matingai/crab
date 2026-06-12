@@ -454,11 +454,29 @@ mod platform {
             "on error",
             "set boundsText to \"\"",
             "end try",
+            "try",
+            "set enabledText to enabled of elementRef as text",
+            "on error",
+            "set enabledText to \"\"",
+            "end try",
+            "try",
+            "set focusedText to focused of elementRef as text",
+            "on error",
+            "set focusedText to \"\"",
+            "end try",
+            "try",
+            "set selectedText to selected of elementRef as text",
+            "on error",
+            "set selectedText to \"\"",
+            "end try",
             "set itemIndex to itemIndex + 1",
             "set lineText to \"- @u\" & itemIndex & \" role=\" & quoted form of (my cleanText(roleText))",
             "if nameText is not \"\" then set lineText to lineText & \" name=\" & quoted form of (my cleanText(nameText))",
             "if valueText is not \"\" then set lineText to lineText & \" value=\" & quoted form of (my cleanText(valueText))",
             "set lineText to lineText & boundsText",
+            "if enabledText is \"false\" then set lineText to lineText & \" enabled=false\"",
+            "if focusedText is \"true\" then set lineText to lineText & \" focused=true\"",
+            "if selectedText is \"true\" then set lineText to lineText & \" selected=true\"",
             "set localOutput to linefeed & my indentFor(depth) & lineText",
             "if depth is less than maxDepth then",
             "try",
@@ -729,6 +747,9 @@ mod platform {
             assert!(script.contains("ui_tree:"));
             assert!(script.contains("@u"));
             assert!(script.contains("role description"));
+            assert!(script.contains("enabled=false"));
+            assert!(script.contains("focused=true"));
+            assert!(script.contains("selected=true"));
         }
 
         #[test]

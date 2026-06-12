@@ -56,7 +56,8 @@ Example tool arguments:
 
 Snapshot output includes the frontmost app name, process id, and a bounded UI tree. Each
 snapshot also returns a `snapshot_id`. Each visible element line uses a stable reference
-for that snapshot and includes the best available role, name, value, and bounds:
+for that snapshot and includes the best available role, name, value, bounds, and compact
+state flags:
 
 ```text
 snapshot_id: cu_7d3c0a5d21a9e472
@@ -64,11 +65,15 @@ frontmost_app: Finder
 pid: 123
 ui_tree:
 - @u1 role='window' name='Documents' bounds=(80,80,900x640)
-  - @u2 role='button' name='Back' bounds=(94,96,28x28)
+  - @u2 role='button' name='Back' bounds=(94,96,28x28) focused=true
+  - @u3 role='button' name='Continue' bounds=(740,680,120x32) enabled=false
 ```
 
 The refs are observation handles only in the current milestone. They are designed so
 approval-gated actions can target a concrete element without guessing coordinates.
+Snapshot state flags are intentionally sparse: `focused=true` and `selected=true` are
+shown only when present, and `enabled=false` marks unavailable controls without adding
+noise to every enabled element.
 
 `wait` is the read-only observation loop for native UI work. It returns a fresh
 `snapshot_id` and the latest snapshot whether the condition matched or timed out, so the

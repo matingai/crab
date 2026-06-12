@@ -51,7 +51,7 @@ tool call 和 approval policy。
 ```
 
 snapshot 输出包含 `snapshot_id`、前台应用名称、进程 id 和有界 UI tree。每一行可见元素都会带上
-本次快照内稳定的引用，并尽量包含 role、name、value 和 bounds：
+本次快照内稳定的引用，并尽量包含 role、name、value、bounds 和紧凑状态标记：
 
 ```text
 snapshot_id: cu_7d3c0a5d21a9e472
@@ -59,11 +59,14 @@ frontmost_app: Finder
 pid: 123
 ui_tree:
 - @u1 role='window' name='Documents' bounds=(80,80,900x640)
-  - @u2 role='button' name='Back' bounds=(94,96,28x28)
+  - @u2 role='button' name='Back' bounds=(94,96,28x28) focused=true
+  - @u3 role='button' name='Continue' bounds=(740,680,120x32) enabled=false
 ```
 
 当前里程碑中这些 refs 是观察句柄。它们的设计目标是让经过 approval 的动作可以定位到具体元素，
 而不是猜屏幕坐标。
+snapshot 状态标记会刻意保持稀疏：`focused=true` 和 `selected=true` 只在存在时显示，
+`enabled=false` 用来标记不可用控件，不会给每个正常可用元素增加噪声。
 
 `wait` 是原生 UI 工作流里的只读观察循环。无论条件匹配还是超时，它都会返回新的 `snapshot_id`
 和最后一次 snapshot，方便下一步动作基于最新证据执行：

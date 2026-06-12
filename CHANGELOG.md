@@ -32,6 +32,8 @@ and uses semantic versioning once stable release boundaries are established.
   redacted user-input preview instead of exposing the full prompt in the event stream.
 - Agent turns now emit a `turn_finished` summary event with status, elapsed duration,
   tool-call count, and a redacted response preview so UIs can show a clear run boundary.
+- User-requested stops now emit a structured `turn_interrupted` event with turn id, runtime
+  phase, reason, and redacted message before the legacy stop error is returned.
 - Main and background model completion events now include status-aware elapsed duration,
   making retry, routing fallback, and auxiliary-model latency visible in the desktop shell.
 - Model request recovery now emits a structured `model_recovery` event for output-budget

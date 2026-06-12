@@ -153,6 +153,7 @@ struct TurnModelRuntime {
 }
 
 const APPROVAL_PENDING_RESPONSE: &str = "approval_pending";
+const STOP_REQUESTED_MESSAGE: &str = "stop requested for current session";
 const GOAL_STATE_COMPACTION_PROMPT: &str = "You are compressing an agent's goal-state working memory for the next action. Keep only the most decision-relevant information for the active goal. Do not infer new facts. Prefer explicit constraints, blockers, verified facts, recent tool observations, and the next actionable context. Return strict JSON with this shape: {\"cognition\":\"...\",\"hot_data\":\"...\",\"confidence\":0.0}. The `cognition` field should summarize the durable beliefs and open uncertainties. The `hot_data` field should summarize the freshest task-relevant runtime facts. Keep each field under 240 characters.";
 const GOAL_STATE_RECONCILE_PROMPT: &str = "You are reconciling an agent's goal-state after a tool outcome. Return only justified updates supported by the current goal state and the tool result. Do not invent new facts. Prefer updating mission, phase, focus, reflection, goal status, confidence, and explicit cognition/risk/hot-data items when the tool outcome materially changes them. Each returned goal, cognition, or hot-data item may include `evidence` and `evidence_items`, where `evidence_items` is an array of objects with shape {\"source_type\":\"tool_output\",\"source\":\"...\",\"summary\":\"...\",\"relation\":\"supports\",\"observed_at_unix\":123}. Return strict JSON with this shape: {\"mission\":\"...\",\"phase\":\"act\",\"current_focus_goal_id\":\"...\",\"reflection\":\"...\",\"goals\":[{\"id\":\"...\",\"title\":\"...\",\"level\":\"current\",\"status\":\"blocked\",\"confidence\":0.5,\"parent_id\":\"...\",\"summary\":\"...\",\"evidence\":\"...\",\"evidence_items\":[...] }],\"cognition\":[{\"id\":\"...\",\"kind\":\"risk\",\"content\":\"...\",\"confidence\":0.5,\"evidence\":\"...\",\"evidence_items\":[...]}],\"hot_data\":[{\"id\":\"...\",\"content\":\"...\",\"confidence\":0.5,\"source\":\"...\",\"goal_id\":\"...\",\"expires_at_unix\":123,\"evidence_items\":[...]}]}. Every returned item must be complete enough to store directly. Use existing ids when updating existing items. Omit fields and items that should not change.";
 const GOAL_STATE_TURN_RECONCILE_PROMPT: &str = "You are reconciling an agent's goal-state at the end of a turn. Use the final assistant response, the current turn transcript, and the existing goal-state to produce only justified updates. Do not invent new facts. Prefer deciding whether the focus goal remains in progress, is blocked, or has succeeded, whether the phase should change, and whether reflection should capture a strategy adjustment. Each returned goal, cognition, or hot-data item may include `evidence` and `evidence_items`, where `evidence_items` is an array of objects with shape {\"source_type\":\"assistant_response\",\"source\":\"...\",\"summary\":\"...\",\"relation\":\"supports\",\"observed_at_unix\":123}. Return strict JSON with this shape: {\"mission\":\"...\",\"phase\":\"verify\",\"current_focus_goal_id\":\"...\",\"reflection\":\"...\",\"goals\":[{\"id\":\"...\",\"title\":\"...\",\"level\":\"current\",\"status\":\"succeeded\",\"confidence\":0.5,\"parent_id\":\"...\",\"summary\":\"...\",\"evidence\":\"...\",\"evidence_items\":[...]}],\"cognition\":[{\"id\":\"...\",\"kind\":\"decision\",\"content\":\"...\",\"confidence\":0.5,\"evidence\":\"...\",\"evidence_items\":[...]}],\"hot_data\":[{\"id\":\"...\",\"content\":\"...\",\"confidence\":0.5,\"source\":\"...\",\"goal_id\":\"...\",\"expires_at_unix\":123,\"evidence_items\":[...]}]}. Use existing ids when updating existing items. Omit anything that should not change.";
@@ -1537,6 +1538,23 @@ impl Agent {
         );
     }
 
+    fn emit_turn_interrupted(&self, handler: &mut dyn EventHandler, phase: &str, message: &str) {
+        let turn_id = self.active_archive_turn_id();
+        let message = redacted_truncated(message, 500);
+        handler.on_event(AgentEvent::TurnInterrupted {
+            session_id: self.session.session_id.clone(),
+            turn_id,
+            phase: phase.to_string(),
+            reason: "user_stop".to_string(),
+            message: message.clone(),
+        });
+        self.append_archive_event(
+            "turn_interrupted",
+            "Turn interrupted",
+            &format!("phase={phase}; reason=user_stop; {message}"),
+        );
+    }
+
     fn count_timeline_tools_for_turn(&self, turn_id: &str) -> usize {
         self.session
             .timeline
@@ -1947,7 +1965,7 @@ impl Agent {
         let tool_definitions = self.tools.primary_model_definitions();
 
         for iteration in 1..=self.config.max_iterations {
-            self.check_stop_requested(handler)?;
+            self.check_stop_requested_in_phase(handler, "iteration_preflight")?;
             info!("starting agent iteration {iteration}");
             handler.on_event(AgentEvent::IterationStarted {
                 session_id: self.session.session_id.clone(),
@@ -2129,7 +2147,7 @@ impl Agent {
             }
 
             for call in tool_calls {
-                self.check_stop_requested(handler)?;
+                self.check_stop_requested_in_phase(handler, "sequential_tool")?;
                 progress.turn_tool_calls += 1;
                 progress.turn_tool_names.push(call.function.name.clone());
                 if call.function.name == "skill_manage" {
@@ -3639,15 +3657,20 @@ impl Agent {
         self.append_archive_event("context_compacted", "Context compacted", &message);
     }
 
-    fn check_stop_requested(&self, handler: &mut dyn EventHandler) -> Result<()> {
+    fn check_stop_requested_in_phase(
+        &self,
+        handler: &mut dyn EventHandler,
+        phase: &str,
+    ) -> Result<()> {
         if !stop_requested(&self.config.data_dir, &self.session.session_id) {
             return Ok(());
         }
+        self.emit_turn_interrupted(handler, phase, STOP_REQUESTED_MESSAGE);
         handler.on_event(AgentEvent::Error {
             session_id: self.session.session_id.clone(),
-            message: "stop requested for current session".to_string(),
+            message: STOP_REQUESTED_MESSAGE.to_string(),
         });
-        bail!("stop requested for current session");
+        bail!(STOP_REQUESTED_MESSAGE);
     }
 
     fn emit_skill_nudge_if_needed(
@@ -3709,7 +3732,7 @@ impl Agent {
         handler: &mut dyn EventHandler,
         progress: &mut TurnProgress,
     ) -> Result<Option<String>> {
-        self.check_stop_requested(handler)?;
+        self.check_stop_requested_in_phase(handler, "parallel_batch")?;
         let batch_total = tool_calls.len();
         let batch_id = format!(
             "parallel-{iteration}-{}",
@@ -4147,7 +4170,7 @@ impl Agent {
             StoredBatchStatus::Canceled,
         );
         let _ = self.persist_session();
-        self.check_stop_requested(handler)
+        self.check_stop_requested_in_phase(handler, "parallel_batch")
     }
 
     fn persist_session(&mut self) -> Result<std::path::PathBuf> {
@@ -7697,6 +7720,19 @@ mod tests {
                 && *completed_calls == 1
                 && *total_calls == 3
                 && status == "canceled"
+        ));
+        assert!(matches!(
+            handler.events().get(1),
+            Some(AgentEvent::TurnInterrupted {
+                turn_id,
+                phase,
+                reason,
+                message,
+                ..
+            }) if turn_id == "turn-1"
+                && phase == "parallel_batch"
+                && reason == "user_stop"
+                && message.contains("stop requested")
         ));
         assert!(matches!(
             handler.events().last(),

@@ -22,6 +22,13 @@ pub enum AgentEvent {
         tool_call_count: usize,
         response_preview: String,
     },
+    TurnInterrupted {
+        session_id: String,
+        turn_id: String,
+        phase: String,
+        reason: String,
+        message: String,
+    },
     IterationStarted {
         session_id: String,
         iteration: usize,
@@ -210,6 +217,7 @@ impl AgentEvent {
             Self::SessionReady { .. } => "session_ready",
             Self::TurnStarted { .. } => "turn_started",
             Self::TurnFinished { .. } => "turn_finished",
+            Self::TurnInterrupted { .. } => "turn_interrupted",
             Self::IterationStarted { .. } => "iteration_started",
             Self::AssistantDelta { .. } => "assistant_delta",
             Self::SkillMatched { .. } => "skill_matched",

@@ -2970,6 +2970,12 @@ function summarizeEvent(event: Record<string, unknown> & { type?: string }): str
       }
     case "turn_finished":
       return `本轮 ${formatTurnStatus(String(event.status || ""))}，${String(event.tool_call_count || 0)} 个工具${formatEventDuration(event.duration_ms)}`;
+    case "turn_interrupted":
+      {
+        const phase = formatTurnInterruptedPhase(String(event.phase || ""));
+        const message = truncate(String(event.message || event.reason || ""), 80);
+        return `本轮已中断${phase ? ` · ${phase}` : ""}${message ? ` · ${message}` : ""}`;
+      }
     case "assistant_delta":
       return truncate(String(event.delta || ""), 80);
     case "model_request_started":
@@ -3156,6 +3162,21 @@ function formatTurnStatus(status: string): string {
       return "失败";
     default:
       return status || "已结束";
+  }
+}
+
+function formatTurnInterruptedPhase(phase: string): string {
+  switch (phase) {
+    case "iteration_preflight":
+      return "迭代准备";
+    case "parallel_batch":
+      return "并发工具批次";
+    case "sequential_tool":
+      return "工具执行";
+    case "agent_loop":
+      return "主循环";
+    default:
+      return phase;
   }
 }
 
@@ -4743,6 +4764,18 @@ export default function Page() {
           );
         }
         break;
+      case "turn_interrupted":
+        {
+          const phase = formatTurnInterruptedPhase(String(event.phase || ""));
+          setAgentActivity(`已中断${phase ? ` · ${phase}` : ""}`);
+          setRunIdle();
+          discardPendingUserMessage();
+          pushNotice(
+            "nudge",
+            queuedRedirectRef.current ? "当前步骤已中断，准备执行最新指令。" : "当前步骤已中断。",
+          );
+        }
+        break;
       case "iteration_started":
         setAgentActivity(`正在准备第 ${String(event.iteration || 1)} 轮`);
         break;
@@ -5017,12 +5050,7 @@ export default function Page() {
         setAgentActivity("正在准备");
         setRunIdle();
         discardPendingUserMessage();
-        if (
-          String(event.message || "").includes("stop requested for current session") &&
-          queuedRedirectRef.current
-        ) {
-          pushNotice("nudge", "当前步骤已收到中断请求。");
-        } else {
+        if (!String(event.message || "").includes("stop requested for current session")) {
           pushNotice("error", String(event.message || ""));
         }
         break;

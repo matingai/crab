@@ -35,6 +35,9 @@ and uses semantic versioning once stable release boundaries are established.
 - Prompt context preparation now emits a structured `context_prepared` event with projected
   tokens, request budget, message counts, retained context blocks, trim labels, and elapsed
   preparation time without exposing raw prompt content.
+- Desktop installer packaging now passes explicit Tauri targets in CI and emits a sibling
+  `.json` release manifest beside each DMG or Windows setup `.exe`, including version,
+  target, bundle type, and SHA-256 metadata.
 - Subdirectory instruction discovery now returns root-to-leaf context stacks, tracks loaded
   hint files instead of permanently marking empty directories, and labels blocked context
   with the exact display path.

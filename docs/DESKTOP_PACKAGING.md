@@ -15,7 +15,10 @@ Tagged releases build these desktop installer assets:
 | Windows x64 | `crab-desktop-vX.Y.Z-x86_64-pc-windows-msvc-setup.exe` |
 
 Each installer has a matching `.sha256` checksum file. CLI archives are published beside
-the installers for users who prefer terminal-first workflows.
+the installers for users who prefer terminal-first workflows. Desktop installers also get
+a small `.json` release manifest with the asset name, version, target triple, bundle type,
+and SHA-256 checksum. The manifest is intended for download pages, mirrors, and future
+installer discovery without scraping release notes.
 
 ## Local Build
 
@@ -41,8 +44,19 @@ bash scripts/package-desktop.sh
 ```
 
 The helper writes release-ready assets into `dist/`, for example
-`crab-desktop-v0.1.4-aarch64-apple-darwin.dmg`, plus a matching `.sha256` checksum. Tauri's
-native bundle output remains under `desktop-shell/src-tauri/target/release/bundle/`.
+`crab-desktop-v0.1.4-aarch64-apple-darwin.dmg`, plus matching `.sha256` and `.json`
+metadata files. Tauri's native bundle output remains under
+`desktop-shell/src-tauri/target/release/bundle/`.
+
+Set `CRAB_TARGET` when you want the helper to pass an explicit Tauri target and label the
+asset with that target triple:
+
+```bash
+CRAB_TARGET=aarch64-apple-darwin scripts/package-desktop.sh
+```
+
+CI uses this mode for every desktop matrix entry. Explicit targets write Tauri output
+under `desktop-shell/src-tauri/target/<target>/release/bundle/`.
 
 For direct Tauri debugging, run the bundler from `desktop-shell/`:
 
@@ -61,7 +75,13 @@ Use `--bundles nsis` on Windows.
 - `windows-2025` for Windows x64 NSIS setup `.exe`.
 
 The release workflow uses `scripts/package-desktop.sh` so local packaging and CI packaging
-share the same stable asset names and SHA-256 checksum behavior.
+share the same stable asset names, SHA-256 checksum behavior, and release manifest shape.
+
+Release assets should include, for each desktop installer:
+
+- the installer itself (`.dmg` or setup `.exe`);
+- a sibling `.sha256` checksum file;
+- a sibling `.json` manifest file.
 
 ## Signing And Trust
 
@@ -77,6 +97,23 @@ A production-grade desktop release should add:
 - macOS notarization and stapling.
 - Windows Authenticode signing.
 - A documented checksum verification path for every installer.
+
+## Checksum Verification
+
+For macOS or Linux:
+
+```bash
+shasum -a 256 -c crab-desktop-vX.Y.Z-aarch64-apple-darwin.dmg.sha256
+```
+
+For Windows PowerShell:
+
+```powershell
+Get-FileHash .\crab-desktop-vX.Y.Z-x86_64-pc-windows-msvc-setup.exe -Algorithm SHA256
+Get-Content .\crab-desktop-vX.Y.Z-x86_64-pc-windows-msvc-setup.exe.sha256
+```
+
+The two SHA-256 values should match before the installer is opened.
 
 ## Versioning
 

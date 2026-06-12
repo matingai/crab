@@ -50,6 +50,7 @@ Desktop installers:
 - `crab-desktop-vX.Y.Z-x86_64-apple-darwin.dmg`
 - `crab-desktop-vX.Y.Z-x86_64-pc-windows-msvc-setup.exe`
 - matching `.sha256` checksum files
+- matching `.json` release manifests with version, target, bundle type, and SHA-256
 
 CLI archives:
 
@@ -77,6 +78,9 @@ Desktop installers are built from `desktop-shell/src-tauri` with Tauri:
 
 - macOS builds publish unsigned DMGs for Apple Silicon and Intel.
 - Windows builds publish an unsigned NSIS setup `.exe`.
+- The packaging helper passes explicit Tauri targets in CI and writes stable asset names
+  into `dist/`.
+- Each installer should be uploaded with both its checksum and JSON manifest.
 - The 0.1.x installers are preview builds; expect Gatekeeper or SmartScreen warnings until
   Apple Developer ID, notarization, and Windows Authenticode signing are wired into CI.
 

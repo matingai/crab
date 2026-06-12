@@ -5,20 +5,29 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_root}"
 
 version="${CRAB_VERSION:-v$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["version"])')}"
-target="${CRAB_TARGET:-$(rustc -vV | awk '/^host:/ { print $2 }')}"
+target_was_explicit=0
+if [[ -n "${CRAB_TARGET:-}" ]]; then
+  target="${CRAB_TARGET}"
+  target_was_explicit=1
+else
+  target="$(rustc -vV | awk '/^host:/ { print $2 }')"
+fi
 bundle="${CRAB_DESKTOP_BUNDLE:-}"
 extension=""
 asset_suffix=""
+platform=""
 
 case "${target}" in
   *apple-darwin*)
     bundle="${bundle:-dmg}"
     extension="dmg"
+    platform="macOS"
     ;;
   *windows*)
     bundle="${bundle:-nsis}"
     extension="exe"
     asset_suffix="-setup"
+    platform="Windows"
     ;;
   *)
     echo "Unsupported desktop installer target: ${target}" >&2
@@ -31,10 +40,12 @@ case "${bundle}" in
   dmg)
     extension="dmg"
     asset_suffix=""
+    platform="${platform:-macOS}"
     ;;
   nsis)
     extension="exe"
     asset_suffix="-setup"
+    platform="${platform:-Windows}"
     ;;
   *)
     echo "Unsupported Tauri desktop bundle: ${bundle}" >&2
@@ -62,14 +73,21 @@ restore_next_env() {
 
 trap restore_next_env EXIT
 
-rm -rf "desktop-shell/src-tauri/target/release/bundle/${bundle}"
+tauri_args=("--bundles" "${bundle}")
+build_release_dir="desktop-shell/src-tauri/target/release"
+if [[ "${target_was_explicit}" == "1" ]]; then
+  tauri_args=("--target" "${target}" "${tauri_args[@]}")
+  build_release_dir="desktop-shell/src-tauri/target/${target}/release"
+fi
+
+rm -rf "${build_release_dir}/bundle/${bundle}"
 
 (
   cd desktop-shell
-  npm run tauri:release -- --bundles "${bundle}"
+  npm run tauri:release -- "${tauri_args[@]}"
 )
 
-bundle_dir="desktop-shell/src-tauri/target/release/bundle"
+bundle_dir="${build_release_dir}/bundle"
 installer="$(find "${bundle_dir}" -type f -name "*.${extension}" | sort | head -n 1)"
 if [[ -z "${installer}" ]]; then
   echo "No .${extension} installer found in ${bundle_dir}" >&2
@@ -86,6 +104,22 @@ if command -v shasum >/dev/null 2>&1; then
 else
   (cd dist && sha256sum "${asset_name}" > "${asset_name}.sha256")
 fi
+checksum="$(awk '{ print $1 }' "dist/${asset_name}.sha256")"
+cat > "dist/${asset_name}.json" <<EOF
+{
+  "name": "${asset_name}",
+  "version": "${version}",
+  "target": "${target}",
+  "platform": "${platform}",
+  "bundle": "${bundle}",
+  "kind": "desktop-installer",
+  "file": "${asset_name}",
+  "sha256": "${checksum}",
+  "unsigned_preview": true,
+  "install_hint": "Download this installer from the matching GitHub release and verify the .sha256 file before opening it."
+}
+EOF
 
 echo "Created dist/${asset_name}"
 echo "Created dist/${asset_name}.sha256"
+echo "Created dist/${asset_name}.json"

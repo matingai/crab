@@ -24,7 +24,24 @@ Crab 可以作为桌面 app、独立 CLI 二进制，或者从源码安装。0.1
 macOS 打开 DMG 后把 Crab 拖入 Applications。Windows 直接运行 setup `.exe`。
 
 当前 0.1.x 桌面安装包是未签名 preview build。macOS Gatekeeper 或 Windows SmartScreen 可能在首次
-启动前提示风险。测试 GitHub release 产物时，建议同时校验对应 `.sha256` 文件。
+启动前提示风险。测试 GitHub release 产物时，建议同时校验对应 `.sha256` 文件。每个桌面安装包
+还会带一个同名 `.json` manifest，记录 target triple、bundle 类型、文件名和 SHA-256，方便后续下载页、
+镜像或自动安装逻辑使用。
+
+macOS 校验：
+
+```bash
+shasum -a 256 -c crab-desktop-vX.Y.Z-aarch64-apple-darwin.dmg.sha256
+```
+
+Windows PowerShell 校验：
+
+```powershell
+Get-FileHash .\crab-desktop-vX.Y.Z-x86_64-pc-windows-msvc-setup.exe -Algorithm SHA256
+Get-Content .\crab-desktop-vX.Y.Z-x86_64-pc-windows-msvc-setup.exe.sha256
+```
+
+打开安装包前，两个 SHA-256 值应该一致。
 
 ## 从 GitHub Release 安装 CLI
 
@@ -165,6 +182,13 @@ scripts/package-desktop.sh
 ```
 
 macOS 下会把 DMG 写入 `dist/`。Windows 下可以在 Git Bash 中运行同一脚本生成 NSIS setup `.exe`。
+脚本也会生成同名 `.sha256` 校验文件和 `.json` manifest。需要显式指定 Tauri target 时可以设置
+`CRAB_TARGET`，例如：
+
+```bash
+CRAB_TARGET=aarch64-apple-darwin scripts/package-desktop.sh
+```
+
 CI asset 命名和签名说明见 [桌面安装包文档](DESKTOP_PACKAGING.md)。
 
 ## 本地状态

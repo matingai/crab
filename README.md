@@ -276,8 +276,9 @@ Tagged GitHub releases produce two kinds of downloads:
 - CLI archives for developers and automation: `.tar.gz` on macOS/Linux and `.zip` on
   Windows.
 
-See [Installing Crab](docs/INSTALL.md) for asset names, checksum notes, and direct install
-commands.
+Desktop installers ship with sibling `.sha256` checksum files and `.json` release
+manifests. See [Installing Crab](docs/INSTALL.md) for asset names, checksum notes, and
+direct install commands.
 
 Install the latest macOS/Linux CLI release:
 
@@ -525,13 +526,13 @@ npm run tauri:dev
 Build a local Tauri installer:
 
 ```bash
-cd desktop-shell
-npm run tauri:release -- --bundles dmg
+scripts/package-desktop.sh
 ```
 
-Use `--bundles nsis` on Windows to create the setup `.exe`. See
-[Desktop Packaging](docs/DESKTOP_PACKAGING.md) for release asset names, signing notes, and
-CI behavior.
+On macOS this creates a release-ready DMG in `dist/`; on Windows, run the same helper from
+Git Bash to create the NSIS setup `.exe`. The helper also writes `.sha256` and `.json`
+metadata beside the installer. See [Desktop Packaging](docs/DESKTOP_PACKAGING.md) for
+release asset names, signing notes, and CI behavior.
 
 Check the Tauri backend:
 

@@ -119,6 +119,7 @@ jobs:
       - name: Prepare Rust
         run: |
           rustup default stable
+          rustup target add "${{ matrix.target }}"
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -149,6 +150,7 @@ jobs:
             dist/*.dmg
             dist/*.exe
             dist/*.sha256
+            dist/*.json
           if-no-files-found: error
 
   publish-release:

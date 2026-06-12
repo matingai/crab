@@ -26,7 +26,24 @@ Open the DMG on macOS and drag Crab into Applications. On Windows, run the setup
 
 The current 0.1.x desktop installers are unsigned preview builds. macOS Gatekeeper or
 Windows SmartScreen may warn before launch. Verify the matching `.sha256` checksum when
-testing release builds from GitHub.
+testing release builds from GitHub. Each desktop installer also has a matching `.json`
+manifest that records the target triple, bundle type, file name, and SHA-256 checksum for
+download pages or future installer automation.
+
+For macOS:
+
+```bash
+shasum -a 256 -c crab-desktop-vX.Y.Z-aarch64-apple-darwin.dmg.sha256
+```
+
+For Windows PowerShell:
+
+```powershell
+Get-FileHash .\crab-desktop-vX.Y.Z-x86_64-pc-windows-msvc-setup.exe -Algorithm SHA256
+Get-Content .\crab-desktop-vX.Y.Z-x86_64-pc-windows-msvc-setup.exe.sha256
+```
+
+The SHA-256 values should match before you open the installer.
 
 ## Install The CLI From A GitHub Release
 
@@ -170,8 +187,14 @@ scripts/package-desktop.sh
 ```
 
 On macOS this writes a DMG into `dist/`. On Windows, run the same script from Git Bash to
-write an NSIS setup `.exe`. See [Desktop Packaging](DESKTOP_PACKAGING.md) for CI asset
-names and signing notes.
+write an NSIS setup `.exe`. The helper also writes a sibling `.sha256` checksum and `.json`
+manifest. Set `CRAB_TARGET` when you need an explicitly targeted Tauri build, for example:
+
+```bash
+CRAB_TARGET=aarch64-apple-darwin scripts/package-desktop.sh
+```
+
+See [Desktop Packaging](DESKTOP_PACKAGING.md) for CI asset names and signing notes.
 
 ## Local State
 

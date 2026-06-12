@@ -224,7 +224,8 @@ tagged GitHub releases 会生成两类下载文件：
 - 面向普通用户的桌面安装包：macOS `.dmg` 和 Windows NSIS setup `.exe`。
 - 面向开发者和自动化环境的 CLI 压缩包：macOS/Linux `.tar.gz` 和 Windows `.zip`。
 
-asset 名称、校验说明和直接安装命令见 [安装 Crab](docs/INSTALL.zh-CN.md)。
+桌面安装包会同时发布同名 `.sha256` 校验文件和 `.json` release manifest。asset 名称、校验说明和
+直接安装命令见 [安装 Crab](docs/INSTALL.zh-CN.md)。
 
 安装最新版 macOS/Linux CLI：
 
@@ -462,11 +463,11 @@ npm run tauri:dev
 构建本地 Tauri 安装包：
 
 ```bash
-cd desktop-shell
-npm run tauri:release -- --bundles dmg
+scripts/package-desktop.sh
 ```
 
-Windows 下使用 `--bundles nsis` 生成 setup `.exe`。release asset 命名、签名说明和 CI 行为见
+macOS 下会在 `dist/` 生成 DMG；Windows 下从 Git Bash 运行同一脚本生成 NSIS setup `.exe`。
+脚本还会同时写出 `.sha256` 和 `.json` 元数据。release asset 命名、签名说明和 CI 行为见
 [桌面安装包文档](docs/DESKTOP_PACKAGING.md)。
 
 检查 Tauri backend：

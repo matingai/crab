@@ -363,7 +363,7 @@ impl Tool for ComputerUseTool {
                     save_post_action_snapshot_record(ctx, max_items, max_depth, &result)?;
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
-                    &post_record.snapshot_id,
+                    &post_record,
                     &snapshot_origin_guard,
                     ref_guard.as_ref(),
                     app_guard.as_ref(),
@@ -409,7 +409,7 @@ impl Tool for ComputerUseTool {
                     save_post_action_snapshot_record(ctx, max_items, max_depth, &result)?;
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
-                    &post_record.snapshot_id,
+                    &post_record,
                     &snapshot_origin_guard,
                     ref_guard.as_ref(),
                     app_guard.as_ref(),
@@ -443,7 +443,7 @@ impl Tool for ComputerUseTool {
                     save_post_action_snapshot_record(ctx, max_items, max_depth, &result)?;
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
-                    &post_record.snapshot_id,
+                    &post_record,
                     &snapshot_origin_guard,
                     ref_guard.as_ref(),
                     app_guard.as_ref(),
@@ -478,7 +478,7 @@ impl Tool for ComputerUseTool {
                     save_post_action_snapshot_record(ctx, max_items, max_depth, &result)?;
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
-                    &post_record.snapshot_id,
+                    &post_record,
                     &snapshot_origin_guard,
                     ref_guard.as_ref(),
                     app_guard.as_ref(),
@@ -519,7 +519,7 @@ impl Tool for ComputerUseTool {
                     save_post_action_snapshot_record(ctx, max_items, max_depth, &result)?;
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
-                    &post_record.snapshot_id,
+                    &post_record,
                     &snapshot_origin_guard,
                     ref_guard.as_ref(),
                     app_guard.as_ref(),
@@ -550,7 +550,7 @@ impl Tool for ComputerUseTool {
                     save_post_action_snapshot_record(ctx, max_items, max_depth, &result)?;
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
-                    &post_record.snapshot_id,
+                    &post_record,
                     &snapshot_origin_guard,
                     None,
                     app_guard.as_ref(),
@@ -1716,15 +1716,28 @@ fn check_ref_guard_line(
 
 fn render_write_result(
     snapshot_id: &str,
-    post_snapshot_id: &str,
+    post_snapshot_record: &ComputerUseSnapshotRecord,
     snapshot_origin_guard: &ComputerUseSnapshotOriginGuardOutcome,
     ref_guard: Option<&ComputerUseRefGuardOutcome>,
     app_guard: Option<&ComputerUseAppGuardOutcome>,
     native_action_guard: Option<&ComputerUseNativeActionGuardOutcome>,
     result: &str,
 ) -> String {
-    let mut output =
-        format!("using_snapshot_id: {snapshot_id}\npost_snapshot_id: {post_snapshot_id}\n");
+    let mut output = format!(
+        "using_snapshot_id: {snapshot_id}\npost_snapshot_id: {}\npost_snapshot_max_items: {}\npost_snapshot_max_depth: {}\npost_snapshot_sha256: {}\npost_snapshot_app_line_sha256: {}\npost_snapshot_pid: {}\n",
+        post_snapshot_record.snapshot_id,
+        post_snapshot_record.max_items,
+        post_snapshot_record.max_depth,
+        post_snapshot_record.output_sha256,
+        post_snapshot_record
+            .frontmost_app_line_sha256
+            .as_deref()
+            .unwrap_or("unknown"),
+        post_snapshot_record
+            .pid
+            .map(|pid| pid.to_string())
+            .unwrap_or_else(|| "unknown".to_string())
+    );
     output.push_str(&format!(
         "snapshot_origin_guard: passed\nsnapshot_origin_guard_app_line_sha256: {}\nsnapshot_origin_guard_pid: {}\nsnapshot_origin_guard_snapshot_sha256: {}\n",
         snapshot_origin_guard.app_line_sha256,
@@ -2602,7 +2615,7 @@ available_actions: AXShowMenu
     }
 
     #[test]
-    fn render_write_result_includes_native_action_guard_evidence() {
+    fn render_write_result_includes_post_snapshot_and_guard_evidence() {
         let details = r#"
 ref: @u3
 ref_line: - @u3 role='button' name='Continue' bounds=(20,20,80x28)
@@ -2622,13 +2635,16 @@ available_actions: AXPress
         )
         .expect("app guard");
         let tmp = tempfile::tempdir().expect("tempdir");
-        let record =
+        let before_record =
             save_snapshot_record(&ctx(tmp.path()), 40, 3, app_snapshot).expect("save record");
+        let post_snapshot = "frontmost_app: Finder\npid: 42\nui_tree:\n- @u1 role='window'";
+        let post_record =
+            save_snapshot_record(&ctx(tmp.path()), 40, 3, post_snapshot).expect("save post record");
         let origin_guard =
-            check_snapshot_origin_guard(&record, app_snapshot).expect("origin guard");
+            check_snapshot_origin_guard(&before_record, app_snapshot).expect("origin guard");
         let rendered = render_write_result(
             "cu_test_before",
-            "cu_test_after",
+            &post_record,
             &origin_guard,
             None,
             Some(&app_guard),
@@ -2637,7 +2653,15 @@ available_actions: AXPress
         );
 
         assert!(rendered.contains("using_snapshot_id: cu_test_before"));
-        assert!(rendered.contains("post_snapshot_id: cu_test_after"));
+        assert!(rendered.contains(&format!("post_snapshot_id: {}", post_record.snapshot_id)));
+        assert!(rendered.contains("post_snapshot_max_items: 40"));
+        assert!(rendered.contains("post_snapshot_max_depth: 3"));
+        assert!(rendered.contains(&format!(
+            "post_snapshot_sha256: {}",
+            post_record.output_sha256
+        )));
+        assert!(rendered.contains("post_snapshot_app_line_sha256:"));
+        assert!(rendered.contains("post_snapshot_pid: 42"));
         assert!(rendered.contains("snapshot_origin_guard: passed"));
         assert!(rendered.contains("snapshot_origin_guard_app_line_sha256:"));
         assert!(rendered.contains("snapshot_origin_guard_pid: 42"));

@@ -15,10 +15,10 @@ and uses semantic versioning once stable release boundaries are established.
   search, text appear/disappear wait polling, read-only ref readiness waits, pre-action
   ref guards, frontmost-app guards, native action availability guards,
   freshness-, bounds-, and origin-checked snapshot-bound approval-gated
-  focus/click/perform_action/set_text/scroll/key actions with clean post-action snapshot ids,
-  whitelisted native Accessibility actions, whitelisted non-text key pressing, docs, and
-  `doctor` visibility. Arbitrary keyboard typing and broad app-control write actions
-  remain intentionally disabled.
+  focus/click/perform_action/set_text/scroll/key actions with clean post-action snapshot
+  ids and metadata, whitelisted native Accessibility actions, whitelisted non-text key
+  pressing, docs, and `doctor` visibility. Arbitrary keyboard typing and broad app-control
+  write actions remain intentionally disabled.
 - Tool calls now pass through a local `tool_policy` preflight that protects common
   sensitive paths by default and can require approval or disable configured tools/path
   patterns before execution. Path-like arguments are now inspected recursively, including

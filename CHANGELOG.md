@@ -36,6 +36,8 @@ and uses semantic versioning once stable release boundaries are established.
   phase, reason, and redacted message before the legacy stop error is returned.
 - Main and background model completion events now include status-aware elapsed duration,
   making retry, routing fallback, and auxiliary-model latency visible in the desktop shell.
+- Main and background model completion events now include provider token usage when the
+  model API returns it, and the desktop shell displays usage in the live event stream.
 - Model request recovery now emits a structured `model_recovery` event for output-budget
   reduction, retry backoff, and context-overflow compression with a redacted provider-error
   preview.

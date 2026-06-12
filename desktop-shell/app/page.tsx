@@ -2982,15 +2982,15 @@ function summarizeEvent(event: Record<string, unknown> & { type?: string }): str
       return `请求模型 ${String(event.model || "")}，${String(event.message_count || 0)} 条消息`;
     case "model_request_finished":
       if (String(event.status || "ok") !== "ok") {
-        return `模型请求${formatModelRequestStatus(String(event.status || ""))}${formatEventDuration(event.duration_ms)} ${truncate(String(event.content_preview || ""), 60)}`;
+        return `模型请求${formatModelRequestStatus(String(event.status || ""))}${formatEventDuration(event.duration_ms)}${formatTokenUsageSummary(event)} ${truncate(String(event.content_preview || ""), 60)}`;
       }
       return Number(event.tool_call_count || 0) > 0
-        ? `模型返回 ${String(event.tool_call_count || 0)} 个工具调用${formatEventDuration(event.duration_ms)}`
-        : `模型返回回复 ${truncate(String(event.content_preview || ""), 60)}${formatEventDuration(event.duration_ms)}`;
+        ? `模型返回 ${String(event.tool_call_count || 0)} 个工具调用${formatEventDuration(event.duration_ms)}${formatTokenUsageSummary(event)}`
+        : `模型返回回复 ${truncate(String(event.content_preview || ""), 60)}${formatEventDuration(event.duration_ms)}${formatTokenUsageSummary(event)}`;
     case "background_model_request_started":
       return `后台 ${String(event.purpose || "")} 请求 ${String(event.model || "")}`;
     case "background_model_request_finished":
-      return `后台 ${String(event.purpose || "")} ${String(event.status || "")}${formatEventDuration(event.duration_ms)} ${truncate(String(event.content_preview || ""), 60)}`;
+      return `后台 ${String(event.purpose || "")} ${String(event.status || "")}${formatEventDuration(event.duration_ms)}${formatTokenUsageSummary(event)} ${truncate(String(event.content_preview || ""), 60)}`;
     case "context_prepared":
       return `上下文 ${String(event.projected_tokens || 0)}/${String(event.request_budget_tokens || 0)} tokens，块 ${String(event.kept_blocks || 0)}/${String(event.total_blocks || 0)}${formatContextTrimSummary(event)}${formatEventDuration(event.duration_ms)}`;
     case "context_compacted":
@@ -3122,6 +3122,33 @@ function formatDurationMs(durationMs: number | null | undefined): string | null 
 function formatEventDuration(value: unknown): string {
   const duration = formatDurationMs(readDurationMs(value));
   return duration ? ` · ${duration}` : "";
+}
+
+function readPositiveNumber(value: unknown): number | null {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return null;
+  }
+  return numeric;
+}
+
+function formatTokenUsageSummary(event: Record<string, unknown>): string {
+  const promptTokens = readPositiveNumber(event.prompt_tokens);
+  const completionTokens = readPositiveNumber(event.completion_tokens);
+  const totalTokens = readPositiveNumber(event.total_tokens);
+  if (totalTokens != null) {
+    return ` · ${totalTokens} tokens`;
+  }
+  if (promptTokens != null && completionTokens != null) {
+    return ` · ${promptTokens}/${completionTokens} tokens`;
+  }
+  if (promptTokens != null) {
+    return ` · 输入 ${promptTokens} tokens`;
+  }
+  if (completionTokens != null) {
+    return ` · 输出 ${completionTokens} tokens`;
+  }
+  return "";
 }
 
 function formatCompactTimestamp(value: number): string {
@@ -4785,7 +4812,8 @@ export default function Page() {
       case "model_request_finished":
         {
           const duration = formatDurationMs(readDurationMs(event.duration_ms));
-          const suffix = duration ? ` · ${duration}` : "";
+          const usage = formatTokenUsageSummary(event);
+          const suffix = `${duration ? ` · ${duration}` : ""}${usage}`;
           setAgentActivity(
             String(event.status || "ok") !== "ok"
               ? `模型请求${formatModelRequestStatus(String(event.status || ""))}${suffix}`
@@ -4801,7 +4829,8 @@ export default function Page() {
       case "background_model_request_finished":
         {
           const duration = formatDurationMs(readDurationMs(event.duration_ms));
-          const suffix = duration ? ` · ${duration}` : "";
+          const usage = formatTokenUsageSummary(event);
+          const suffix = `${duration ? ` · ${duration}` : ""}${usage}`;
           setAgentActivity(
             String(event.status || "") === "ok"
               ? `后台模型请求完成${suffix}`

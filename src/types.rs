@@ -122,15 +122,45 @@ pub struct ToolFunctionCall {
     pub arguments: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct TokenUsage {
+    #[serde(default, alias = "input_tokens")]
+    pub prompt_tokens: Option<usize>,
+    #[serde(default, alias = "output_tokens")]
+    pub completion_tokens: Option<usize>,
+    #[serde(default)]
+    pub total_tokens: Option<usize>,
+}
+
+impl TokenUsage {
+    pub fn normalized(mut self) -> Self {
+        if self.total_tokens.is_none()
+            && let (Some(prompt_tokens), Some(completion_tokens)) =
+                (self.prompt_tokens, self.completion_tokens)
+        {
+            self.total_tokens = Some(prompt_tokens.saturating_add(completion_tokens));
+        }
+        self
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct ChatResponse {
     pub choices: Vec<ChatChoice>,
+    #[serde(default)]
+    pub usage: Option<TokenUsage>,
 }
 
 impl ChatResponse {
     pub fn first_message(self) -> Result<ChatMessage> {
+        self.into_first_message_and_usage()
+            .map(|(message, _usage)| message)
+    }
+
+    pub fn into_first_message_and_usage(self) -> Result<(ChatMessage, Option<TokenUsage>)> {
+        let usage = self.usage.map(TokenUsage::normalized);
         if let Some(choice) = self.choices.into_iter().next() {
-            return Ok(choice.message);
+            return Ok((choice.message, usage));
         }
         bail!("model response did not contain any choices")
     }

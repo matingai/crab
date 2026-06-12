@@ -95,6 +95,9 @@ pub enum AgentEvent {
         status: String,
         duration_ms: u128,
         tool_call_count: usize,
+        prompt_tokens: Option<usize>,
+        completion_tokens: Option<usize>,
+        total_tokens: Option<usize>,
         content_preview: String,
     },
     BackgroundModelRequestStarted {
@@ -109,6 +112,9 @@ pub enum AgentEvent {
         model: String,
         status: String,
         duration_ms: u128,
+        prompt_tokens: Option<usize>,
+        completion_tokens: Option<usize>,
+        total_tokens: Option<usize>,
         content_preview: String,
     },
     SkillLifecycleSuggested {

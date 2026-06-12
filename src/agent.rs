@@ -47,7 +47,7 @@ use crate::tools::{
     ToolContext, ToolRegistry, ToolRuntimeEvent, clear_tool_event_sender,
     register_tool_event_sender, truncated, with_tool_runtime_scope,
 };
-use crate::types::ChatMessage;
+use crate::types::{ChatMessage, TokenUsage};
 use crate::wiki_store::WikiStore;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, sleep, timeout};
@@ -1370,6 +1370,9 @@ impl Agent {
         let response = timeout(timeout_duration, client.respond(&model, &messages, &[])).await;
         match response {
             Ok(Ok(response)) => {
+                let usage = response.usage;
+                let (prompt_tokens, completion_tokens, total_tokens) =
+                    token_usage_fields(usage.as_ref());
                 let message = response.message;
                 handler.on_event(AgentEvent::BackgroundModelRequestFinished {
                     session_id: self.session.session_id.clone(),
@@ -1377,6 +1380,9 @@ impl Agent {
                     model,
                     status: "ok".to_string(),
                     duration_ms: elapsed_ms(request_started_at),
+                    prompt_tokens,
+                    completion_tokens,
+                    total_tokens,
                     content_preview: truncated(message.content_text(), 240),
                 });
                 Some(message)
@@ -1388,6 +1394,9 @@ impl Agent {
                     model,
                     status: "error".to_string(),
                     duration_ms: elapsed_ms(request_started_at),
+                    prompt_tokens: None,
+                    completion_tokens: None,
+                    total_tokens: None,
                     content_preview: truncated(error.to_string(), 240),
                 });
                 None
@@ -1399,6 +1408,9 @@ impl Agent {
                     model,
                     status: "timeout".to_string(),
                     duration_ms: elapsed_ms(request_started_at),
+                    prompt_tokens: None,
+                    completion_tokens: None,
+                    total_tokens: None,
                     content_preview: String::new(),
                 });
                 None
@@ -3026,6 +3038,9 @@ impl Agent {
             match assistant_result {
                 Ok(response) => {
                     self.remember_runtime_response(&runtime, &response);
+                    let usage = response.usage.clone();
+                    let (prompt_tokens, completion_tokens, total_tokens) =
+                        token_usage_fields(usage.as_ref());
                     let message = response.message;
                     handler.on_event(AgentEvent::ModelRequestFinished {
                         session_id: self.session.session_id.clone(),
@@ -3034,6 +3049,9 @@ impl Agent {
                         status: "ok".to_string(),
                         duration_ms: elapsed_ms(request_started_at),
                         tool_call_count: message.tool_calls.as_ref().map(Vec::len).unwrap_or(0),
+                        prompt_tokens,
+                        completion_tokens,
+                        total_tokens,
                         content_preview: truncated(message.content_text(), 240),
                     });
                     return Ok(message);
@@ -3046,6 +3064,9 @@ impl Agent {
                         status: "error".to_string(),
                         duration_ms: elapsed_ms(request_started_at),
                         tool_call_count: 0,
+                        prompt_tokens: None,
+                        completion_tokens: None,
+                        total_tokens: None,
                         content_preview: truncated(error.to_string(), 240),
                     });
                     if !runtime.uses_primary {
@@ -4222,23 +4243,32 @@ impl Agent {
             assistant_response,
         )
         .await;
-        let Ok(Some(title)) = title_result else {
+        let Ok(Some(generated_title)) = title_result else {
             handler.on_event(AgentEvent::BackgroundModelRequestFinished {
                 session_id: self.session.session_id.clone(),
                 purpose: "title_generation".to_string(),
                 model: background_model,
                 status: "skipped".to_string(),
                 duration_ms: elapsed_ms(request_started_at),
+                prompt_tokens: None,
+                completion_tokens: None,
+                total_tokens: None,
                 content_preview: String::new(),
             });
             return;
         };
+        let (prompt_tokens, completion_tokens, total_tokens) =
+            token_usage_fields(generated_title.usage.as_ref());
+        let title = generated_title.title;
         handler.on_event(AgentEvent::BackgroundModelRequestFinished {
             session_id: self.session.session_id.clone(),
             purpose: "title_generation".to_string(),
             model: background_model,
             status: "ok".to_string(),
             duration_ms: elapsed_ms(request_started_at),
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
             content_preview: truncated(title.clone(), 240),
         });
         self.session.title = Some(title);
@@ -6136,6 +6166,18 @@ fn redacted_truncated(text: impl Into<String>, max_len: usize) -> String {
     truncated(redact_secrets(text.into()), max_len)
 }
 
+fn token_usage_fields(usage: Option<&TokenUsage>) -> (Option<usize>, Option<usize>, Option<usize>) {
+    usage
+        .map(|usage| {
+            (
+                usage.prompt_tokens,
+                usage.completion_tokens,
+                usage.total_tokens,
+            )
+        })
+        .unwrap_or((None, None, None))
+}
+
 fn turn_status_for_response(response: &str) -> &'static str {
     if response == APPROVAL_PENDING_RESPONSE {
         "awaiting_approval"
@@ -7626,8 +7668,16 @@ mod tests {
                 status,
                 duration_ms,
                 tool_call_count,
+                prompt_tokens,
+                completion_tokens,
+                total_tokens,
                 ..
-            }) if status == "ok" && *duration_ms < 30_000 && *tool_call_count == 0
+            }) if status == "ok"
+                && *duration_ms < 30_000
+                && *tool_call_count == 0
+                && *prompt_tokens == Some(11)
+                && *completion_tokens == Some(7)
+                && *total_tokens == Some(18)
         ));
         assert!(matches!(
             handler
@@ -8114,9 +8164,10 @@ mod tests {
             api_mode: ApiMode::ChatCompletions,
         });
         let mut agent = Agent::new(config).expect("agent");
+        let mut handler = RecordingEventHandler::new();
 
         let response = agent
-            .run_prompt("Need help fixing auth wiring")
+            .run_prompt_with_handler("Need help fixing auth wiring", &mut handler)
             .await
             .expect("response");
 
@@ -8125,6 +8176,19 @@ mod tests {
             agent.session.title.as_deref(),
             Some("Auxiliary Session Title")
         );
+        assert!(handler.events().iter().any(|event| matches!(
+            event,
+            AgentEvent::BackgroundModelRequestFinished {
+                purpose,
+                prompt_tokens,
+                completion_tokens,
+                total_tokens,
+                ..
+            } if purpose == "title_generation"
+                && *prompt_tokens == Some(11)
+                && *completion_tokens == Some(7)
+                && *total_tokens == Some(18)
+        )));
     }
 
     #[tokio::test]

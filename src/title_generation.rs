@@ -2,16 +2,21 @@ use anyhow::Result;
 use tokio::time::{Duration, timeout};
 
 use crate::llm::OpenAiCompatClient;
-use crate::types::ChatMessage;
+use crate::types::{ChatMessage, TokenUsage};
 
 const TITLE_PROMPT: &str = "Generate a short, descriptive conversation title in 3 to 7 words. Return only the title text. No quotes, no prefix, no trailing punctuation.";
+
+pub struct GeneratedTitle {
+    pub title: String,
+    pub usage: Option<TokenUsage>,
+}
 
 pub async fn generate_title(
     client: &OpenAiCompatClient,
     model: &str,
     user_message: &str,
     assistant_response: &str,
-) -> Result<Option<String>> {
+) -> Result<Option<GeneratedTitle>> {
     let user_snippet = truncate(user_message, 320);
     let assistant_snippet = truncate(assistant_response, 320);
     if user_snippet.is_empty() || assistant_snippet.is_empty() {
@@ -32,8 +37,12 @@ pub async fn generate_title(
     let Ok(response) = response else {
         return Ok(None);
     };
-    let title = response?.message.content_text();
-    Ok(clean_title(&title))
+    let response = response?;
+    let title = response.message.content_text();
+    Ok(clean_title(&title).map(|title| GeneratedTitle {
+        title,
+        usage: response.usage,
+    }))
 }
 
 pub fn should_generate_title(user_turns: usize, current_title: Option<&str>) -> bool {

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::types::{
-    ChatChoice, ChatMessage, ChatResponse, ToolCall, ToolDefinition, ToolFunctionCall,
+    ChatChoice, ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolDefinition, ToolFunctionCall,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -18,6 +18,7 @@ pub struct RequestOptions {
 pub struct ModelResponse {
     pub message: ChatMessage,
     pub response_id: Option<String>,
+    pub usage: Option<TokenUsage>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,6 +59,8 @@ struct ResponsesResponse {
     id: Option<String>,
     #[serde(default)]
     output: Vec<ResponsesOutputItem>,
+    #[serde(default)]
+    usage: Option<TokenUsage>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -126,10 +129,13 @@ impl OpenAiCompatClient {
         if let Some(response) = self.mock_chat_response(messages, tools, &options) {
             let _ = model;
             return response.and_then(|response| {
-                response.first_message().map(|message| ModelResponse {
-                    message,
-                    response_id: None,
-                })
+                response
+                    .into_first_message_and_usage()
+                    .map(|(message, usage)| ModelResponse {
+                        message,
+                        response_id: None,
+                        usage,
+                    })
             });
         }
 
@@ -212,13 +218,14 @@ impl OpenAiCompatClient {
         tools: &[ToolDefinition],
         options: RequestOptions,
     ) -> Result<ChatResponse> {
+        let response = self
+            .respond_with_options(model, messages, tools, options)
+            .await?;
         Ok(ChatResponse {
             choices: vec![ChatChoice {
-                message: self
-                    .respond_with_options(model, messages, tools, options)
-                    .await?
-                    .message,
+                message: response.message,
             }],
+            usage: response.usage,
         })
     }
 
@@ -426,6 +433,7 @@ impl OpenAiCompatClient {
                     tool_call_id: None,
                 },
                 response_id: None,
+                usage: None,
             },
         };
         Ok(response)
@@ -488,6 +496,7 @@ impl OpenAiCompatClient {
                         tool_call_id: None,
                     },
                 }],
+                usage: None,
             }));
         }
 
@@ -511,6 +520,7 @@ impl OpenAiCompatClient {
                         tool_call_id: None,
                     },
                 }],
+                usage: None,
             }));
         }
 
@@ -532,6 +542,7 @@ impl OpenAiCompatClient {
                         tool_call_id: None,
                     },
                 }],
+                usage: None,
             }));
         }
 
@@ -548,6 +559,7 @@ impl OpenAiCompatClient {
                             tool_call_id: None,
                         },
                     }],
+                    usage: None,
                 }));
             }
             return Some(Ok(ChatResponse {
@@ -571,6 +583,7 @@ impl OpenAiCompatClient {
                         tool_call_id: None,
                     },
                 }],
+                usage: None,
             }));
         }
 
@@ -692,6 +705,7 @@ impl OpenAiCompatClient {
                         tool_call_id: None,
                     },
                 }],
+                usage: Some(mock_usage()),
             }));
         }
 
@@ -735,6 +749,7 @@ impl OpenAiCompatClient {
 
         Some(Ok(ChatResponse {
             choices: vec![crate::types::ChatChoice { message }],
+            usage: None,
         }))
     }
 }
@@ -832,6 +847,7 @@ fn responses_tools(tools: &[ToolDefinition]) -> Vec<Value> {
 
 fn responses_to_model_response(response: ResponsesResponse) -> Result<ModelResponse> {
     let response_id = response.id.clone();
+    let usage = response.usage.map(TokenUsage::normalized);
     let mut content = String::new();
     let mut tool_calls = Vec::new();
 
@@ -874,7 +890,16 @@ fn responses_to_model_response(response: ResponsesResponse) -> Result<ModelRespo
             tool_call_id: None,
         },
         response_id,
+        usage,
     })
+}
+
+fn mock_usage() -> TokenUsage {
+    TokenUsage {
+        prompt_tokens: Some(11),
+        completion_tokens: Some(7),
+        total_tokens: Some(18),
+    }
 }
 
 #[cfg(test)]
@@ -895,6 +920,36 @@ mod tests {
         assert_eq!(response.message.role, "assistant");
         assert_eq!(response.message.content_text(), "mock final response");
         assert!(response.response_id.is_none());
+        assert_eq!(
+            response.usage.as_ref().and_then(|usage| usage.total_tokens),
+            Some(18)
+        );
+    }
+
+    #[test]
+    fn responses_usage_maps_to_token_usage() {
+        let response: super::ResponsesResponse = serde_json::from_value(serde_json::json!({
+            "id": "resp_123",
+            "usage": {
+                "input_tokens": 123,
+                "output_tokens": 45
+            },
+            "output": [{
+                "type": "message",
+                "content": [{
+                    "type": "output_text",
+                    "text": "hello"
+                }]
+            }]
+        }))
+        .expect("response json");
+
+        let model_response = super::responses_to_model_response(response).expect("model response");
+        let usage = model_response.usage.expect("usage");
+
+        assert_eq!(usage.prompt_tokens, Some(123));
+        assert_eq!(usage.completion_tokens, Some(45));
+        assert_eq!(usage.total_tokens, Some(168));
     }
 
     #[tokio::test]

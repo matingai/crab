@@ -285,6 +285,13 @@ pub enum AgentEvent {
     SessionSaved {
         session_id: String,
         path: String,
+        path_preview: String,
+        turn_id: String,
+        history_count: usize,
+        timeline_count: usize,
+        pending_approval_count: usize,
+        has_response_continuation: bool,
+        updated_at_unix: u64,
     },
     Nudge {
         session_id: String,

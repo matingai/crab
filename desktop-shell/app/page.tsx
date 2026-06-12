@@ -3052,6 +3052,8 @@ function summarizeEvent(event: Record<string, unknown> & { type?: string }): str
       return `${String(event.tool_name || "")} ${truncate(String(event.reason || ""), 60)}`;
     case "approval_resolved":
       return `${String(event.tool_name || "tool")} 审批${event.approved ? "已批准" : "已拒绝"}`;
+    case "session_saved":
+      return `检查点已保存 · ${String(event.turn_id || "")} · history ${String(event.history_count || 0)} · timeline ${String(event.timeline_count || 0)}${Number(event.pending_approval_count || 0) > 0 ? ` · pending approvals ${String(event.pending_approval_count)}` : ""}`;
     case "error":
       return String(event.message || "");
     default:
@@ -5250,6 +5252,19 @@ export default function Page() {
             `${toolName} 审批${approved ? "已批准" : "已拒绝"}`,
           );
           void loadApprovals();
+        }
+        break;
+      case "session_saved":
+        {
+          const turnId = String(event.turn_id || "");
+          const historyCount = Number(event.history_count || 0);
+          const timelineCount = Number(event.timeline_count || 0);
+          const pendingApprovals = Number(event.pending_approval_count || 0);
+          const continuation = event.has_response_continuation ? " · response continuation" : "";
+          const pending = pendingApprovals > 0 ? ` · ${pendingApprovals} 个审批待处理` : "";
+          setAgentActivity(
+            `检查点已保存${turnId ? ` · ${turnId}` : ""} · history ${historyCount} · timeline ${timelineCount}${pending}${continuation}`,
+          );
         }
         break;
       case "skill_lifecycle_suggested":

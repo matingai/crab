@@ -190,6 +190,8 @@ UI can show:
 - Tool call start and completion.
 - Approval request and resolution boundaries, including whether a paused tool was
   approved or denied before execution resumes.
+- Session checkpoint events after persistence, including turn id, history/timeline counts,
+  pending approval counts, response-continuation availability, and a compact path preview.
 - Delegated run lifecycle.
 - Context pressure warnings.
 - Runtime status.

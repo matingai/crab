@@ -11,7 +11,7 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::approval::{
-    ApprovalStatus, get_request, load_pending_approval, remove_pending_approval,
+    ApprovalStatus, get_request, list_requests, load_pending_approval, remove_pending_approval,
     save_pending_approval,
 };
 use crate::archive_db::ArchiveStore;
@@ -4511,11 +4511,37 @@ impl Agent {
             self.emit_todo_state_updated(handler, "goal_state_sync", &items);
         }
         let path = self.persist_session_after_runtime_sync()?;
+        let pending_approval_count = self.pending_approval_count();
         handler.on_event(AgentEvent::SessionSaved {
             session_id: self.session.session_id.clone(),
             path: path.display().to_string(),
+            path_preview: path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("session.json")
+                .to_string(),
+            turn_id: self.session.current_turn_id(),
+            history_count: self.session.history.len(),
+            timeline_count: self.session.timeline.len(),
+            pending_approval_count,
+            has_response_continuation: self.session.latest_response_id.is_some(),
+            updated_at_unix: self.session.updated_at_unix,
         });
         Ok(())
+    }
+
+    fn pending_approval_count(&self) -> usize {
+        list_requests(&self.config.data_dir)
+            .map(|requests| {
+                requests
+                    .into_iter()
+                    .filter(|request| {
+                        request.session_id == self.session.session_id
+                            && request.status == ApprovalStatus::Pending
+                    })
+                    .count()
+            })
+            .unwrap_or(0)
     }
 
     async fn maybe_generate_session_title(
@@ -8152,6 +8178,29 @@ mod tests {
                     .iter()
                     .any(|source| source.preview.contains("OPENAI_API_KEY=[REDACTED]"))
         ));
+        assert!(matches!(
+            handler
+                .events()
+                .iter()
+                .rev()
+                .find(|event| matches!(event, AgentEvent::SessionSaved { .. })),
+            Some(AgentEvent::SessionSaved {
+                turn_id,
+                path,
+                path_preview,
+                history_count,
+                timeline_count,
+                pending_approval_count,
+                updated_at_unix,
+                ..
+            }) if turn_id == "turn-1"
+                && path.ends_with(path_preview)
+                && path_preview.ends_with(".json")
+                && *history_count >= 2
+                && *timeline_count >= 2
+                && *pending_approval_count == 0
+                && *updated_at_unix > 0
+        ));
     }
 
     #[tokio::test]
@@ -8185,6 +8234,29 @@ mod tests {
                 && status == "awaiting_approval"
                 && *tool_call_count == 1
                 && response_preview == APPROVAL_PENDING_RESPONSE
+        ));
+        assert!(matches!(
+            handler
+                .events()
+                .iter()
+                .rev()
+                .find(|event| matches!(
+                    event,
+                    AgentEvent::SessionSaved {
+                        pending_approval_count,
+                        ..
+                    } if *pending_approval_count > 0
+                )),
+            Some(AgentEvent::SessionSaved {
+                turn_id,
+                history_count,
+                timeline_count,
+                pending_approval_count,
+                ..
+            }) if turn_id == "turn-1"
+                && *history_count >= 2
+                && *timeline_count >= 2
+                && *pending_approval_count == 1
         ));
     }
 

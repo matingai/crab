@@ -51,6 +51,9 @@ and uses semantic versioning once stable release boundaries are established.
   preparation time without exposing raw prompt content.
 - Prompt context preparation now also emits `context_sources_updated` with kept/clipped/
   skipped source metadata and compact redacted previews for optional context blocks.
+- Session persistence now emits richer checkpoint metadata through `session_saved`,
+  including turn id, history/timeline counts, pending approvals, response-continuation
+  availability, and a compact path preview for desktop recovery visibility.
 - Goal-state writes now emit a structured `goal_state_updated` event for user-input seeds,
   tool observations, tool-result reconcile, and turn-end reconcile, exposing focus-goal
   metadata and counts without streaming the full working memory.

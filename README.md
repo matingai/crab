@@ -187,6 +187,9 @@ The loop is designed around these ideas:
   continue across turns and desktop restarts.
 - **Approval-aware execution**: sensitive operations can pause for approval and later
   resume through the same session/event path.
+- **Dirty-worktree protection**: file mutation tools refuse to overwrite, patch, delete,
+  or move existing Git paths with uncommitted changes unless the tool call explicitly opts
+  into `allow_dirty`.
 - **Context pressure handling**: the loop can detect context overflows, compress older
   history, adjust output budgets, and retry with a safer prompt shape.
 - **Event streaming as a first-class output**: the loop emits model, tool, approval,
@@ -207,6 +210,9 @@ Important safety notes:
   `HERMES_RS_ENABLE_SHELL=1`.
 - Browser, file, Office, and shell-related tools operate on the local machine. Use a
   trusted workspace and review model outputs before approving sensitive actions.
+- In Git workspaces, file mutation tools protect existing paths with uncommitted changes
+  by default. Use an explicit `allow_dirty` tool argument only when intentionally modifying
+  local user changes.
 - Local sessions, memory, logs, runtime databases, and provider configuration belong in
   ignored local directories. Do not commit `.hermes-agent-rs/`, `.env`, generated decks,
   generated documents, or browser/session artifacts.

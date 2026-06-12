@@ -65,6 +65,7 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::path::{Component, Path, PathBuf};
+use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -679,6 +680,74 @@ pub fn ensure_within_root(root: &Path, candidate: &Path) -> Result<()> {
     )
 }
 
+pub fn ensure_clean_worktree_path(
+    workspace_root: &Path,
+    path: &Path,
+    operation: &str,
+    allow_dirty: bool,
+) -> Result<()> {
+    if allow_dirty {
+        return Ok(());
+    }
+
+    let Some(repo_root) = git_repo_root(workspace_root)? else {
+        return Ok(());
+    };
+
+    let status = Command::new("git")
+        .arg("-C")
+        .arg(&repo_root)
+        .args(["status", "--porcelain=v1", "--"])
+        .arg(path)
+        .output()
+        .with_context(|| format!("failed to inspect Git status for {}", path.display()))?;
+    if !status.status.success() {
+        let stderr = String::from_utf8_lossy(&status.stderr);
+        bail!(
+            "failed to inspect Git status for {}: {}",
+            path.display(),
+            stderr.trim()
+        );
+    }
+
+    let entries = String::from_utf8_lossy(&status.stdout)
+        .lines()
+        .map(str::trim_end)
+        .filter(|line| !line.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    if entries.is_empty() {
+        return Ok(());
+    }
+
+    let display = relative_display(workspace_root, path);
+    bail!(
+        "{operation} refused because `{display}` has uncommitted Git worktree changes:\n{}\nPass `allow_dirty=true` only if you intentionally want to modify user-owned changes.",
+        entries.join("\n")
+    )
+}
+
+fn git_repo_root(workspace_root: &Path) -> Result<Option<PathBuf>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(workspace_root)
+        .args(["rev-parse", "--show-toplevel"])
+        .output();
+    let Ok(output) = output else {
+        return Ok(None);
+    };
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let root = String::from_utf8(output.stdout)
+        .context("git rev-parse returned non-UTF-8 repository path")?;
+    let root = root.trim();
+    if root.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(PathBuf::from(root)))
+}
+
 pub fn truncated(text: impl Into<String>, max_len: usize) -> String {
     let text = text.into();
     if text.len() <= max_len {
@@ -692,12 +761,13 @@ pub fn truncated(text: impl Into<String>, max_len: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        ToolContext, ToolRegistry, ensure_within_root, normalize_path,
+        ToolContext, ToolRegistry, ensure_clean_worktree_path, ensure_within_root, normalize_path,
         primary_model_tool_should_stay_detailed,
     };
     use crate::mcp::{McpCachedInspection, local_tool_name};
     use serde_json::json;
     use std::path::Path;
+    use std::process::Command;
 
     #[test]
     fn normalize_path_removes_parent_segments() {
@@ -711,6 +781,50 @@ mod tests {
         let child = root.path().join("src");
         std::fs::create_dir_all(&child).expect("mkdir");
         ensure_within_root(root.path(), &child).expect("child path should be allowed");
+    }
+
+    #[test]
+    fn dirty_worktree_guard_blocks_modified_tracked_file() {
+        let root = tempfile::tempdir().expect("tempdir");
+        init_git_repo(root.path());
+        let path = root.path().join("demo.txt");
+        std::fs::write(&path, "clean\n").expect("write");
+        git(root.path(), &["add", "demo.txt"]);
+        git(root.path(), &["commit", "-m", "init"]);
+        std::fs::write(&path, "user change\n").expect("modify");
+
+        let error = ensure_clean_worktree_path(root.path(), &path, "test_write", false)
+            .expect_err("dirty file should be blocked")
+            .to_string();
+        assert!(error.contains("test_write refused"));
+        assert!(error.contains("demo.txt"));
+        assert!(error.contains("allow_dirty=true"));
+
+        ensure_clean_worktree_path(root.path(), &path, "test_write", true)
+            .expect("explicit dirty override should pass");
+    }
+
+    #[test]
+    fn dirty_worktree_guard_blocks_untracked_existing_file() {
+        let root = tempfile::tempdir().expect("tempdir");
+        init_git_repo(root.path());
+        let path = root.path().join("scratch.txt");
+        std::fs::write(&path, "user scratch\n").expect("write");
+
+        let error = ensure_clean_worktree_path(root.path(), &path, "test_delete", false)
+            .expect_err("untracked file should be blocked")
+            .to_string();
+        assert!(error.contains("test_delete refused"));
+        assert!(error.contains("?? scratch.txt"));
+    }
+
+    #[test]
+    fn dirty_worktree_guard_is_noop_outside_git_repo() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = root.path().join("demo.txt");
+        std::fs::write(&path, "content\n").expect("write");
+        ensure_clean_worktree_path(root.path(), &path, "test_write", false)
+            .expect("non-git workspaces should not be blocked");
     }
 
     #[tokio::test]
@@ -811,6 +925,31 @@ mod tests {
                 .function
                 .description
                 .contains("Office document capability")
+        );
+    }
+
+    fn init_git_repo(root: &Path) {
+        git(root, &["init"]);
+        git(
+            root,
+            &["config", "user.email", "crab-tests@example.invalid"],
+        );
+        git(root, &["config", "user.name", "Crab Tests"]);
+    }
+
+    fn git(root: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .output()
+            .expect("run git");
+        assert!(
+            output.status.success(),
+            "git {:?} failed\nstdout:\n{}\nstderr:\n{}",
+            args,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
         );
     }
 }

@@ -5,7 +5,8 @@ use serde_json::{Value, json};
 use std::fs;
 
 use crate::tools::{
-    Tool, ToolContext, relative_display, resolve_existing_path, resolve_workspace_path,
+    Tool, ToolContext, ensure_clean_worktree_path, relative_display, resolve_existing_path,
+    resolve_workspace_path,
 };
 use crate::types::{ToolDefinition, object_schema};
 
@@ -17,6 +18,8 @@ struct MoveFileArgs {
     destination_path: String,
     #[serde(default)]
     overwrite: bool,
+    #[serde(default)]
+    allow_dirty: bool,
 }
 
 #[async_trait]
@@ -29,7 +32,8 @@ impl Tool for MoveFileTool {
                 json!({
                     "source_path": { "type": "string", "description": "Existing relative source path." },
                     "destination_path": { "type": "string", "description": "Destination relative path." },
-                    "overwrite": { "type": "boolean", "description": "Overwrite destination when true." }
+                    "overwrite": { "type": "boolean", "description": "Overwrite destination when true." },
+                    "allow_dirty": { "type": "boolean", "description": "Allow moving from or overwriting paths that have uncommitted Git worktree changes." }
                 }),
                 &["source_path", "destination_path"],
             ),
@@ -41,6 +45,20 @@ impl Tool for MoveFileTool {
             serde_json::from_value(args).context("invalid move_file arguments")?;
         let source = resolve_existing_path(&ctx.workspace_root, &args.source_path)?;
         let destination = resolve_workspace_path(&ctx.workspace_root, &args.destination_path)?;
+        ensure_clean_worktree_path(
+            &ctx.workspace_root,
+            &source,
+            "move_file source",
+            args.allow_dirty,
+        )?;
+        if destination.exists() {
+            ensure_clean_worktree_path(
+                &ctx.workspace_root,
+                &destination,
+                "move_file destination overwrite",
+                args.allow_dirty,
+            )?;
+        }
 
         if destination.exists() {
             if !args.overwrite {

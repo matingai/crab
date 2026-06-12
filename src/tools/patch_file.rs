@@ -4,7 +4,9 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::fs;
 
-use crate::tools::{Tool, ToolContext, relative_display, resolve_existing_path};
+use crate::tools::{
+    Tool, ToolContext, ensure_clean_worktree_path, relative_display, resolve_existing_path,
+};
 use crate::types::{ToolDefinition, object_schema};
 
 pub struct PatchFileTool;
@@ -16,6 +18,8 @@ struct PatchFileArgs {
     new_text: String,
     #[serde(default)]
     replace_all: bool,
+    #[serde(default)]
+    allow_dirty: bool,
 }
 
 #[async_trait]
@@ -29,7 +33,8 @@ impl Tool for PatchFileTool {
                     "path": { "type": "string", "description": "Relative workspace path." },
                     "old_text": { "type": "string", "description": "Exact text to replace." },
                     "new_text": { "type": "string", "description": "Replacement text." },
-                    "replace_all": { "type": "boolean", "description": "Replace all matches when true." }
+                    "replace_all": { "type": "boolean", "description": "Replace all matches when true." },
+                    "allow_dirty": { "type": "boolean", "description": "Allow patching a file that has uncommitted Git worktree changes." }
                 }),
                 &["path", "old_text", "new_text"],
             ),
@@ -44,6 +49,7 @@ impl Tool for PatchFileTool {
         }
 
         let path = resolve_existing_path(&ctx.workspace_root, &args.path)?;
+        ensure_clean_worktree_path(&ctx.workspace_root, &path, "patch_file", args.allow_dirty)?;
         let existing = fs::read_to_string(&path)
             .with_context(|| format!("failed to read {}", path.display()))?;
 

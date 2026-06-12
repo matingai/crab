@@ -4,7 +4,9 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::fs;
 
-use crate::tools::{Tool, ToolContext, relative_display, resolve_existing_path};
+use crate::tools::{
+    Tool, ToolContext, ensure_clean_worktree_path, relative_display, resolve_existing_path,
+};
 use crate::types::{ToolDefinition, object_schema};
 
 pub struct DeleteFileTool;
@@ -14,6 +16,8 @@ struct DeleteFileArgs {
     path: String,
     #[serde(default)]
     recursive: bool,
+    #[serde(default)]
+    allow_dirty: bool,
 }
 
 #[async_trait]
@@ -25,7 +29,8 @@ impl Tool for DeleteFileTool {
             object_schema(
                 json!({
                     "path": { "type": "string", "description": "Relative path to delete." },
-                    "recursive": { "type": "boolean", "description": "Delete directories recursively when true." }
+                    "recursive": { "type": "boolean", "description": "Delete directories recursively when true." },
+                    "allow_dirty": { "type": "boolean", "description": "Allow deleting a path that has uncommitted Git worktree changes." }
                 }),
                 &["path"],
             ),
@@ -36,6 +41,7 @@ impl Tool for DeleteFileTool {
         let args: DeleteFileArgs =
             serde_json::from_value(args).context("invalid delete_file arguments")?;
         let path = resolve_existing_path(&ctx.workspace_root, &args.path)?;
+        ensure_clean_worktree_path(&ctx.workspace_root, &path, "delete_file", args.allow_dirty)?;
         let display = relative_display(&ctx.workspace_root, &path);
 
         if path.is_dir() {

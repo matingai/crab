@@ -43,6 +43,9 @@ Reports are especially valuable when they involve:
 ## Current Safety Posture
 
 - The terminal tool is disabled by default and must be enabled explicitly.
+- In Git workspaces, file mutation tools refuse to overwrite, patch, delete, or move
+  existing paths with uncommitted changes unless the tool call explicitly opts into
+  `allow_dirty`.
 - Local runtime state is expected to live in ignored data directories.
 - Model and provider credentials should be supplied through environment variables or
   ignored local configuration.

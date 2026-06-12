@@ -88,6 +88,11 @@ the same guardrail. A workspace can extend those rules, require approval for ent
 families such as `browser_*`, opt out of the defaults, or disable a tool/path before it
 reaches its implementation.
 
+Approval requests are also treated as durable context. Display fields such as the command
+and reason are redacted before persistence, while the runtime uses a stable command hash
+to match approved requests back to the original execution intent. That keeps approval
+resume deterministic without making sensitive command text part of the user-visible record.
+
 Direct web-fetch tools also pass through `network_policy`. By default, loopback, private,
 link-local, and metadata-style hosts are denied before the runtime issues an HTTP request.
 Trusted workspaces can opt into selected local hosts or private network fetches through

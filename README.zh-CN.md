@@ -180,8 +180,8 @@ agent loop 是这个项目真正的中心。Crab 把主 agent 设计成一个面
   你可以扩展这些规则，也可以在本地配置中显式关闭默认规则。
 - 本地 `network_policy` 默认阻止直接 web-fetch 工具访问 loopback、内网、link-local 和 metadata 类 host。
   只有可信工作流确实需要时，才建议显式允许本地/内网 host。
-- 运行时 redaction 是 best-effort，主要处理常见 key/token/password 格式；它不能替代从源头避免把密钥写进
-  prompt 或生成文件。
+- 运行时 redaction 是 best-effort，主要处理常见 key/token/password 格式，也覆盖 approval 请求展示字段；
+  approval 匹配使用稳定哈希而不是展示出来的命令。它不能替代从源头避免把密钥写进 prompt 或生成文件。
 - 在 Git 工作区中，文件修改类工具默认保护已有未提交改动的路径；只有确认要改动本地用户改动时，
   才应显式使用 `allow_dirty`。
 - 本地 session、memory、日志、运行时数据库和 provider 配置应保存在被忽略的本地目录中。不要提交

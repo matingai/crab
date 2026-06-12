@@ -20,6 +20,9 @@ and uses semantic versioning once stable release boundaries are established.
   controlled timeout surface already available in `execute_code`.
 - Tool observations, live previews, session timeline details, archive records, and saved
   assistant tool-call arguments now redact common credential patterns before persistence.
+- Approval requests now store redacted display commands/reasons and use a stable command
+  hash for approval matching, while preserving compatibility with legacy raw-command
+  approval files.
 - Subdirectory instruction discovery now returns root-to-leaf context stacks, tracks loaded
   hint files instead of permanently marking empty directories, and labels blocked context
   with the exact display path.

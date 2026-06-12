@@ -1,9 +1,12 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
+
+use crate::privacy::redact_secrets;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -19,6 +22,8 @@ pub struct ApprovalRequest {
     pub id: String,
     pub session_id: String,
     pub command: String,
+    #[serde(default, alias = "commandHash")]
+    pub command_hash: Option<String>,
     pub reason: String,
     pub tool_name: Option<String>,
     pub execution_mode: Option<String>,
@@ -79,11 +84,10 @@ pub fn request_approval(
     command: &str,
     reason: &str,
 ) -> Result<ApprovalRequest> {
-    if let Some(existing) = list_requests(data_dir)?.into_iter().find(|item| {
-        item.session_id == session_id
-            && item.command == command
-            && item.status == ApprovalStatus::Pending
-    }) {
+    if let Some(existing) = list_requests(data_dir)?
+        .into_iter()
+        .find(|item| approval_matches_command(item, session_id, command, ApprovalStatus::Pending))
+    {
         return Ok(existing);
     }
 
@@ -91,8 +95,9 @@ pub fn request_approval(
     let item = ApprovalRequest {
         id: Uuid::new_v4().to_string(),
         session_id: session_id.to_string(),
-        command: command.to_string(),
-        reason: reason.to_string(),
+        command: redact_secrets(command),
+        command_hash: Some(approval_command_hash(session_id, command)),
+        reason: redact_secrets(reason),
         tool_name: None,
         execution_mode: None,
         batch_id: None,
@@ -127,11 +132,10 @@ pub fn consume_approved_request(
     session_id: &str,
     command: &str,
 ) -> Result<Option<ApprovalRequest>> {
-    let Some(mut item) = list_requests(data_dir)?.into_iter().find(|item| {
-        item.session_id == session_id
-            && item.command == command
-            && item.status == ApprovalStatus::Approved
-    }) else {
+    let Some(mut item) = list_requests(data_dir)?
+        .into_iter()
+        .find(|item| approval_matches_command(item, session_id, command, ApprovalStatus::Approved))
+    else {
         return Ok(None);
     };
 
@@ -165,7 +169,7 @@ pub fn save_pending_approval(
         batch_index,
         batch_total,
         raw_arguments: raw_arguments.to_string(),
-        command: command.to_string(),
+        command: redact_secrets(command),
         created_at_unix: now,
         updated_at_unix: now,
     };
@@ -249,6 +253,26 @@ fn save_pending(data_dir: &Path, item: &PendingApproval) -> Result<()> {
     Ok(())
 }
 
+fn approval_matches_command(
+    item: &ApprovalRequest,
+    session_id: &str,
+    command: &str,
+    status: ApprovalStatus,
+) -> bool {
+    if item.session_id != session_id || item.status != status {
+        return false;
+    }
+    match item.command_hash.as_deref() {
+        Some(hash) => hash == approval_command_hash(session_id, command),
+        None => item.command == command,
+    }
+}
+
+fn approval_command_hash(session_id: &str, command: &str) -> String {
+    let digest = Sha256::digest(format!("{session_id}\0{command}").as_bytes());
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 fn unix_now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -259,9 +283,12 @@ fn unix_now() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        ApprovalStatus, consume_approved_request, list_requests, load_pending_approval,
-        remove_pending_approval, request_approval, resolve_request, save_pending_approval,
+        ApprovalStatus, approval_path, approvals_root, consume_approved_request, list_requests,
+        load_pending_approval, remove_pending_approval, request_approval, resolve_request,
+        save_pending_approval,
     };
+    use serde_json::json;
+    use std::fs;
 
     #[test]
     fn approval_lifecycle_works() {
@@ -280,6 +307,69 @@ mod tests {
 
         let items = list_requests(tmp.path()).expect("list");
         assert_eq!(items.len(), 1);
+    }
+
+    #[test]
+    fn approval_requests_store_redacted_command_and_match_by_hash() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let command = "echo OPENAI_API_KEY=test-redaction-fixture";
+        let request = request_approval(
+            tmp.path(),
+            "demo",
+            command,
+            "command includes TOKEN=token-redaction-fixture",
+        )
+        .expect("request");
+
+        assert!(request.command.contains("OPENAI_API_KEY=[REDACTED]"));
+        assert!(!request.command.contains("test-redaction-fixture"));
+        assert!(request.reason.contains("TOKEN=[REDACTED]"));
+        assert!(!request.reason.contains("token-redaction-fixture"));
+        assert_eq!(
+            request.command_hash.as_deref().unwrap_or_default().len(),
+            64
+        );
+
+        let duplicate = request_approval(tmp.path(), "demo", command, "different display reason")
+            .expect("duplicate request");
+        assert_eq!(duplicate.id, request.id);
+
+        resolve_request(tmp.path(), &request.id, true).expect("approve");
+        let consumed = consume_approved_request(tmp.path(), "demo", command)
+            .expect("consume")
+            .expect("approval");
+        assert_eq!(consumed.status, ApprovalStatus::Consumed);
+        assert!(!consumed.command.contains("test-redaction-fixture"));
+    }
+
+    #[test]
+    fn legacy_approval_without_hash_still_consumes() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        fs::create_dir_all(approvals_root(tmp.path())).expect("mkdir approvals");
+        fs::write(
+            approval_path(tmp.path(), "legacy-1"),
+            serde_json::to_string_pretty(&json!({
+                "id": "legacy-1",
+                "session_id": "demo",
+                "command": "rm -rf build",
+                "reason": "legacy approval",
+                "tool_name": null,
+                "execution_mode": null,
+                "batch_id": null,
+                "batch_index": null,
+                "batch_total": null,
+                "status": "approved",
+                "created_at_unix": 1,
+                "updated_at_unix": 1
+            }))
+            .expect("serialize legacy"),
+        )
+        .expect("write legacy");
+
+        let consumed = consume_approved_request(tmp.path(), "demo", "rm -rf build")
+            .expect("consume")
+            .expect("legacy approval");
+        assert_eq!(consumed.status, ApprovalStatus::Consumed);
     }
 
     #[test]
@@ -313,5 +403,28 @@ mod tests {
                 .expect("load none")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn pending_approval_command_is_redacted_for_display() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let pending = save_pending_approval(
+            tmp.path(),
+            "approval-1",
+            "demo",
+            "tool-1",
+            "terminal",
+            "single",
+            None,
+            None,
+            None,
+            "{\"command\":\"echo OPENAI_API_KEY=test-redaction-fixture\"}",
+            "echo OPENAI_API_KEY=test-redaction-fixture",
+        )
+        .expect("save pending");
+
+        assert!(pending.command.contains("OPENAI_API_KEY=[REDACTED]"));
+        assert!(!pending.command.contains("test-redaction-fixture"));
+        assert!(pending.raw_arguments.contains("test-redaction-fixture"));
     }
 }

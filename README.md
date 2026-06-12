@@ -190,9 +190,9 @@ The loop is designed around these ideas:
   snippets share the same destructive shell-risk checks.
 - **Configurable tool policy**: common sensitive paths are protected by default, and
   local config can add approval requirements or disable selected tools/paths entirely.
-- **Secret-aware observations**: tool outputs, live previews, timeline details, archive
-  records, and stored assistant tool-call arguments redact common credential patterns
-  before they become long-lived context.
+- **Secret-aware observations**: tool outputs, live previews, approval request display
+  fields, timeline details, archive records, and stored assistant tool-call arguments
+  redact common credential patterns before they become long-lived context.
 - **Dirty-worktree protection**: file mutation tools refuse to overwrite, patch, delete,
   or move existing Git paths with uncommitted changes unless the tool call explicitly opts
   into `allow_dirty`.
@@ -227,8 +227,10 @@ Important safety notes:
 - Local `network_policy` blocks direct web-fetch tools from accessing loopback, private,
   link-local, and metadata-style hosts by default. Allow local/private hosts only when a
   trusted workflow needs them.
-- Runtime redaction is best-effort and targets common key/token/password formats. It is
-  not a replacement for keeping secrets out of prompts and generated files.
+- Runtime redaction is best-effort and targets common key/token/password formats,
+  including approval request display fields; approval matching uses a stable hash instead
+  of the displayed command. It is not a replacement for keeping secrets out of prompts
+  and generated files.
 - In Git workspaces, file mutation tools protect existing paths with uncommitted changes
   by default. Use an explicit `allow_dirty` tool argument only when intentionally modifying
   local user changes.

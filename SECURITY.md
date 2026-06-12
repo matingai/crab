@@ -55,8 +55,10 @@ Reports are especially valuable when they involve:
 - Local `network_policy` blocks direct web-fetch tools from accessing loopback, private,
   link-local, and metadata-style hosts by default. Trusted workspaces can explicitly
   allow private network fetches or selected hosts in local config.
-- Tool outputs, live previews, timeline details, archive records, and stored assistant
-  tool-call arguments redact common credential patterns before becoming durable context.
+- Tool outputs, live previews, approval request display fields, timeline details, archive
+  records, and stored assistant tool-call arguments redact common credential patterns
+  before becoming durable context. Approval matching uses a stable command hash instead
+  of the displayed command.
 - In Git workspaces, file mutation tools refuse to overwrite, patch, delete, or move
   existing paths with uncommitted changes unless the tool call explicitly opts into
   `allow_dirty`.

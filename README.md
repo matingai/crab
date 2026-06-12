@@ -73,7 +73,8 @@ Key project characteristics:
 - Local session persistence under the current compatibility data directory,
   `.hermes-agent-rs/`.
 - Project context injection from files such as `AGENTS.md`, `CLAUDE.md`, `.hermes.md`,
-  `.cursorrules`, and `.cursor/rules/*.mdc`.
+  `.cursorrules`, and `.cursor/rules/*.mdc`, with directory-specific instruction stacks
+  discovered as tools touch nested paths.
 - Local memory and skills systems designed for per-turn recall instead of dumping the
   entire history into every request.
 - Context compression and request recovery paths for long-running sessions.
@@ -175,7 +176,9 @@ The loop is designed around these ideas:
   delegated to worker runs or auxiliary models, then read back and reconciled.
 - **Context before action**: each turn rebuilds the model input from project instructions,
   recent conversation history, recalled memory, active skills, todos, goal state, runtime
-  profile, and optional debug/context modules.
+  profile, and optional debug/context modules. Directory-specific instruction files are
+  injected root-to-leaf as tools enter nested paths, so more specific rules arrive with
+  clear precedence.
 - **Tool use as a protocol**: tools expose schemas and return observations that are
   summarized, classified, and folded back into the conversation, goal state, memory, and
   solve trace instead of being appended as unbounded raw logs.

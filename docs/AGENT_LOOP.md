@@ -22,6 +22,22 @@ At a high level, each turn can involve:
 9. Emitting structured events throughout the process.
 10. Producing a final response that reflects what changed and what remains.
 
+## Project Instructions
+
+Crab treats project instructions as part of the control loop, not as passive README text.
+At session start it loads root-level context such as `AGENTS.md`, `CLAUDE.md`,
+`.hermes.md`, `.cursorrules`, or `.cursor/rules/*.mdc`.
+
+When a tool touches a nested path, Crab lazily checks that path's ancestor directories for
+additional instruction files. Newly discovered files are returned to the model as a
+root-to-leaf instruction stack, with later entries marked as more specific. This mirrors
+the way coding agents need to honor broad repository conventions while still adapting to
+module-level rules.
+
+Instruction content is scanned for obvious prompt-injection patterns and invisible control
+characters before it is loaded. Suspicious files are reported as blocked context instead
+of being silently trusted.
+
 ## Goal State As Working Memory
 
 The goal state is the loop's durable working memory. It is not a transcript summary. It is

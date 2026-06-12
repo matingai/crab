@@ -234,7 +234,7 @@ fn default_tool_call_requires_approval(tool_name: &str, raw_arguments: &str) -> 
         .and_then(Value::as_str)
         .unwrap_or("status")
         .trim();
-    matches!(action, "click" | "set_text")
+    matches!(action, "click" | "set_text" | "press_key")
 }
 
 pub fn tool_policy_approval_command(tool_name: &str, raw_arguments: &str) -> String {
@@ -687,6 +687,40 @@ tool_policy:
         assert!(approval.command.contains("args_hash="));
         assert!(!approval.command.contains("@u2"));
         assert!(!approval.command.contains("private note"));
+    }
+
+    #[test]
+    fn computer_use_press_key_requires_approval_by_default_without_leaking_key() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+
+        let decision = evaluate_tool_policy(
+            tmp.path(),
+            "session-1",
+            "computer_use",
+            r#"{"action":"press_key","key":"enter"}"#,
+        )
+        .expect("policy");
+        let ToolPolicyPreflight::ApprovalRequired(approval) = decision else {
+            panic!("expected approval");
+        };
+
+        assert!(approval.reason.contains("computer_use"));
+        assert!(approval.command.contains("args_hash="));
+        assert!(!approval.command.contains("enter"));
+    }
+
+    #[test]
+    fn computer_use_press_key_without_action_is_not_default_write() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+
+        let decision = evaluate_tool_policy(
+            tmp.path(),
+            "session-1",
+            "computer_use",
+            r#"{"key":"enter"}"#,
+        )
+        .expect("policy");
+        assert!(matches!(decision, ToolPolicyPreflight::Allow));
     }
 
     #[test]

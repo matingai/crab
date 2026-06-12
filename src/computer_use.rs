@@ -18,6 +18,12 @@ impl ComputerUseStatus {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ComputerUseKey {
+    pub label: &'static str,
+    pub key_code: u16,
+}
+
 pub fn inspect_computer_use(prompt: bool) -> ComputerUseStatus {
     platform::inspect_computer_use(prompt)
 }
@@ -43,6 +49,10 @@ pub fn set_frontmost_app_ref_text(
     platform::set_frontmost_app_ref_text(reference, text, max_items, max_depth)
 }
 
+pub fn press_frontmost_app_key(key: &str, max_items: usize, max_depth: usize) -> Result<String> {
+    platform::press_frontmost_app_key(normalize_computer_use_key(key)?, max_items, max_depth)
+}
+
 pub fn parse_ui_ref(reference: &str) -> Result<usize> {
     let trimmed = reference.trim().trim_start_matches('@');
     let number = trimmed
@@ -57,9 +67,77 @@ pub fn parse_ui_ref(reference: &str) -> Result<usize> {
     Ok(index)
 }
 
+pub fn normalize_computer_use_key(key: &str) -> Result<ComputerUseKey> {
+    let normalized = key.trim().to_ascii_lowercase().replace([' ', '-'], "_");
+    match normalized.as_str() {
+        "enter" | "return" => Ok(ComputerUseKey {
+            label: "enter",
+            key_code: 36,
+        }),
+        "escape" | "esc" => Ok(ComputerUseKey {
+            label: "escape",
+            key_code: 53,
+        }),
+        "tab" => Ok(ComputerUseKey {
+            label: "tab",
+            key_code: 48,
+        }),
+        "space" => Ok(ComputerUseKey {
+            label: "space",
+            key_code: 49,
+        }),
+        "backspace" | "delete" => Ok(ComputerUseKey {
+            label: "backspace",
+            key_code: 51,
+        }),
+        "forward_delete" | "delete_forward" | "forwarddelete" | "deleteforward" => {
+            Ok(ComputerUseKey {
+                label: "forward_delete",
+                key_code: 117,
+            })
+        }
+        "arrow_up" | "arrowup" | "up" => Ok(ComputerUseKey {
+            label: "arrow_up",
+            key_code: 126,
+        }),
+        "arrow_down" | "arrowdown" | "down" => Ok(ComputerUseKey {
+            label: "arrow_down",
+            key_code: 125,
+        }),
+        "arrow_left" | "arrowleft" | "left" => Ok(ComputerUseKey {
+            label: "arrow_left",
+            key_code: 123,
+        }),
+        "arrow_right" | "arrowright" | "right" => Ok(ComputerUseKey {
+            label: "arrow_right",
+            key_code: 124,
+        }),
+        "page_up" | "pageup" => Ok(ComputerUseKey {
+            label: "page_up",
+            key_code: 116,
+        }),
+        "page_down" | "pagedown" => Ok(ComputerUseKey {
+            label: "page_down",
+            key_code: 121,
+        }),
+        "home" => Ok(ComputerUseKey {
+            label: "home",
+            key_code: 115,
+        }),
+        "end" => Ok(ComputerUseKey {
+            label: "end",
+            key_code: 119,
+        }),
+        "" => anyhow::bail!("computer_use press_key requires a non-empty `key`"),
+        other => anyhow::bail!(
+            "unsupported computer_use key `{other}`; allowed keys are enter, escape, tab, space, backspace, forward_delete, arrow_up, arrow_down, arrow_left, arrow_right, page_up, page_down, home, and end"
+        ),
+    }
+}
+
 #[cfg(target_os = "macos")]
 mod platform {
-    use super::{ComputerUseStatus, Result, parse_ui_ref};
+    use super::{ComputerUseKey, ComputerUseStatus, Result, parse_ui_ref};
     use anyhow::{Context, bail};
     use std::ffi::c_void;
     use std::process::Command;
@@ -117,6 +195,43 @@ mod platform {
         let post_snapshot = frontmost_app_snapshot(max_items, max_depth)?;
         Ok(format!(
             "{}\n\npost_set_text_snapshot:\n{}",
+            stdout.trim(),
+            post_snapshot
+        ))
+    }
+
+    pub fn press_frontmost_app_key(
+        key: ComputerUseKey,
+        max_items: usize,
+        max_depth: usize,
+    ) -> Result<String> {
+        if !accessibility_trusted(false) {
+            bail!(
+                "computer_use press_key requires macOS Accessibility permission. Run action=request_permission, then enable Crab or the launching terminal in System Settings > Privacy & Security > Accessibility."
+            );
+        }
+
+        let max_items = max_items.clamp(1, 50);
+        let max_depth = max_depth.clamp(1, 6);
+        let script = frontmost_press_key_script(key);
+        let mut command = Command::new("osascript");
+        for line in &script {
+            command.arg("-e").arg(line);
+        }
+        let output = command
+            .output()
+            .context("failed to run osascript for Accessibility press_key")?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!(
+                "Accessibility press_key failed: {}",
+                stderr.trim().trim_end_matches('.')
+            );
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let post_snapshot = frontmost_app_snapshot(max_items, max_depth)?;
+        Ok(format!(
+            "{}\n\npost_key_snapshot:\n{}",
             stdout.trim(),
             post_snapshot
         ))
@@ -441,6 +556,24 @@ mod platform {
         .collect()
     }
 
+    fn frontmost_press_key_script(key: ComputerUseKey) -> Vec<String> {
+        [
+            "tell application \"System Events\"",
+            "set frontApp to first application process whose frontmost is true",
+            "set appName to name of frontApp",
+            &format!("key code {}", key.key_code),
+            "delay 0.15",
+            &format!(
+                "return \"pressed_key: {}\" & linefeed & \"frontmost_app_before_key: \" & appName",
+                key.label
+            ),
+            "end tell",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+    }
+
     fn accessibility_trusted(prompt: bool) -> bool {
         if prompt {
             return accessibility_trusted_with_prompt();
@@ -474,7 +607,11 @@ mod platform {
 
     #[cfg(test)]
     mod tests {
-        use super::{frontmost_click_script, frontmost_set_text_script, frontmost_snapshot_script};
+        use super::{
+            frontmost_click_script, frontmost_press_key_script, frontmost_set_text_script,
+            frontmost_snapshot_script,
+        };
+        use crate::computer_use::normalize_computer_use_key;
         use std::process::Command;
 
         #[test]
@@ -547,12 +684,33 @@ mod platform {
                 String::from_utf8_lossy(&output.stderr)
             );
         }
+
+        #[test]
+        fn press_key_script_compiles() {
+            let key = normalize_computer_use_key("enter").expect("key");
+            let script = frontmost_press_key_script(key);
+            let tmp = tempfile::tempdir().expect("tempdir");
+            let output_path = tmp.path().join("computer-use-press-key.scpt");
+            let mut command = Command::new("osacompile");
+            command.arg("-o").arg(&output_path);
+            for line in script {
+                command.arg("-e").arg(line);
+            }
+
+            let output = command.output().expect("run osacompile");
+            assert!(
+                output.status.success(),
+                "osacompile failed\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
     }
 }
 
 #[cfg(not(target_os = "macos"))]
 mod platform {
-    use super::{ComputerUseStatus, Result};
+    use super::{ComputerUseKey, ComputerUseStatus, Result};
     use anyhow::bail;
 
     pub fn inspect_computer_use(prompt: bool) -> ComputerUseStatus {
@@ -587,11 +745,19 @@ mod platform {
     ) -> Result<String> {
         bail!("native Accessibility-backed computer use currently supports macOS only")
     }
+
+    pub fn press_frontmost_app_key(
+        _key: ComputerUseKey,
+        _max_items: usize,
+        _max_depth: usize,
+    ) -> Result<String> {
+        bail!("native Accessibility-backed computer use currently supports macOS only")
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{inspect_computer_use, parse_ui_ref};
+    use super::{inspect_computer_use, normalize_computer_use_key, parse_ui_ref};
 
     #[test]
     fn status_reports_current_platform_without_prompt() {
@@ -607,5 +773,33 @@ mod tests {
         assert_eq!(parse_ui_ref("u3").expect("ref"), 3);
         assert!(parse_ui_ref("@e1").is_err());
         assert!(parse_ui_ref("@u0").is_err());
+    }
+
+    #[test]
+    fn normalizes_allowed_computer_use_keys() {
+        assert_eq!(
+            normalize_computer_use_key("Return").expect("key").label,
+            "enter"
+        );
+        assert_eq!(
+            normalize_computer_use_key("arrow-left")
+                .expect("key")
+                .key_code,
+            123
+        );
+        assert_eq!(
+            normalize_computer_use_key("arrowLeft").expect("key").label,
+            "arrow_left"
+        );
+        assert_eq!(
+            normalize_computer_use_key("Page Down").expect("key").label,
+            "page_down"
+        );
+    }
+
+    #[test]
+    fn rejects_unsupported_computer_use_keys() {
+        let error = normalize_computer_use_key("a").expect_err("unsupported key");
+        assert!(format!("{error:#}").contains("unsupported computer_use key"));
     }
 }

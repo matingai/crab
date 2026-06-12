@@ -8,8 +8,8 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::computer_use::{
-    click_frontmost_app_ref, frontmost_app_snapshot, inspect_computer_use,
-    set_frontmost_app_ref_text,
+    ComputerUseKey, click_frontmost_app_ref, frontmost_app_snapshot, inspect_computer_use,
+    normalize_computer_use_key, press_frontmost_app_key, set_frontmost_app_ref_text,
 };
 use crate::tools::{Tool, ToolContext};
 use crate::types::{ToolDefinition, object_schema};
@@ -28,6 +28,7 @@ struct ComputerUseArgs {
     #[serde(rename = "ref")]
     ref_alias: Option<String>,
     text: Option<String>,
+    key: Option<String>,
     snapshot_id: Option<String>,
 }
 
@@ -50,13 +51,13 @@ impl Tool for ComputerUseTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::function(
             "computer_use",
-            "Inspect and prepare native computer-use automation. On macOS, this checks Accessibility trust, can request the permission prompt, can return a shallow Accessibility UI tree for the frontmost app, can click a UI ref after tool-policy approval, and can set text on a UI ref after approval. Broad keyboard and app-control actions are intentionally not enabled yet.",
+            "Inspect and prepare native computer-use automation. On macOS, this checks Accessibility trust, can request the permission prompt, can return a shallow Accessibility UI tree for the frontmost app, can click a UI ref after tool-policy approval, can set text on a UI ref after approval, and can press a small whitelist of non-text keys after approval. Broad keyboard and app-control actions are intentionally not enabled yet.",
             object_schema(
                 json!({
                     "action": {
                         "type": "string",
-                        "enum": ["status", "request_permission", "snapshot", "click", "set_text"],
-                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; click activates a snapshot ref such as @u2 after approval; set_text sets the Accessibility value for a ref after approval."
+                        "enum": ["status", "request_permission", "snapshot", "click", "set_text", "press_key"],
+                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; click activates a snapshot ref such as @u2 after approval; set_text sets the Accessibility value for a ref after approval; press_key sends one whitelisted non-text key to the frontmost app after approval."
                     },
                     "max_items": {
                         "type": "integer",
@@ -82,6 +83,11 @@ impl Tool for ComputerUseTool {
                         "type": "string",
                         "maxLength": 4000,
                         "description": "Text to set on the referenced Accessibility element. Required for set_text."
+                    },
+                    "key": {
+                        "type": "string",
+                        "enum": ["enter", "escape", "tab", "space", "backspace", "forward_delete", "arrow_up", "arrow_down", "arrow_left", "arrow_right", "page_up", "page_down", "home", "end"],
+                        "description": "Whitelisted key to press in the frontmost app. Required for press_key. Aliases such as return, esc, left, right, up, down, delete, and page-down are also accepted."
                     },
                     "snapshot_id": {
                         "type": "string",
@@ -150,8 +156,25 @@ impl Tool for ComputerUseTool {
                     result.trim()
                 ))
             }
+            "press_key" => {
+                let key = args.key()?;
+                let max_items = args.max_items.clamp(1, 50);
+                let max_depth = args.max_depth.clamp(1, 6);
+                let snapshot_record = resolve_snapshot_record(ctx, args.snapshot_id.as_deref())?;
+                let status = inspect_computer_use(false);
+                if !status.ready() {
+                    bail!("{}", status.guidance);
+                }
+                let result = press_frontmost_app_key(key.label, max_items, max_depth)?;
+                Ok(format!(
+                    "using_snapshot_id: {}\n{}\n\n{}",
+                    snapshot_record.snapshot_id,
+                    render_status(false),
+                    result.trim()
+                ))
+            }
             other => bail!(
-                "unsupported computer_use action `{other}`; use status, request_permission, snapshot, click, or set_text"
+                "unsupported computer_use action `{other}`; use status, request_permission, snapshot, click, set_text, or press_key"
             ),
         }
     }
@@ -179,6 +202,13 @@ impl ComputerUseArgs {
             );
         }
         Ok(text)
+    }
+
+    fn key(&self) -> Result<ComputerUseKey> {
+        let Some(key) = self.key.as_deref() else {
+            bail!("computer_use press_key requires a `key` value");
+        };
+        normalize_computer_use_key(key)
     }
 }
 
@@ -391,6 +421,33 @@ mod tests {
         assert!(format!("{error:#}").contains("too long"));
     }
 
+    #[tokio::test]
+    async fn press_key_requires_key() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tool = ComputerUseTool;
+        let error = tool
+            .execute(json!({ "action": "press_key" }), &ctx(tmp.path()))
+            .await
+            .expect_err("missing key");
+
+        assert!(format!("{error:#}").contains("requires a `key` value"));
+    }
+
+    #[tokio::test]
+    async fn press_key_rejects_unsupported_key() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tool = ComputerUseTool;
+        let error = tool
+            .execute(
+                json!({ "action": "press_key", "key": "a" }),
+                &ctx(tmp.path()),
+            )
+            .await
+            .expect_err("unsupported key");
+
+        assert!(format!("{error:#}").contains("unsupported computer_use key"));
+    }
+
     #[test]
     fn definition_exposes_snapshot_bounds() {
         let tool = ComputerUseTool;
@@ -402,8 +459,10 @@ mod tests {
         assert!(schema.contains("\"snapshot\""));
         assert!(schema.contains("\"click\""));
         assert!(schema.contains("\"set_text\""));
+        assert!(schema.contains("\"press_key\""));
         assert!(schema.contains("\"reference\""));
         assert!(schema.contains("\"text\""));
+        assert!(schema.contains("\"key\""));
         assert!(schema.contains("\"snapshot_id\""));
     }
 

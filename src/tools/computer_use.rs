@@ -340,7 +340,12 @@ impl Tool for ComputerUseTool {
                 let reference = args.reference()?;
                 let max_items = args.max_items.clamp(1, 50);
                 let max_depth = args.max_depth.clamp(1, 6);
-                let snapshot_record = resolve_snapshot_record(ctx, args.snapshot_id.as_deref())?;
+                let snapshot_record = resolve_snapshot_record(
+                    ctx,
+                    args.snapshot_id.as_deref(),
+                    max_items,
+                    max_depth,
+                )?;
                 let ref_guard_request = args.ref_guard_request()?;
                 let app_guard_request = args.app_guard_request()?;
                 let status = inspect_computer_use(false);
@@ -366,7 +371,12 @@ impl Tool for ComputerUseTool {
                 let request = args.native_action_request()?;
                 let max_items = args.max_items.clamp(1, 50);
                 let max_depth = args.max_depth.clamp(1, 6);
-                let snapshot_record = resolve_snapshot_record(ctx, args.snapshot_id.as_deref())?;
+                let snapshot_record = resolve_snapshot_record(
+                    ctx,
+                    args.snapshot_id.as_deref(),
+                    max_items,
+                    max_depth,
+                )?;
                 let ref_guard_request = args.ref_guard_request()?;
                 let app_guard_request = args.app_guard_request()?;
                 let status = inspect_computer_use(false);
@@ -402,7 +412,12 @@ impl Tool for ComputerUseTool {
                 let reference = args.reference()?;
                 let max_items = args.max_items.clamp(1, 50);
                 let max_depth = args.max_depth.clamp(1, 6);
-                let snapshot_record = resolve_snapshot_record(ctx, args.snapshot_id.as_deref())?;
+                let snapshot_record = resolve_snapshot_record(
+                    ctx,
+                    args.snapshot_id.as_deref(),
+                    max_items,
+                    max_depth,
+                )?;
                 let ref_guard_request = args.ref_guard_request()?;
                 let app_guard_request = args.app_guard_request()?;
                 let status = inspect_computer_use(false);
@@ -428,7 +443,12 @@ impl Tool for ComputerUseTool {
                 let text = args.text()?;
                 let max_items = args.max_items.clamp(1, 50);
                 let max_depth = args.max_depth.clamp(1, 6);
-                let snapshot_record = resolve_snapshot_record(ctx, args.snapshot_id.as_deref())?;
+                let snapshot_record = resolve_snapshot_record(
+                    ctx,
+                    args.snapshot_id.as_deref(),
+                    max_items,
+                    max_depth,
+                )?;
                 let ref_guard_request = args.ref_guard_request()?;
                 let app_guard_request = args.app_guard_request()?;
                 let status = inspect_computer_use(false);
@@ -454,7 +474,12 @@ impl Tool for ComputerUseTool {
                 let request = args.scroll_request()?;
                 let max_items = args.max_items.clamp(1, 50);
                 let max_depth = args.max_depth.clamp(1, 6);
-                let snapshot_record = resolve_snapshot_record(ctx, args.snapshot_id.as_deref())?;
+                let snapshot_record = resolve_snapshot_record(
+                    ctx,
+                    args.snapshot_id.as_deref(),
+                    max_items,
+                    max_depth,
+                )?;
                 let ref_guard_request = args.ref_guard_request()?;
                 let app_guard_request = args.app_guard_request()?;
                 let status = inspect_computer_use(false);
@@ -485,7 +510,12 @@ impl Tool for ComputerUseTool {
                 let key = args.key()?;
                 let max_items = args.max_items.clamp(1, 50);
                 let max_depth = args.max_depth.clamp(1, 6);
-                let snapshot_record = resolve_snapshot_record(ctx, args.snapshot_id.as_deref())?;
+                let snapshot_record = resolve_snapshot_record(
+                    ctx,
+                    args.snapshot_id.as_deref(),
+                    max_items,
+                    max_depth,
+                )?;
                 let app_guard_request = args.app_guard_request()?;
                 let status = inspect_computer_use(false);
                 if !status.ready() {
@@ -999,6 +1029,8 @@ fn save_snapshot_record(
 fn resolve_snapshot_record(
     ctx: &ToolContext,
     requested_snapshot_id: Option<&str>,
+    max_items: usize,
+    max_depth: usize,
 ) -> Result<ComputerUseSnapshotRecord> {
     let record = load_snapshot_record(ctx)?.ok_or_else(|| {
         anyhow::anyhow!(
@@ -1016,6 +1048,16 @@ fn resolve_snapshot_record(
                 record.snapshot_id
             );
         }
+    }
+    if record.max_items != max_items || record.max_depth != max_depth {
+        bail!(
+            "computer_use snapshot bounds changed for latest snapshot `{}`; latest max_items={}, max_depth={}, requested max_items={}, max_depth={}. call snapshot/find/inspect_ref/wait/wait_ref again with the requested bounds or reuse the latest bounds",
+            record.snapshot_id,
+            record.max_items,
+            record.max_depth,
+            max_items,
+            max_depth
+        );
     }
     Ok(record)
 }
@@ -2549,9 +2591,23 @@ available_actions: AXPress
         let ctx = ctx(tmp.path());
         save_snapshot_record(&ctx, 40, 3, "frontmost_app: Finder").expect("save snapshot record");
 
-        let error = resolve_snapshot_record(&ctx, Some("cu_stale"))
+        let error = resolve_snapshot_record(&ctx, Some("cu_stale"), 40, 3)
             .expect_err("stale snapshot id should fail");
         assert!(format!("{error:#}").contains("does not match latest snapshot"));
+    }
+
+    #[test]
+    fn snapshot_record_rejects_changed_bounds() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let ctx = ctx(tmp.path());
+        save_snapshot_record(&ctx, 40, 3, "frontmost_app: Finder").expect("save snapshot record");
+
+        let error = resolve_snapshot_record(&ctx, None, 30, 3)
+            .expect_err("changed snapshot bounds should fail");
+        let message = format!("{error:#}");
+        assert!(message.contains("snapshot bounds changed"));
+        assert!(message.contains("latest max_items=40"));
+        assert!(message.contains("requested max_items=30"));
     }
 
     #[test]
@@ -2559,8 +2615,8 @@ available_actions: AXPress
         let tmp = tempfile::tempdir().expect("tempdir");
         let ctx = ctx(tmp.path());
 
-        let error =
-            resolve_snapshot_record(&ctx, None).expect_err("missing snapshot record should fail");
+        let error = resolve_snapshot_record(&ctx, None, 40, 3)
+            .expect_err("missing snapshot record should fail");
         assert!(format!("{error:#}").contains("action=snapshot first"));
     }
 }

@@ -506,8 +506,9 @@ cargo check --manifest-path desktop-shell/src-tauri/Cargo.toml
 - 浏览器导航、快照、截图、交互、抽取和图片发现。
 - 原生 computer-use 准备能力：macOS Accessibility 状态、授权弹窗、带紧凑状态标记的前台应用 UI tree
   快照、只读 ref 检查、支持 native action 过滤的 ref 搜索、文本出现/消失 UI wait、ref 就绪等待、
-  写动作前 ref 和前台 app guard、native action 可用性检查、绑定 snapshot 的 focus/click/text/scroll
-  动作、写动作后的 post snapshot id、白名单原生 Accessibility action 和白名单按键。
+  写动作前 ref 和前台 app guard、native action 可用性检查、校验边界的绑定 snapshot
+  focus/click/perform_action/set_text/scroll/key 写动作、写动作后的 post snapshot id、白名单原生
+  Accessibility action 和白名单按键。
 - PDF 与 Office 文档的检查、预览、抽取和生成路径。
 - session 搜索、archive 查询、memory 查询、memory digest 和 wiki-style notes。
 - skills 列表、查看和管理。

@@ -572,7 +572,11 @@ impl Agent {
         }
     }
 
-    fn seed_goal_state_from_user_input(&self, user_input: &str) -> Result<()> {
+    fn seed_goal_state_from_user_input(
+        &self,
+        handler: &mut dyn EventHandler,
+        user_input: &str,
+    ) -> Result<()> {
         let mut state = self.goal_state_store.load(&self.session.session_id)?;
         if state.goals.is_empty() {
             state.goals.push(GoalItem {
@@ -632,10 +636,45 @@ impl Agent {
             },
         );
 
-        let _ = self
+        let state = self
             .goal_state_store
             .replace(&self.session.session_id, state)?;
+        self.emit_goal_state_updated(handler, "user_input", &state);
         Ok(())
+    }
+
+    fn emit_goal_state_updated(
+        &self,
+        handler: &mut dyn EventHandler,
+        source: &str,
+        state: &GoalState,
+    ) {
+        let focus_goal = select_focus_goal(state);
+        let active_goal_count = state
+            .goals
+            .iter()
+            .filter(|goal| matches!(goal.status.as_str(), "in_progress" | "pending" | "blocked"))
+            .count();
+        let blocked_goal_count = state
+            .goals
+            .iter()
+            .filter(|goal| goal.status == "blocked")
+            .count();
+        handler.on_event(AgentEvent::GoalStateUpdated {
+            session_id: self.session.session_id.clone(),
+            source: source.to_string(),
+            phase: state.phase.clone(),
+            mission_preview: redacted_truncated(&state.mission, 160),
+            focus_goal_id: focus_goal.map(|goal| goal.id.clone()),
+            focus_goal_title: focus_goal.map(|goal| redacted_truncated(&goal.title, 120)),
+            focus_goal_status: focus_goal.map(|goal| goal.status.clone()),
+            focus_goal_confidence: focus_goal.map(|goal| goal.confidence),
+            goal_count: state.goals.len(),
+            active_goal_count,
+            blocked_goal_count,
+            cognition_count: state.cognition.len(),
+            hot_data_count: state.hot_data.len(),
+        });
     }
 
     fn start_solve_episode(&self, user_input: &str) {
@@ -728,6 +767,7 @@ impl Agent {
 
     fn update_goal_state_from_tool_outcome(
         &self,
+        handler: &mut dyn EventHandler,
         tool_call_id: &str,
         tool_name: &str,
         result: &str,
@@ -797,9 +837,12 @@ impl Agent {
             );
         }
 
-        let _ = self
+        if let Ok(state) = self
             .goal_state_store
-            .replace(&self.session.session_id, state);
+            .replace(&self.session.session_id, state)
+        {
+            self.emit_goal_state_updated(handler, "tool_outcome", &state);
+        }
         if tool_name == "delegate_to_worker" {
             self.update_delegate_worker_todos_from_tool_outcome(tool_call_id, result);
             self.record_delegate_worker_solve_trace(tool_call_id, result, status);
@@ -874,9 +917,12 @@ impl Agent {
         };
 
         apply_goal_state_reconcile_patch(&mut state, patch);
-        let _ = self
+        if let Ok(state) = self
             .goal_state_store
-            .replace(&self.session.session_id, state);
+            .replace(&self.session.session_id, state)
+        {
+            self.emit_goal_state_updated(handler, "tool_reconcile", &state);
+        }
         used_summary.then_some(reconcile_result)
     }
 
@@ -1200,9 +1246,12 @@ impl Agent {
         };
 
         apply_goal_state_reconcile_patch(&mut state, patch);
-        let _ = self
+        if let Ok(state) = self
             .goal_state_store
-            .replace(&self.session.session_id, state);
+            .replace(&self.session.session_id, state)
+        {
+            self.emit_goal_state_updated(handler, "turn_reconcile", &state);
+        }
     }
 
     async fn build_execution_brief_context_block(
@@ -1680,7 +1729,7 @@ impl Agent {
             self.session.history.push(ChatMessage::user(user_input));
             let turn_id = self.session.record_user_timeline_entry(user_input);
             self.active_turn_id = Some(turn_id);
-            self.seed_goal_state_from_user_input(user_input)?;
+            self.seed_goal_state_from_user_input(&mut handler, user_input)?;
 
             let mut progress = TurnProgress::default();
             let system_prompt = build_system_prompt(&self.config);
@@ -1780,7 +1829,7 @@ impl Agent {
             let turn_id = self.session.record_user_timeline_entry(user_input);
             self.active_turn_id = Some(turn_id.clone());
             self.emit_turn_started(handler, &turn_id, user_input, false);
-            self.seed_goal_state_from_user_input(user_input)?;
+            self.seed_goal_state_from_user_input(handler, user_input)?;
             self.start_solve_episode(user_input);
             self.upsert_archive_turn(&self.active_archive_turn_id());
             self.append_archive_message("user", user_input, None, None);
@@ -1945,6 +1994,7 @@ impl Agent {
             Some(&result),
         );
         self.update_goal_state_from_tool_outcome(
+            handler,
             &pending.tool_call_id,
             &pending.tool_name,
             &result,
@@ -2329,6 +2379,7 @@ impl Agent {
                         &truncated(approval_reason, 240),
                     );
                     self.update_goal_state_from_tool_outcome(
+                        handler,
                         &call.id,
                         &call.function.name,
                         &approval.reason,
@@ -2370,6 +2421,7 @@ impl Agent {
                     Some(&result),
                 );
                 self.update_goal_state_from_tool_outcome(
+                    handler,
                     &call.id,
                     &call.function.name,
                     &result,
@@ -4043,6 +4095,7 @@ impl Agent {
                     &truncated(approval_reason, 240),
                 );
                 self.update_goal_state_from_tool_outcome(
+                    handler,
                     &call.id,
                     &call.function.name,
                     &approval.reason,
@@ -4104,6 +4157,7 @@ impl Agent {
                 Some(&result),
             );
             self.update_goal_state_from_tool_outcome(
+                handler,
                 &call.id,
                 &call.function.name,
                 &result,
@@ -7696,6 +7750,33 @@ mod tests {
             handler
                 .events()
                 .iter()
+                .find(|event| matches!(event, AgentEvent::GoalStateUpdated { .. })),
+            Some(AgentEvent::GoalStateUpdated {
+                source,
+                focus_goal_id,
+                focus_goal_title,
+                focus_goal_status,
+                goal_count,
+                active_goal_count,
+                cognition_count,
+                hot_data_count,
+                ..
+            }) if source == "user_input"
+                && focus_goal_id.as_deref() == Some("goal-current")
+                && focus_goal_title
+                    .as_deref()
+                    .is_some_and(|title| title.contains("OPENAI_API_KEY=[REDACTED]")
+                        && !title.contains("test-redaction-fixture"))
+                && focus_goal_status.as_deref() == Some("in_progress")
+                && *goal_count == 1
+                && *active_goal_count == 1
+                && *cognition_count >= 1
+                && *hot_data_count >= 1
+        ));
+        assert!(matches!(
+            handler
+                .events()
+                .iter()
                 .rev()
                 .find(|event| matches!(event, AgentEvent::TurnFinished { .. })),
             Some(AgentEvent::TurnFinished {
@@ -8671,6 +8752,7 @@ mod tests {
             .expect("replace");
 
         agent.update_goal_state_from_tool_outcome(
+            &mut handler,
             "tool-1",
             "read_file",
             "no file found for requested path",
@@ -8759,6 +8841,7 @@ mod tests {
             .expect("replace");
 
         agent.update_goal_state_from_tool_outcome(
+            &mut handler,
             "tool-1",
             "read_file",
             "contents loaded",
@@ -8829,6 +8912,7 @@ mod tests {
             "trait bound mismatch\n".repeat(40)
         );
         agent.update_goal_state_from_tool_outcome(
+            &mut handler,
             "tool-1",
             "terminal",
             &result,
@@ -9012,13 +9096,30 @@ mod tests {
         })
         .to_string();
 
+        let mut handler = RecordingEventHandler::new();
         agent.update_goal_state_from_tool_outcome(
+            &mut handler,
             "tool-1",
             "delegate_to_worker",
             &delegate_result,
             "sequential",
             "done",
         );
+        assert!(handler.events().iter().any(|event| matches!(
+            event,
+            AgentEvent::GoalStateUpdated {
+                source,
+                focus_goal_id,
+                goal_count,
+                cognition_count,
+                hot_data_count,
+                ..
+            } if source == "tool_outcome"
+                && focus_goal_id.as_deref() == Some("goal-current")
+                && *goal_count == 1
+                && *cognition_count > 0
+                && *hot_data_count > 0
+        )));
 
         let state = agent
             .goal_state_store

@@ -2978,6 +2978,13 @@ function summarizeEvent(event: Record<string, unknown> & { type?: string }): str
       }
     case "assistant_delta":
       return truncate(String(event.delta || ""), 80);
+    case "goal_state_updated":
+      {
+        const source = formatGoalStateSource(String(event.source || ""));
+        const focus = String(event.focus_goal_title || event.focus_goal_id || "");
+        const status = String(event.focus_goal_status || "");
+        return `目标状态${source ? ` · ${source}` : ""}${focus ? ` · ${truncate(focus, 60)}` : ""}${status ? ` · ${status}` : ""}`;
+      }
     case "model_request_started":
       return `请求模型 ${String(event.model || "")}${formatModelRequestMetadata(event)}，${String(event.message_count || 0)} 条消息`;
     case "model_request_finished":
@@ -3191,6 +3198,21 @@ function formatTurnStatus(status: string): string {
       return "失败";
     default:
       return status || "已结束";
+  }
+}
+
+function formatGoalStateSource(source: string): string {
+  switch (source) {
+    case "user_input":
+      return "用户目标";
+    case "tool_outcome":
+      return "工具证据";
+    case "tool_reconcile":
+      return "工具复盘";
+    case "turn_reconcile":
+      return "回合复盘";
+    default:
+      return source;
   }
 }
 
@@ -4913,6 +4935,17 @@ export default function Page() {
         break;
       case "assistant_delta":
         appendAssistantDelta(String(event.delta || ""));
+        break;
+      case "goal_state_updated":
+        {
+          const source = formatGoalStateSource(String(event.source || ""));
+          const focus = String(event.focus_goal_title || event.focus_goal_id || "");
+          const status = String(event.focus_goal_status || "");
+          const counts = `${String(event.active_goal_count || 0)}/${String(event.goal_count || 0)} goals`;
+          setAgentActivity(
+            `目标状态已更新${source ? ` · ${source}` : ""}${focus ? ` · ${truncate(focus, 36)}` : ""}${status ? ` · ${status}` : ""} · ${counts}`,
+          );
+        }
         break;
       case "assistant_message":
         setAgentActivity("正在准备");

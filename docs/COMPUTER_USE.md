@@ -13,6 +13,8 @@ The current implementation is deliberately conservative:
 - Read-only searching across a fresh Accessibility snapshot to locate candidate refs by
   text, role, and compact state.
 - Read-only waiting for text to appear or for the frontmost Accessibility tree to settle.
+- Optional pre-action ref guards that check a current ref's role, text, or compact state
+  before an approval-gated write action runs.
 - Approval-gated focus support for a current `@u` ref.
 - Approval-gated click support for a current `@u` ref.
 - Approval-gated text setting for a current `@u` ref when the target Accessibility element
@@ -132,11 +134,20 @@ Write actions validate the latest `snapshot_id` before acting. If the id is omit
 uses the latest snapshot record for the current session; if a stale id is supplied, the
 action fails and the agent must observe the desktop again.
 
+For safer targeting, write actions can also include optional ref guards. `expect_role`,
+`expect_text`, and `expect_state` make Crab take one more read-only snapshot before the
+write action and verify that the chosen ref still looks like the observed control. If the
+guard fails, the write action is not attempted and the agent should run `snapshot` or
+`find` again.
+
 ```json
 {
   "action": "click",
   "ref": "@u2",
   "snapshot_id": "cu_7d3c0a5d21a9e472",
+  "expect_role": "button",
+  "expect_text": "Continue",
+  "expect_state": "enabled",
   "max_items": 40,
   "max_depth": 3
 }
@@ -213,6 +224,7 @@ gives it a bounded, inspectable desktop UI tree. Future write actions should sta
 
 - explicit tool names and arguments;
 - read-only find steps before choosing an observed ref;
+- pre-action ref guards for role, text, and state when the target is important;
 - read-only waits after actions before choosing the next ref;
 - snapshot-bound refs instead of coordinate guessing;
 - focused UI targets before key-driven navigation;

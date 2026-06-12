@@ -10,7 +10,7 @@ use tokio::time::{Duration, Instant, sleep};
 
 use crate::computer_use::{
     ComputerUseKey, click_frontmost_app_ref, focus_frontmost_app_ref, frontmost_app_snapshot,
-    inspect_computer_use, normalize_computer_use_key, press_frontmost_app_key,
+    inspect_computer_use, normalize_computer_use_key, parse_ui_ref, press_frontmost_app_key,
     set_frontmost_app_ref_text,
 };
 use crate::tools::{Tool, ToolContext};
@@ -40,6 +40,12 @@ struct ComputerUseArgs {
     state: Option<String>,
     #[serde(alias = "maxResults")]
     max_results: Option<usize>,
+    #[serde(alias = "expectedRole", alias = "expectRole")]
+    expect_role: Option<String>,
+    #[serde(alias = "expectedText", alias = "expectText")]
+    expect_text: Option<String>,
+    #[serde(alias = "expectedState", alias = "expectState")]
+    expect_state: Option<String>,
     #[serde(alias = "caseSensitive")]
     case_sensitive: Option<bool>,
     #[serde(alias = "timeoutSeconds")]
@@ -53,6 +59,8 @@ const MAX_SET_TEXT_CHARS: usize = 4_000;
 const MAX_WAIT_TEXT_CHARS: usize = 1_000;
 const MAX_FIND_QUERY_CHARS: usize = 1_000;
 const MAX_FIND_ROLE_CHARS: usize = 120;
+const MAX_EXPECT_TEXT_CHARS: usize = 1_000;
+const MAX_EXPECT_ROLE_CHARS: usize = 120;
 const DEFAULT_FIND_MAX_RESULTS: usize = 12;
 const MAX_FIND_RESULTS: usize = 50;
 const DEFAULT_WAIT_TIMEOUT_SECONDS: u64 = 10;
@@ -145,9 +153,24 @@ impl Tool for ComputerUseTool {
                         "maximum": 50,
                         "description": "Maximum matching Accessibility element lines to return for action=find. Defaults to 12."
                     },
+                    "expect_role": {
+                        "type": "string",
+                        "maxLength": 120,
+                        "description": "Optional pre-action guard for focus, click, and set_text. When set, the current ref line must still have this role before the write action runs."
+                    },
+                    "expect_text": {
+                        "type": "string",
+                        "maxLength": 1000,
+                        "description": "Optional pre-action guard for focus, click, and set_text. When set, the current ref line must still contain this text before the write action runs."
+                    },
+                    "expect_state": {
+                        "type": "string",
+                        "enum": ["focused", "selected", "enabled", "disabled"],
+                        "description": "Optional pre-action guard for focus, click, and set_text. When set, the current ref line must still match this compact state before the write action runs."
+                    },
                     "case_sensitive": {
                         "type": "boolean",
-                        "description": "Whether contains_text or find query matching is case-sensitive. Defaults to false."
+                        "description": "Whether contains_text, find query, or expect_text matching is case-sensitive. Defaults to false."
                     },
                     "timeout_seconds": {
                         "type": "integer",
@@ -239,16 +262,18 @@ impl Tool for ComputerUseTool {
                 let max_items = args.max_items.clamp(1, 50);
                 let max_depth = args.max_depth.clamp(1, 6);
                 let snapshot_record = resolve_snapshot_record(ctx, args.snapshot_id.as_deref())?;
+                let ref_guard_request = args.ref_guard_request()?;
                 let status = inspect_computer_use(false);
                 if !status.ready() {
                     bail!("{}", status.guidance);
                 }
+                let ref_guard =
+                    run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
                 let result = click_frontmost_app_ref(reference, max_items, max_depth)?;
-                Ok(format!(
-                    "using_snapshot_id: {}\n{}\n\n{}",
-                    snapshot_record.snapshot_id,
-                    render_status(false),
-                    result.trim()
+                Ok(render_write_result(
+                    &snapshot_record.snapshot_id,
+                    ref_guard.as_ref(),
+                    &result,
                 ))
             }
             "focus" => {
@@ -256,16 +281,18 @@ impl Tool for ComputerUseTool {
                 let max_items = args.max_items.clamp(1, 50);
                 let max_depth = args.max_depth.clamp(1, 6);
                 let snapshot_record = resolve_snapshot_record(ctx, args.snapshot_id.as_deref())?;
+                let ref_guard_request = args.ref_guard_request()?;
                 let status = inspect_computer_use(false);
                 if !status.ready() {
                     bail!("{}", status.guidance);
                 }
+                let ref_guard =
+                    run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
                 let result = focus_frontmost_app_ref(reference, max_items, max_depth)?;
-                Ok(format!(
-                    "using_snapshot_id: {}\n{}\n\n{}",
-                    snapshot_record.snapshot_id,
-                    render_status(false),
-                    result.trim()
+                Ok(render_write_result(
+                    &snapshot_record.snapshot_id,
+                    ref_guard.as_ref(),
+                    &result,
                 ))
             }
             "set_text" => {
@@ -274,16 +301,18 @@ impl Tool for ComputerUseTool {
                 let max_items = args.max_items.clamp(1, 50);
                 let max_depth = args.max_depth.clamp(1, 6);
                 let snapshot_record = resolve_snapshot_record(ctx, args.snapshot_id.as_deref())?;
+                let ref_guard_request = args.ref_guard_request()?;
                 let status = inspect_computer_use(false);
                 if !status.ready() {
                     bail!("{}", status.guidance);
                 }
+                let ref_guard =
+                    run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
                 let result = set_frontmost_app_ref_text(reference, text, max_items, max_depth)?;
-                Ok(format!(
-                    "using_snapshot_id: {}\n{}\n\n{}",
-                    snapshot_record.snapshot_id,
-                    render_status(false),
-                    result.trim()
+                Ok(render_write_result(
+                    &snapshot_record.snapshot_id,
+                    ref_guard.as_ref(),
+                    &result,
                 ))
             }
             "press_key" => {
@@ -441,6 +470,52 @@ impl ComputerUseArgs {
                 .clamp(1, MAX_FIND_RESULTS),
         })
     }
+
+    fn ref_guard_request(&self) -> Result<Option<ComputerUseRefGuardRequest>> {
+        let role = self
+            .expect_role
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        if let Some(role) = &role
+            && role.chars().count() > MAX_EXPECT_ROLE_CHARS
+        {
+            bail!(
+                "computer_use expect_role is too long; maximum is {MAX_EXPECT_ROLE_CHARS} characters"
+            );
+        }
+
+        let text = self
+            .expect_text
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        if let Some(text) = &text
+            && text.chars().count() > MAX_EXPECT_TEXT_CHARS
+        {
+            bail!(
+                "computer_use expect_text is too long; maximum is {MAX_EXPECT_TEXT_CHARS} characters"
+            );
+        }
+
+        let state = self
+            .expect_state
+            .as_deref()
+            .map(ComputerUseFindState::parse_expect)
+            .transpose()?;
+        if role.is_none() && text.is_none() && state.is_none() {
+            return Ok(None);
+        }
+
+        Ok(Some(ComputerUseRefGuardRequest {
+            role,
+            text,
+            state,
+            case_sensitive: self.case_sensitive.unwrap_or(false),
+        }))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -495,6 +570,14 @@ enum ComputerUseFindState {
 
 impl ComputerUseFindState {
     fn parse(state: &str) -> Result<Self> {
+        Self::parse_for(state, "find state")
+    }
+
+    fn parse_expect(state: &str) -> Result<Self> {
+        Self::parse_for(state, "expect_state")
+    }
+
+    fn parse_for(state: &str, field: &str) -> Result<Self> {
         match state
             .trim()
             .to_ascii_lowercase()
@@ -505,10 +588,19 @@ impl ComputerUseFindState {
             "selected" | "select" => Ok(Self::Selected),
             "enabled" | "available" => Ok(Self::Enabled),
             "disabled" | "not_enabled" | "unavailable" => Ok(Self::Disabled),
-            "" => bail!("computer_use find state cannot be empty"),
+            "" => bail!("computer_use {field} cannot be empty"),
             other => bail!(
-                "unsupported computer_use find state `{other}`; use focused, selected, enabled, or disabled"
+                "unsupported computer_use {field} `{other}`; use focused, selected, enabled, or disabled"
             ),
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Focused => "focused",
+            Self::Selected => "selected",
+            Self::Enabled => "enabled",
+            Self::Disabled => "disabled",
         }
     }
 }
@@ -517,6 +609,20 @@ impl ComputerUseFindState {
 struct ComputerUseFindOutcome {
     matches: Vec<String>,
     truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ComputerUseRefGuardRequest {
+    role: Option<String>,
+    text: Option<String>,
+    state: Option<ComputerUseFindState>,
+    case_sensitive: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ComputerUseRefGuardOutcome {
+    reference: String,
+    line_sha256: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -780,6 +886,91 @@ fn render_find_matches(outcome: &ComputerUseFindOutcome) -> String {
     }
 }
 
+fn run_ref_guard(
+    reference: &str,
+    max_items: usize,
+    max_depth: usize,
+    request: Option<&ComputerUseRefGuardRequest>,
+) -> Result<Option<ComputerUseRefGuardOutcome>> {
+    let Some(request) = request else {
+        return Ok(None);
+    };
+    let snapshot = frontmost_app_snapshot(max_items, max_depth)?;
+    let line = snapshot_line_for_ref(&snapshot, reference)?;
+    check_ref_guard_line(reference, &line, request)?;
+    Ok(Some(ComputerUseRefGuardOutcome {
+        reference: reference.to_string(),
+        line_sha256: sha256_hex(line.as_bytes()),
+    }))
+}
+
+fn snapshot_line_for_ref(snapshot: &str, reference: &str) -> Result<String> {
+    let target_index = parse_ui_ref(reference)?;
+    let prefix = format!("- @u{target_index}");
+    for line in snapshot.lines() {
+        let trimmed = line.trim_start();
+        if trimmed == prefix
+            || trimmed
+                .strip_prefix(&prefix)
+                .is_some_and(|rest| rest.starts_with(' '))
+        {
+            return Ok(line.trim_end().to_string());
+        }
+    }
+    bail!(
+        "computer_use ref guard could not find {reference} in the current snapshot; call snapshot or find again"
+    )
+}
+
+fn check_ref_guard_line(
+    reference: &str,
+    line: &str,
+    request: &ComputerUseRefGuardRequest,
+) -> Result<()> {
+    let line_sha256 = sha256_hex(line.as_bytes());
+    if let Some(role) = &request.role
+        && !role_matches(line, role)
+    {
+        bail!(
+            "computer_use ref guard failed for {reference}: expected role `{role}`; current ref line did not match (line_sha256: {line_sha256}). call snapshot or find again"
+        );
+    }
+    if let Some(text) = &request.text
+        && !contains_match(line, text, request.case_sensitive)
+    {
+        bail!(
+            "computer_use ref guard failed for {reference}: expected text was not present (line_sha256: {line_sha256}). call snapshot or find again"
+        );
+    }
+    if let Some(state) = request.state
+        && !state_matches(line, state)
+    {
+        bail!(
+            "computer_use ref guard failed for {reference}: expected state `{}`; current ref line did not match (line_sha256: {line_sha256}). call snapshot or find again",
+            state.label()
+        );
+    }
+    Ok(())
+}
+
+fn render_write_result(
+    snapshot_id: &str,
+    ref_guard: Option<&ComputerUseRefGuardOutcome>,
+    result: &str,
+) -> String {
+    let mut output = format!("using_snapshot_id: {snapshot_id}\n");
+    if let Some(ref_guard) = ref_guard {
+        output.push_str(&format!(
+            "ref_guard: passed\nref_guard_ref: {}\nref_guard_line_sha256: {}\n",
+            ref_guard.reference, ref_guard.line_sha256
+        ));
+    }
+    output.push_str(&render_status(false));
+    output.push_str("\n\n");
+    output.push_str(result.trim());
+    output
+}
+
 fn render_status(prompt: bool) -> String {
     let status = inspect_computer_use(prompt);
     format!(
@@ -796,9 +987,10 @@ fn render_status(prompt: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        ComputerUseFindRequest, ComputerUseFindState, ComputerUseTool, ComputerUseWaitMode,
-        MAX_SET_TEXT_CHARS, find_snapshot_lines, load_snapshot_record, resolve_snapshot_record,
-        save_snapshot_record, snapshot_contains_text, snapshot_record_path,
+        ComputerUseFindRequest, ComputerUseFindState, ComputerUseRefGuardRequest, ComputerUseTool,
+        ComputerUseWaitMode, MAX_SET_TEXT_CHARS, check_ref_guard_line, find_snapshot_lines,
+        load_snapshot_record, resolve_snapshot_record, save_snapshot_record,
+        snapshot_contains_text, snapshot_line_for_ref, snapshot_record_path,
     };
     use crate::tools::{Tool, ToolContext};
     use serde_json::json;
@@ -1033,6 +1225,39 @@ mod tests {
     }
 
     #[test]
+    fn ref_guard_request_trims_and_normalizes_expectations() {
+        let args: super::ComputerUseArgs = serde_json::from_value(json!({
+            "action": "click",
+            "ref": "@u2",
+            "expect_role": " button ",
+            "expect_text": " Continue ",
+            "expect_state": "not-enabled",
+            "case_sensitive": true
+        }))
+        .expect("args");
+        let request = args
+            .ref_guard_request()
+            .expect("ref guard request")
+            .expect("guard exists");
+
+        assert_eq!(request.role.as_deref(), Some("button"));
+        assert_eq!(request.text.as_deref(), Some("Continue"));
+        assert_eq!(request.state, Some(ComputerUseFindState::Disabled));
+        assert!(request.case_sensitive);
+    }
+
+    #[test]
+    fn ref_guard_request_returns_none_without_expectations() {
+        let args: super::ComputerUseArgs = serde_json::from_value(json!({
+            "action": "click",
+            "ref": "@u2"
+        }))
+        .expect("args");
+
+        assert_eq!(args.ref_guard_request().expect("request"), None);
+    }
+
+    #[test]
     fn snapshot_text_matching_can_ignore_case() {
         let snapshot = "frontmost_app: Notes\n- @u1 role='button' name='Continue'";
 
@@ -1137,6 +1362,57 @@ ui_tree:
     }
 
     #[test]
+    fn snapshot_line_for_ref_matches_exact_ref_index() {
+        let snapshot = r#"
+frontmost_app: App
+ui_tree:
+- @u1 role='button' name='One'
+- @u10 role='button' name='Ten'
+"#;
+
+        assert!(
+            snapshot_line_for_ref(snapshot, "@u1")
+                .expect("line")
+                .contains("name='One'")
+        );
+        assert!(
+            snapshot_line_for_ref(snapshot, "@u10")
+                .expect("line")
+                .contains("name='Ten'")
+        );
+    }
+
+    #[test]
+    fn ref_guard_line_matches_role_text_and_state() {
+        let line = "- @u3 role='button' name='Continue' enabled=false";
+        let request = ComputerUseRefGuardRequest {
+            role: Some("button".to_string()),
+            text: Some("continue".to_string()),
+            state: Some(ComputerUseFindState::Disabled),
+            case_sensitive: false,
+        };
+
+        check_ref_guard_line("@u3", line, &request).expect("guard should pass");
+    }
+
+    #[test]
+    fn ref_guard_line_rejects_mismatch_without_echoing_ui_line() {
+        let line = "- @u3 role='button' name='Private Project Name'";
+        let request = ComputerUseRefGuardRequest {
+            role: Some("text field".to_string()),
+            text: None,
+            state: None,
+            case_sensitive: false,
+        };
+        let error = check_ref_guard_line("@u3", line, &request).expect_err("guard mismatch");
+        let error = format!("{error:#}");
+
+        assert!(error.contains("ref guard failed"));
+        assert!(error.contains("line_sha256:"));
+        assert!(!error.contains("Private Project Name"));
+    }
+
+    #[test]
     fn definition_exposes_snapshot_bounds() {
         let tool = ComputerUseTool;
         let definition = tool.definition();
@@ -1160,6 +1436,9 @@ ui_tree:
         assert!(schema.contains("\"role\""));
         assert!(schema.contains("\"state\""));
         assert!(schema.contains("\"max_results\""));
+        assert!(schema.contains("\"expect_role\""));
+        assert!(schema.contains("\"expect_text\""));
+        assert!(schema.contains("\"expect_state\""));
         assert!(schema.contains("\"timeout_seconds\""));
         assert!(schema.contains("\"poll_interval_ms\""));
         assert!(schema.contains("\"snapshot_id\""));

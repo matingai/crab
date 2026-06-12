@@ -5,6 +5,7 @@ pub mod bridge;
 pub mod browser_backend;
 pub mod browser_state;
 pub mod cli;
+pub mod computer_use;
 pub mod config;
 pub mod context_compression;
 pub mod context_limit_cache;
@@ -61,6 +62,7 @@ pub use bridge::{
     SessionCommandRequest, SharedProviderConfigRequest, SimpleSessionResponse,
 };
 pub use cli::{Cli, Commands};
+pub use computer_use::{ComputerUseStatus, frontmost_app_snapshot, inspect_computer_use};
 pub use config::AppConfig;
 pub use cron::{CronJobRunRecord, CronJobSummary};
 pub use delegate_runs::DelegateRunRecord;

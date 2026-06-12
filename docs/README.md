@@ -15,6 +15,10 @@ evidence, and exposes the whole execution as a stream of structured events.
   state fit together.
 - [Agent Loop](AGENT_LOOP.md): the core reasoning loop, goal tracking, tool protocol, and
   worker delegation model.
+- [Computer Use](COMPUTER_USE.md): macOS Accessibility permission checks and the first
+  native desktop snapshot surface.
+- [Computer Use 中文版](COMPUTER_USE.zh-CN.md): Chinese guide for the Accessibility-backed
+  computer-use foundation.
 - [Install Guide](INSTALL.md): source installation, `cargo install`, provider setup, and
   desktop installer / CLI archive setup.
 - [Install Guide 中文版](INSTALL.zh-CN.md): Chinese installation guide.

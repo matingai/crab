@@ -15,6 +15,7 @@ mod browser_snapshot;
 mod browser_type;
 mod browser_upload_file;
 mod browser_wait;
+mod computer_use;
 mod context_module_tool;
 mod cron_manage_tool;
 mod delegate_task;
@@ -93,6 +94,7 @@ pub use browser_snapshot::BrowserSnapshotTool;
 pub use browser_type::BrowserTypeTool;
 pub use browser_upload_file::BrowserUploadFileTool;
 pub use browser_wait::BrowserWaitTool;
+pub use computer_use::ComputerUseTool;
 pub use context_module_tool::ContextModuleTool;
 pub use cron_manage_tool::CronManageTool;
 pub use delegate_task::DelegateTaskTool;
@@ -293,6 +295,7 @@ const PRIMARY_MODEL_DETAILED_TOOLS: &[&str] = &[
     "browser_find",
     "browser_navigate",
     "browser_snapshot",
+    "computer_use",
     "context_module",
     "execute_code",
     "git_diff",
@@ -356,6 +359,7 @@ impl ToolRegistry {
         let browser_type = BrowserTypeTool;
         let browser_upload_file = BrowserUploadFileTool;
         let browser_wait = BrowserWaitTool;
+        let computer_use = ComputerUseTool;
         let delete_file = DeleteFileTool;
         let delegate_task = DelegateTaskTool;
         let execute_code = ExecuteCodeTool;
@@ -415,6 +419,7 @@ impl ToolRegistry {
         insert_tool(&mut tools, allowset.as_ref(), browser_snapshot);
         insert_tool(&mut tools, allowset.as_ref(), browser_screenshot);
         insert_tool(&mut tools, allowset.as_ref(), browser_get_images);
+        insert_tool(&mut tools, allowset.as_ref(), computer_use);
         insert_tool(&mut tools, allowset.as_ref(), delete_file);
         insert_tool(&mut tools, allowset.as_ref(), delegate_task);
         insert_tool(&mut tools, allowset.as_ref(), execute_code);

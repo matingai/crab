@@ -3,6 +3,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+use crate::computer_use::inspect_computer_use;
 use crate::config::AppConfig;
 use crate::network_policy::load_network_policy_config;
 use crate::runtime::{RuntimeStatus, RuntimeStatusDetail};
@@ -191,6 +192,7 @@ pub fn build_doctor_report(config: &AppConfig, runtime_status: RuntimeStatus) ->
     push_network_policy_check(&mut checks, &config.data_dir);
     push_runtime_check(&mut checks, runtime_status);
     push_profile_checks(&mut checks, config);
+    push_computer_use_check(&mut checks);
     push_toolchain_checks(&mut checks);
     push_hygiene_checks(&mut checks, &config.workspace_root);
     push_release_checks(&mut checks, &config.workspace_root);
@@ -345,6 +347,30 @@ fn push_profile_checks(checks: &mut Vec<DoctorCheck>, config: &AppConfig) {
             "office runtime features are disabled".to_string()
         },
         Some("Set HERMES_RS_OFFICE_ENABLED=false to disable office integrations.".to_string()),
+    );
+}
+
+fn push_computer_use_check(checks: &mut Vec<DoctorCheck>) {
+    let status = inspect_computer_use(false);
+    let level = if status.accessibility_supported && !status.accessibility_trusted {
+        DoctorLevel::Warn
+    } else {
+        DoctorLevel::Pass
+    };
+    let message = if status.ready() {
+        "native computer-use Accessibility permission is granted".to_string()
+    } else if status.accessibility_supported {
+        "native computer-use Accessibility permission is not granted".to_string()
+    } else {
+        "native computer-use Accessibility support is not available on this platform".to_string()
+    };
+    push_check(
+        checks,
+        "optional",
+        "Computer use",
+        level,
+        message,
+        Some(status.guidance),
     );
 }
 
@@ -541,6 +567,15 @@ fn suggested_steps(checks: &[DoctorCheck]) -> Vec<String> {
     }
     if checks
         .iter()
+        .any(|check| check.name == "Computer use" && check.level == DoctorLevel::Warn)
+    {
+        steps.push(
+            "Run the `computer_use` tool with action=request_permission, then enable Crab or the launching terminal in macOS Accessibility settings."
+                .to_string(),
+        );
+    }
+    if checks
+        .iter()
         .any(|check| check.area == "hygiene" && check.level == DoctorLevel::Warn)
     {
         steps.push(
@@ -703,6 +738,18 @@ mod tests {
                 .message
                 .contains("private network fetches are blocked")
         );
+    }
+
+    #[test]
+    fn computer_use_check_is_reported() {
+        let mut checks = Vec::new();
+
+        push_computer_use_check(&mut checks);
+
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].name, "Computer use");
+        assert!(checks[0].message.contains("computer-use"));
+        assert!(checks[0].detail.as_deref().unwrap_or_default().len() > 8);
     }
 
     #[test]

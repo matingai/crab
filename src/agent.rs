@@ -3047,6 +3047,8 @@ impl Agent {
                         || !self
                             .recover_from_model_error(
                                 handler,
+                                iteration,
+                                recovery_attempts + 1,
                                 &error,
                                 &mut transient_retry_attempts,
                                 &runtime,
@@ -3076,6 +3078,8 @@ impl Agent {
     async fn recover_from_model_error(
         &mut self,
         handler: &mut dyn EventHandler,
+        iteration: usize,
+        recovery_attempt: usize,
         error: &anyhow::Error,
         transient_retry_attempts: &mut usize,
         runtime: &TurnModelRuntime,
@@ -3088,6 +3092,18 @@ impl Agent {
                 return Ok(false);
             }
             self.ephemeral_max_output_tokens = Some(safe_tokens);
+            self.emit_model_recovery(
+                handler,
+                iteration,
+                runtime,
+                "output_budget",
+                "reduce_output_budget",
+                recovery_attempt,
+                None,
+                Some(safe_tokens),
+                None,
+                &error_text,
+            );
             handler.on_event(AgentEvent::Nudge {
                 session_id: self.session.session_id.clone(),
                 kind: "context".to_string(),
@@ -3123,6 +3139,24 @@ impl Agent {
                     RetryableErrorKind::Server => "服务异常",
                     RetryableErrorKind::Timeout => "网络超时",
                 };
+                let kind_label = match kind {
+                    RetryableErrorKind::RateLimit => "rate_limit",
+                    RetryableErrorKind::Overloaded => "overloaded",
+                    RetryableErrorKind::Server => "server_error",
+                    RetryableErrorKind::Timeout => "timeout",
+                };
+                self.emit_model_recovery(
+                    handler,
+                    iteration,
+                    runtime,
+                    kind_label,
+                    "sleep_then_retry",
+                    *transient_retry_attempts,
+                    Some(delay_ms),
+                    None,
+                    None,
+                    &error_text,
+                );
                 handler.on_event(AgentEvent::Nudge {
                     session_id: self.session.session_id.clone(),
                     kind: "retry".to_string(),
@@ -3137,7 +3171,8 @@ impl Agent {
             return Ok(false);
         }
 
-        if let Some(limit) = parse_context_limit_from_error(&error_text) {
+        let detected_context_limit = parse_context_limit_from_error(&error_text);
+        if let Some(limit) = detected_context_limit {
             let previous = self.context_compressor.context_length();
             self.context_compressor.apply_context_limit(limit);
             if self.context_compressor.context_length() < previous {
@@ -3157,6 +3192,18 @@ impl Agent {
             }
         }
 
+        self.emit_model_recovery(
+            handler,
+            iteration,
+            runtime,
+            "context_overflow",
+            "force_context_compression",
+            recovery_attempt,
+            None,
+            None,
+            detected_context_limit,
+            &error_text,
+        );
         let background_client = self.background_client();
         let background_model = self.background_model();
         match self
@@ -3175,6 +3222,34 @@ impl Agent {
                 Ok(false)
             }
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn emit_model_recovery(
+        &self,
+        handler: &mut dyn EventHandler,
+        iteration: usize,
+        runtime: &TurnModelRuntime,
+        kind: &str,
+        action: &str,
+        attempt: usize,
+        delay_ms: Option<u64>,
+        output_budget_tokens: Option<usize>,
+        context_limit_tokens: Option<usize>,
+        error_text: &str,
+    ) {
+        handler.on_event(AgentEvent::ModelRecovery {
+            session_id: self.session.session_id.clone(),
+            iteration,
+            model: runtime.model.clone(),
+            kind: kind.to_string(),
+            action: action.to_string(),
+            attempt,
+            delay_ms,
+            output_budget_tokens,
+            context_limit_tokens,
+            error_preview: redacted_truncated(error_text, 300),
+        });
     }
 
     fn take_request_options(&mut self) -> RequestOptions {
@@ -7736,6 +7811,21 @@ mod tests {
             AgentEvent::Nudge { kind, message, .. }
             if kind == "context" && message.contains("输出上限")
         )));
+        assert!(handler.events().iter().any(|event| matches!(
+            event,
+            AgentEvent::ModelRecovery {
+                kind,
+                action,
+                attempt,
+                output_budget_tokens,
+                error_preview,
+                ..
+            } if kind == "output_budget"
+                && action == "reduce_output_budget"
+                && *attempt == 1
+                && *output_budget_tokens == Some(9_936)
+                && error_preview.contains("available_tokens")
+        )));
     }
 
     #[tokio::test]
@@ -7821,6 +7911,19 @@ mod tests {
                 && *original_estimated_tokens > *compressed_estimated_tokens
                 && *used_summary
         )));
+        assert!(handler.events().iter().any(|event| matches!(
+            event,
+            AgentEvent::ModelRecovery {
+                kind,
+                action,
+                context_limit_tokens,
+                error_preview,
+                ..
+            } if kind == "context_overflow"
+                && action == "force_context_compression"
+                && *context_limit_tokens == Some(200_000)
+                && error_preview.contains("prompt is too long")
+        )));
     }
 
     #[tokio::test]
@@ -7889,6 +7992,21 @@ mod tests {
             event,
             AgentEvent::Nudge { kind, message, .. }
             if kind == "retry" && message.contains("请求限流")
+        )));
+        assert!(handler.events().iter().any(|event| matches!(
+            event,
+            AgentEvent::ModelRecovery {
+                kind,
+                action,
+                attempt,
+                delay_ms,
+                error_preview,
+                ..
+            } if kind == "rate_limit"
+                && action == "sleep_then_retry"
+                && *attempt == 1
+                && delay_ms.is_some_and(|value| value > 0)
+                && error_preview.contains("rate limit")
         )));
         assert!(handler.events().iter().any(|event| matches!(
             event,

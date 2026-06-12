@@ -169,6 +169,8 @@ UI can show:
 - Turn start and resume boundaries, including turn id and redacted user-input preview.
 - Model request and streaming output.
 - Main and background model request completion status and duration.
+- Model recovery attempts for output-budget reduction, transient retry backoff, and
+  context-overflow compression, without exposing full provider errors.
 - Prompt context preparation budgets, retained blocks, trimming labels, and preparation
   duration without exposing raw prompt content.
 - Context compaction events with before/after message counts, estimated token counts,

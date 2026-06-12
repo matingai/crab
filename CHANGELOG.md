@@ -34,6 +34,9 @@ and uses semantic versioning once stable release boundaries are established.
   tool-call count, and a redacted response preview so UIs can show a clear run boundary.
 - Main and background model completion events now include status-aware elapsed duration,
   making retry, routing fallback, and auxiliary-model latency visible in the desktop shell.
+- Model request recovery now emits a structured `model_recovery` event for output-budget
+  reduction, retry backoff, and context-overflow compression with a redacted provider-error
+  preview.
 - Prompt context preparation now emits a structured `context_prepared` event with projected
   tokens, request budget, message counts, retained context blocks, trim labels, and elapsed
   preparation time without exposing raw prompt content.

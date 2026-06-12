@@ -2989,6 +2989,20 @@ function summarizeEvent(event: Record<string, unknown> & { type?: string }): str
       return `上下文 ${String(event.projected_tokens || 0)}/${String(event.request_budget_tokens || 0)} tokens，块 ${String(event.kept_blocks || 0)}/${String(event.total_blocks || 0)}${formatContextTrimSummary(event)}${formatEventDuration(event.duration_ms)}`;
     case "context_compacted":
       return `上下文压缩 ${String(event.original_message_count || 0)} -> ${String(event.compressed_message_count || 0)} 条消息，tokens ${String(event.original_estimated_tokens || 0)} -> ${String(event.compressed_estimated_tokens || 0)}${Number(event.pruned_tool_messages || 0) > 0 ? `，裁剪 ${String(event.pruned_tool_messages)} 条工具输出` : ""}`;
+    case "model_recovery":
+      {
+        const delay = Number(event.delay_ms || 0);
+        const budget = Number(event.output_budget_tokens || 0);
+        const limit = Number(event.context_limit_tokens || 0);
+        const detail = budget
+          ? `，输出上限 ${budget}`
+          : limit
+            ? `，上下文上限 ${limit}`
+            : delay
+              ? `，等待 ${delay}ms`
+              : "";
+        return `模型恢复 ${String(event.kind || "")}/${String(event.action || "")} 第 ${String(event.attempt || 0)} 次${detail}`;
+      }
     case "tool_batch_started":
       return `并发批次 ${String(event.batch_id || "")} 启动，${String(event.total_calls || 0)} 个工具`;
     case "tool_batch_progress":
@@ -4784,6 +4798,24 @@ export default function Page() {
           setAgentActivity(
             `上下文已压缩 ${before}/${after} tokens · ${messagesBefore}/${messagesAfter} 条消息${suffix}`,
           );
+        }
+        break;
+      case "model_recovery":
+        {
+          const action = String(event.action || "");
+          const kind = String(event.kind || "");
+          const delay = Number(event.delay_ms || 0);
+          const budget = Number(event.output_budget_tokens || 0);
+          const limit = Number(event.context_limit_tokens || 0);
+          if (action === "sleep_then_retry") {
+            setAgentActivity(`模型请求将重试 · ${kind || "transient"} · ${delay}ms`);
+          } else if (action === "reduce_output_budget") {
+            setAgentActivity(`已下调输出上限 · ${budget || "auto"} tokens`);
+          } else if (action === "force_context_compression") {
+            setAgentActivity(`请求超限，正在压缩上下文${limit ? ` · ${limit} tokens` : ""}`);
+          } else {
+            setAgentActivity(`正在恢复模型请求 · ${kind || action || "recovery"}`);
+          }
         }
         break;
       case "assistant_delta":

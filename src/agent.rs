@@ -34,7 +34,9 @@ use crate::request_recovery::{
     parse_available_output_tokens_from_error, parse_context_limit_from_error, parse_retry_after_ms,
 };
 use crate::runtime_control::{clear_stop_request, stop_requested};
-use crate::session::{SessionStore, StoredBatchStatus, StoredSession, StoredToolPhase};
+use crate::session::{
+    SessionStore, SessionTimelineEntry, StoredBatchStatus, StoredSession, StoredToolPhase,
+};
 use crate::skill_advisor::{SkillAdviceInput, suggest_skill_lifecycle};
 use crate::smart_model_routing::resolve_turn_route;
 use crate::solve_trace::{SolveDecision, SolveOutcome, SolveStep, SolveTraceStore};
@@ -1460,6 +1462,77 @@ impl Agent {
         }
     }
 
+    fn emit_turn_finished_for_result(
+        &self,
+        handler: &mut dyn EventHandler,
+        started_at: Instant,
+        result: &Result<String>,
+    ) {
+        match result {
+            Ok(response) => {
+                self.emit_turn_finished(
+                    handler,
+                    started_at,
+                    turn_status_for_response(response),
+                    response,
+                );
+            }
+            Err(error) => {
+                let message = error.to_string();
+                self.emit_turn_finished(
+                    handler,
+                    started_at,
+                    turn_status_for_error(&message),
+                    &message,
+                );
+            }
+        }
+    }
+
+    fn emit_turn_finished(
+        &self,
+        handler: &mut dyn EventHandler,
+        started_at: Instant,
+        status: &str,
+        response_preview: &str,
+    ) {
+        let turn_id = self.active_archive_turn_id();
+        let tool_call_count = self.count_timeline_tools_for_turn(&turn_id);
+        let duration_ms = elapsed_ms(started_at);
+        let response_preview = redacted_truncated(response_preview, 500);
+        handler.on_event(AgentEvent::TurnFinished {
+            session_id: self.session.session_id.clone(),
+            turn_id: turn_id.clone(),
+            status: status.to_string(),
+            duration_ms,
+            tool_call_count,
+            response_preview: response_preview.clone(),
+        });
+        self.append_archive_event(
+            "turn_finished",
+            "Turn finished",
+            &format!(
+                "status={status}; tool_calls={tool_call_count}; duration_ms={duration_ms}; {response_preview}"
+            ),
+        );
+    }
+
+    fn count_timeline_tools_for_turn(&self, turn_id: &str) -> usize {
+        self.session
+            .timeline
+            .iter()
+            .filter(|entry| {
+                matches!(
+                    entry,
+                    SessionTimelineEntry::Tool {
+                        turn_id: entry_turn_id,
+                        ..
+                    } if entry_turn_id == turn_id
+                )
+            })
+            .count()
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn upsert_archive_tool_call(
         &self,
@@ -1644,31 +1717,37 @@ impl Agent {
             session_id: self.session.session_id.clone(),
             user_input: user_input.to_string(),
         });
+        let turn_started_at = Instant::now();
 
-        let repaired_tool_calls = repair_dangling_tool_calls(&mut self.session.history);
-        if repaired_tool_calls > 0 {
-            warn!(
-                "repaired {repaired_tool_calls} dangling tool call(s) before starting a new turn in session {}",
-                self.session.session_id
+        let result = async {
+            let repaired_tool_calls = repair_dangling_tool_calls(&mut self.session.history);
+            if repaired_tool_calls > 0 {
+                warn!(
+                    "repaired {repaired_tool_calls} dangling tool call(s) before starting a new turn in session {}",
+                    self.session.session_id
+                );
+            }
+
+            self.session.history.push(ChatMessage::user(user_input));
+            let turn_id = self.session.record_user_timeline_entry(user_input);
+            self.active_turn_id = Some(turn_id);
+            self.seed_goal_state_from_user_input(user_input)?;
+            self.start_solve_episode(user_input);
+            self.upsert_archive_turn(&self.active_archive_turn_id());
+            self.append_archive_message("user", user_input, None, None);
+            self.append_archive_event(
+                "turn_started",
+                "User turn started",
+                &truncated(user_input, 240),
             );
+            self.persist_session_with_handler(handler)?;
+
+            self.continue_active_turn(user_input, handler, TurnProgress::default())
+                .await
         }
-
-        self.session.history.push(ChatMessage::user(user_input));
-        let turn_id = self.session.record_user_timeline_entry(user_input);
-        self.active_turn_id = Some(turn_id);
-        self.seed_goal_state_from_user_input(user_input)?;
-        self.start_solve_episode(user_input);
-        self.upsert_archive_turn(&self.active_archive_turn_id());
-        self.append_archive_message("user", user_input, None, None);
-        self.append_archive_event(
-            "turn_started",
-            "User turn started",
-            &truncated(user_input, 240),
-        );
-        self.persist_session_with_handler(handler)?;
-
-        self.continue_active_turn(user_input, handler, TurnProgress::default())
-            .await
+        .await;
+        self.emit_turn_finished_for_result(handler, turn_started_at, &result);
+        result
     }
 
     pub async fn resume_pending_approval_with_handler(
@@ -1681,6 +1760,7 @@ impl Agent {
             session_id: self.session.session_id.clone(),
             resumed: true,
         });
+        let turn_started_at = Instant::now();
 
         let pending = load_pending_approval(&self.config.data_dir, approval_id)?
             .ok_or_else(|| anyhow::anyhow!("pending approval `{approval_id}` not found"))?;
@@ -1832,8 +1912,11 @@ impl Agent {
         remove_pending_approval(&self.config.data_dir, approval_id)?;
 
         let user_input = self.latest_user_input()?;
-        self.continue_active_turn(&user_input, handler, TurnProgress::default())
-            .await
+        let result = self
+            .continue_active_turn(&user_input, handler, TurnProgress::default())
+            .await;
+        self.emit_turn_finished_for_result(handler, turn_started_at, &result);
+        result
     }
 
     async fn continue_active_turn(
@@ -5849,6 +5932,22 @@ fn redacted_truncated(text: impl Into<String>, max_len: usize) -> String {
     truncated(redact_secrets(text.into()), max_len)
 }
 
+fn turn_status_for_response(response: &str) -> &'static str {
+    if response == APPROVAL_PENDING_RESPONSE {
+        "awaiting_approval"
+    } else {
+        "completed"
+    }
+}
+
+fn turn_status_for_error(message: &str) -> &'static str {
+    if message.contains("stop requested") {
+        "canceled"
+    } else {
+        "error"
+    }
+}
+
 fn unix_now_secs() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -6579,17 +6678,18 @@ fn parse_approval_required(value: &str) -> Option<ApprovalRequiredPayload> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Agent, ContextInjection, ContextInjectionStats, PROMPT_HISTORY_MAX_USER_TURNS,
-        TurnModelRuntime, apply_goal_state_reconcile_patch, assemble_turn_messages,
-        classify_tool_cognition_kind, classify_tool_result_status, continuation_prefix_digest,
-        finalize_context_injections, latest_turn_transcript, needs_goal_state_compaction,
-        parse_goal_state_compaction_response, parse_goal_state_delta_response,
-        parse_goal_state_execution_brief_response, parse_goal_state_reconcile_response,
-        parse_tool_result_summary_response, render_context_budget_nudge,
-        render_goal_execution_brief_block, render_goal_execution_guidance,
-        render_goal_state_delta_block, render_tool_result_summary_for_reconcile,
-        repair_dangling_tool_calls, should_parallelize_tool_batch,
-        should_reconcile_goal_state_after_tool, should_run_context_compression_before_iteration,
+        APPROVAL_PENDING_RESPONSE, Agent, ContextInjection, ContextInjectionStats,
+        PROMPT_HISTORY_MAX_USER_TURNS, TurnModelRuntime, apply_goal_state_reconcile_patch,
+        assemble_turn_messages, classify_tool_cognition_kind, classify_tool_result_status,
+        continuation_prefix_digest, finalize_context_injections, latest_turn_transcript,
+        needs_goal_state_compaction, parse_goal_state_compaction_response,
+        parse_goal_state_delta_response, parse_goal_state_execution_brief_response,
+        parse_goal_state_reconcile_response, parse_tool_result_summary_response,
+        render_context_budget_nudge, render_goal_execution_brief_block,
+        render_goal_execution_guidance, render_goal_state_delta_block,
+        render_tool_result_summary_for_reconcile, repair_dangling_tool_calls,
+        should_parallelize_tool_batch, should_reconcile_goal_state_after_tool,
+        should_run_context_compression_before_iteration,
         should_summarize_tool_result_for_reconcile, summarize_active_todos_for_goal_loop,
         summarize_tool_result, summarize_tool_result_for_history, sync_todos_from_goal_state,
         trim_prompt_history,
@@ -7263,6 +7363,72 @@ mod tests {
         ];
 
         assert!(!should_parallelize_tool_batch(&calls, &ctx));
+    }
+
+    #[tokio::test]
+    async fn run_prompt_emits_turn_finished_summary() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut agent =
+            Agent::new(build_test_config("mock://final-response", tmp.path())).expect("agent");
+        let mut handler = RecordingEventHandler::new();
+
+        let response = agent
+            .run_prompt_with_handler("say hello", &mut handler)
+            .await
+            .expect("run");
+
+        assert_eq!(response, "mock final response");
+        assert!(matches!(
+            handler
+                .events()
+                .iter()
+                .rev()
+                .find(|event| matches!(event, AgentEvent::TurnFinished { .. })),
+            Some(AgentEvent::TurnFinished {
+                turn_id,
+                status,
+                tool_call_count,
+                response_preview,
+                ..
+            }) if turn_id == "turn-1"
+                && status == "completed"
+                && *tool_call_count == 0
+                && response_preview == "mock final response"
+        ));
+    }
+
+    #[tokio::test]
+    async fn approval_pause_emits_turn_finished_summary() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(tmp.path().join("hello.txt"), "hello").expect("write");
+        let mut config = build_test_config("mock://terminal-approval", tmp.path());
+        config.enable_shell_tool = true;
+        let mut agent = Agent::new(config).expect("agent");
+        let mut handler = RecordingEventHandler::new();
+
+        let response = agent
+            .run_prompt_with_handler("delete hello.txt", &mut handler)
+            .await
+            .expect("run");
+
+        assert_eq!(response, APPROVAL_PENDING_RESPONSE);
+        assert!(matches!(
+            handler
+                .events()
+                .iter()
+                .rev()
+                .find(|event| matches!(event, AgentEvent::TurnFinished { .. })),
+            Some(AgentEvent::TurnFinished {
+                turn_id,
+                status,
+                tool_call_count,
+                response_preview,
+                ..
+            }) if turn_id == "turn-1"
+                && status == "awaiting_approval"
+                && *tool_call_count == 1
+                && response_preview == APPROVAL_PENDING_RESPONSE
+        ));
     }
 
     #[test]

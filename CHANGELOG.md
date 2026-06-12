@@ -28,6 +28,8 @@ and uses semantic versioning once stable release boundaries are established.
   `completed_with_errors` when all tools finish but one or more fail.
 - Tool and parallel-batch completion events now include elapsed duration, and the desktop
   shell surfaces that timing in the live execution timeline.
+- Agent turns now emit a `turn_finished` summary event with status, elapsed duration,
+  tool-call count, and a redacted response preview so UIs can show a clear run boundary.
 - Subdirectory instruction discovery now returns root-to-leaf context stacks, tracks loaded
   hint files instead of permanently marking empty directories, and labels blocked context
   with the exact display path.

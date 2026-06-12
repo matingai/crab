@@ -172,6 +172,7 @@ UI can show:
 - Delegated run lifecycle.
 - Context pressure warnings.
 - Runtime status.
+- Turn-level completion boundaries with status, duration, and tool-call counts.
 - Final completion.
 
 This turns the agent from a black box into something closer to an execution timeline.

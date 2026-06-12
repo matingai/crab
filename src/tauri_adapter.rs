@@ -187,6 +187,7 @@ fn event_session_id(event: &BridgeEventEnvelope) -> Option<String> {
     match &event.event {
         crate::events::AgentEvent::SessionReady { session_id, .. }
         | crate::events::AgentEvent::TurnStarted { session_id, .. }
+        | crate::events::AgentEvent::TurnFinished { session_id, .. }
         | crate::events::AgentEvent::IterationStarted { session_id, .. }
         | crate::events::AgentEvent::AssistantDelta { session_id, .. }
         | crate::events::AgentEvent::SkillMatched { session_id, .. }

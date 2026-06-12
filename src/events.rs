@@ -11,6 +11,14 @@ pub enum AgentEvent {
         session_id: String,
         user_input: String,
     },
+    TurnFinished {
+        session_id: String,
+        turn_id: String,
+        status: String,
+        duration_ms: u128,
+        tool_call_count: usize,
+        response_preview: String,
+    },
     IterationStarted {
         session_id: String,
         iteration: usize,
@@ -157,6 +165,7 @@ impl AgentEvent {
         match self {
             Self::SessionReady { .. } => "session_ready",
             Self::TurnStarted { .. } => "turn_started",
+            Self::TurnFinished { .. } => "turn_finished",
             Self::IterationStarted { .. } => "iteration_started",
             Self::AssistantDelta { .. } => "assistant_delta",
             Self::SkillMatched { .. } => "skill_matched",

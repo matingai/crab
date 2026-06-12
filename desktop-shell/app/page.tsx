@@ -2958,6 +2958,8 @@ function summarizeEvent(event: Record<string, unknown> & { type?: string }): str
   switch (event.type) {
     case "turn_started":
       return truncate(String(event.user_input || ""), 80);
+    case "turn_finished":
+      return `本轮 ${formatTurnStatus(String(event.status || ""))}，${String(event.tool_call_count || 0)} 个工具${formatEventDuration(event.duration_ms)}`;
     case "assistant_delta":
       return truncate(String(event.delta || ""), 80);
     case "model_request_started":
@@ -3108,6 +3110,21 @@ function formatParallelBatchStatus(status: ParallelBatchState["status"]): string
       return "并发批次完成";
     default:
       return status;
+  }
+}
+
+function formatTurnStatus(status: string): string {
+  switch (status) {
+    case "completed":
+      return "已完成";
+    case "awaiting_approval":
+      return "等待审批";
+    case "canceled":
+      return "已中断";
+    case "error":
+      return "失败";
+    default:
+      return status || "已结束";
   }
 }
 
@@ -4630,6 +4647,23 @@ export default function Page() {
         setParallelBatch(null);
         setAgentActivity("正在准备上下文");
         confirmUserMessage(String(event.user_input || ""), envelope.seq);
+        break;
+      case "turn_finished":
+        {
+          const status = String(event.status || "");
+          const duration = formatDurationMs(readDurationMs(event.duration_ms));
+          const toolCount = Number(event.tool_call_count || 0);
+          const suffix = duration ? ` · ${duration}` : "";
+          setAgentActivity(
+            status === "awaiting_approval"
+              ? `等待审批 · ${toolCount} 个工具${suffix}`
+              : status === "canceled"
+                ? `已中断 · ${toolCount} 个工具${suffix}`
+                : status === "error"
+                  ? `运行失败 · ${toolCount} 个工具${suffix}`
+                  : `本轮完成 · ${toolCount} 个工具${suffix}`,
+          );
+        }
         break;
       case "iteration_started":
         setAgentActivity(`正在准备第 ${String(event.iteration || 1)} 轮`);

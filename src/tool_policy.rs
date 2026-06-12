@@ -751,6 +751,8 @@ tool_policy:
             r#"{"action":"status"}"#,
             r#"{"action":"request_permission"}"#,
             r#"{"action":"snapshot","max_items":10}"#,
+            r#"{"action":"wait","contains_text":"Ready"}"#,
+            r#"{"action":"wait","wait_until":"settled"}"#,
         ] {
             let decision = evaluate_tool_policy(tmp.path(), "session-1", "computer_use", raw_args)
                 .expect("policy");

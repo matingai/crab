@@ -10,6 +10,7 @@ The current implementation is deliberately conservative:
 - A permission-prompt path for first-time setup.
 - A shallow frontmost-app Accessibility UI tree when permission is granted, with stable
   element references such as `@u1`.
+- Read-only waiting for text to appear or for the frontmost Accessibility tree to settle.
 - Approval-gated focus support for a current `@u` ref.
 - Approval-gated click support for a current `@u` ref.
 - Approval-gated text setting for a current `@u` ref when the target Accessibility element
@@ -24,13 +25,14 @@ side effect of ordinary chat.
 
 ## Tool Surface
 
-The built-in `computer_use` tool supports seven actions:
+The built-in `computer_use` tool supports eight actions:
 
 | Action | Behavior |
 | --- | --- |
 | `status` | Reports platform support, Accessibility trust, prompt support, and setup guidance. |
 | `request_permission` | Calls the macOS Accessibility prompt API and reports the resulting state. |
 | `snapshot` | Reads a compact Accessibility UI tree for the frontmost application and its windows. |
+| `wait` | Polls snapshots until target text appears or the UI tree settles, then returns the latest snapshot. |
 | `focus` | Sets keyboard focus to a snapshot ref such as `@u2`, then returns a post-focus snapshot. |
 | `click` | Activates a snapshot ref such as `@u2`, then returns a post-click snapshot. |
 | `set_text` | Sets the Accessibility value for a snapshot ref, then returns a post-action snapshot. |
@@ -67,6 +69,32 @@ ui_tree:
 
 The refs are observation handles only in the current milestone. They are designed so
 approval-gated actions can target a concrete element without guessing coordinates.
+
+`wait` is the read-only observation loop for native UI work. It returns a fresh
+`snapshot_id` and the latest snapshot whether the condition matched or timed out, so the
+next action can be based on current evidence:
+
+```json
+{
+  "action": "wait",
+  "wait_until": "text_present",
+  "contains_text": "Ready",
+  "timeout_seconds": 10,
+  "poll_interval_ms": 250,
+  "max_items": 40,
+  "max_depth": 3
+}
+```
+
+```json
+{
+  "action": "wait",
+  "wait_until": "settled",
+  "timeout_seconds": 5,
+  "max_items": 40,
+  "max_depth": 3
+}
+```
 
 Action refs are deliberately ephemeral: take a fresh `snapshot`, choose a visible `@u`
 reference from that output, then call `click` or `set_text` immediately. If the app
@@ -116,11 +144,11 @@ action fails and the agent must observe the desktop again.
 }
 ```
 
-`focus`, `click`, `set_text`, and `press_key` are write actions. Crab's default tool policy
-requires approval before they run, even if the user has not configured a custom
-`tool_policy`. Read-only actions stay available without approval. `set_text` does not send
-global keystrokes; it attempts to set the target Accessibility element's value directly,
-so it is mainly for text fields and similar controls.
+`focus`, `click`, `set_text`, and `press_key` are write actions. Crab's default tool
+policy requires approval before they run, even if the user has not configured a custom
+`tool_policy`. `status`, `snapshot`, and `wait` stay available without approval. `set_text`
+does not send global keystrokes; it attempts to set the target Accessibility element's
+value directly, so it is mainly for text fields and similar controls.
 
 `press_key` intentionally accepts only a small whitelist: `enter`, `escape`, `tab`,
 `space`, `backspace`, `forward_delete`, `arrow_up`, `arrow_down`, `arrow_left`,
@@ -155,6 +183,7 @@ actions on observed refs. It lets the agent know whether native automation is po
 gives it a bounded, inspectable desktop UI tree. Future write actions should stay gated by:
 
 - explicit tool names and arguments;
+- read-only waits after actions before choosing the next ref;
 - snapshot-bound refs instead of coordinate guessing;
 - focused UI targets before key-driven navigation;
 - a narrow key whitelist instead of arbitrary keyboard injection;

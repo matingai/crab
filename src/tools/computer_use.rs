@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::time::{Duration, Instant, sleep};
 
 use crate::computer_use::{
     ComputerUseKey, click_frontmost_app_ref, focus_frontmost_app_ref, frontmost_app_snapshot,
@@ -30,10 +31,24 @@ struct ComputerUseArgs {
     ref_alias: Option<String>,
     text: Option<String>,
     key: Option<String>,
+    #[serde(alias = "waitUntil")]
+    wait_until: Option<String>,
+    #[serde(alias = "containsText")]
+    contains_text: Option<String>,
+    #[serde(alias = "caseSensitive")]
+    case_sensitive: Option<bool>,
+    #[serde(alias = "timeoutSeconds")]
+    timeout_seconds: Option<u64>,
+    #[serde(alias = "pollIntervalMs")]
+    poll_interval_ms: Option<u64>,
     snapshot_id: Option<String>,
 }
 
 const MAX_SET_TEXT_CHARS: usize = 4_000;
+const MAX_WAIT_TEXT_CHARS: usize = 1_000;
+const DEFAULT_WAIT_TIMEOUT_SECONDS: u64 = 10;
+const MAX_WAIT_TIMEOUT_SECONDS: u64 = 30;
+const DEFAULT_WAIT_POLL_INTERVAL_MS: u64 = 250;
 
 fn default_action() -> String {
     "status".to_string()
@@ -57,8 +72,8 @@ impl Tool for ComputerUseTool {
                 json!({
                     "action": {
                         "type": "string",
-                        "enum": ["status", "request_permission", "snapshot", "focus", "click", "set_text", "press_key"],
-                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; focus sets keyboard focus to a snapshot ref such as @u2 after approval; click activates a snapshot ref after approval; set_text sets the Accessibility value for a ref after approval; press_key sends one whitelisted non-text key to the frontmost app after approval."
+                        "enum": ["status", "request_permission", "snapshot", "wait", "focus", "click", "set_text", "press_key"],
+                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; wait polls snapshots until text appears or the UI settles; focus sets keyboard focus to a snapshot ref such as @u2 after approval; click activates a snapshot ref after approval; set_text sets the Accessibility value for a ref after approval; press_key sends one whitelisted non-text key to the frontmost app after approval."
                     },
                     "max_items": {
                         "type": "integer",
@@ -90,6 +105,32 @@ impl Tool for ComputerUseTool {
                         "enum": ["enter", "escape", "tab", "space", "backspace", "forward_delete", "arrow_up", "arrow_down", "arrow_left", "arrow_right", "page_up", "page_down", "home", "end"],
                         "description": "Whitelisted key to press in the frontmost app. Required for press_key. Aliases such as return, esc, left, right, up, down, delete, and page-down are also accepted."
                     },
+                    "wait_until": {
+                        "type": "string",
+                        "enum": ["text_present", "settled"],
+                        "description": "Wait mode for action=wait. text_present requires contains_text; settled waits for two consecutive matching snapshots. Defaults to text_present when contains_text is provided, otherwise settled."
+                    },
+                    "contains_text": {
+                        "type": "string",
+                        "maxLength": 1000,
+                        "description": "Substring to wait for in the rendered Accessibility snapshot when wait_until=text_present."
+                    },
+                    "case_sensitive": {
+                        "type": "boolean",
+                        "description": "Whether contains_text matching is case-sensitive. Defaults to false."
+                    },
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 30,
+                        "description": "Maximum time to wait for action=wait. Defaults to 10 seconds."
+                    },
+                    "poll_interval_ms": {
+                        "type": "integer",
+                        "minimum": 100,
+                        "maximum": 2000,
+                        "description": "Polling interval for action=wait. Defaults to 250 ms."
+                    },
                     "snapshot_id": {
                         "type": "string",
                         "description": "Optional id returned by the latest snapshot. Write actions validate this before acting; when omitted they use the latest saved snapshot for this session."
@@ -120,6 +161,27 @@ impl Tool for ComputerUseTool {
                     record.snapshot_id,
                     render_status(false),
                     snapshot.trim()
+                ))
+            }
+            "wait" => {
+                let request = args.wait_request()?;
+                let status = inspect_computer_use(false);
+                if !status.ready() {
+                    bail!("{}", status.guidance);
+                }
+                let max_items = args.max_items.clamp(1, 50);
+                let max_depth = args.max_depth.clamp(1, 6);
+                let outcome = wait_for_frontmost_app(&request, max_items, max_depth).await?;
+                let record = save_snapshot_record(ctx, max_items, max_depth, &outcome.snapshot)?;
+                Ok(format!(
+                    "snapshot_id: {}\nwait_result: {}\nwait_until: {}\nattempts: {}\nelapsed_ms: {}\n{}\n\n{}",
+                    record.snapshot_id,
+                    outcome.result,
+                    request.mode.label(),
+                    outcome.attempts,
+                    outcome.elapsed_ms,
+                    render_status(false),
+                    outcome.snapshot.trim()
                 ))
             }
             "click" => {
@@ -192,7 +254,7 @@ impl Tool for ComputerUseTool {
                 ))
             }
             other => bail!(
-                "unsupported computer_use action `{other}`; use status, request_permission, snapshot, focus, click, set_text, or press_key"
+                "unsupported computer_use action `{other}`; use status, request_permission, snapshot, wait, focus, click, set_text, or press_key"
             ),
         }
     }
@@ -228,6 +290,90 @@ impl ComputerUseArgs {
         };
         normalize_computer_use_key(key)
     }
+
+    fn wait_request(&self) -> Result<ComputerUseWaitRequest> {
+        let contains_text = self
+            .contains_text
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let wait_until = self
+            .wait_until
+            .as_deref()
+            .map(normalize_wait_mode)
+            .unwrap_or_else(|| {
+                if contains_text.is_some() {
+                    "text_present".to_string()
+                } else {
+                    "settled".to_string()
+                }
+            });
+        let mode = match wait_until.as_str() {
+            "text_present" | "text_contains" | "contains_text" => {
+                let Some(contains_text) = contains_text else {
+                    bail!("computer_use wait_until=text_present requires `contains_text`");
+                };
+                if contains_text.chars().count() > MAX_WAIT_TEXT_CHARS {
+                    bail!(
+                        "computer_use wait contains_text is too long; maximum is {MAX_WAIT_TEXT_CHARS} characters"
+                    );
+                }
+                ComputerUseWaitMode::TextPresent {
+                    contains_text: contains_text.to_string(),
+                    case_sensitive: self.case_sensitive.unwrap_or(false),
+                }
+            }
+            "settled" | "stable" => ComputerUseWaitMode::Settled,
+            "" => bail!("computer_use wait_until cannot be empty"),
+            other => {
+                bail!("unsupported computer_use wait_until `{other}`; use text_present or settled")
+            }
+        };
+        Ok(ComputerUseWaitRequest {
+            mode,
+            timeout_seconds: self
+                .timeout_seconds
+                .unwrap_or(DEFAULT_WAIT_TIMEOUT_SECONDS)
+                .clamp(1, MAX_WAIT_TIMEOUT_SECONDS),
+            poll_interval_ms: self
+                .poll_interval_ms
+                .unwrap_or(DEFAULT_WAIT_POLL_INTERVAL_MS)
+                .clamp(100, 2_000),
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ComputerUseWaitRequest {
+    mode: ComputerUseWaitMode,
+    timeout_seconds: u64,
+    poll_interval_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ComputerUseWaitMode {
+    TextPresent {
+        contains_text: String,
+        case_sensitive: bool,
+    },
+    Settled,
+}
+
+impl ComputerUseWaitMode {
+    fn label(&self) -> &'static str {
+        match self {
+            ComputerUseWaitMode::TextPresent { .. } => "text_present",
+            ComputerUseWaitMode::Settled => "settled",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ComputerUseWaitOutcome {
+    result: &'static str,
+    snapshot: String,
+    attempts: usize,
+    elapsed_ms: u128,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -331,6 +477,79 @@ fn sha256_hex(bytes: &[u8]) -> String {
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+fn normalize_wait_mode(wait_until: &str) -> String {
+    wait_until
+        .trim()
+        .to_ascii_lowercase()
+        .replace([' ', '-'], "_")
+}
+
+async fn wait_for_frontmost_app(
+    request: &ComputerUseWaitRequest,
+    max_items: usize,
+    max_depth: usize,
+) -> Result<ComputerUseWaitOutcome> {
+    let started = Instant::now();
+    let deadline = started + Duration::from_secs(request.timeout_seconds);
+    let poll_interval = Duration::from_millis(request.poll_interval_ms);
+    let mut attempts = 0usize;
+    let mut previous_snapshot_sha256: Option<String> = None;
+
+    loop {
+        let snapshot = frontmost_app_snapshot(max_items, max_depth)?;
+        attempts += 1;
+
+        let matched = match &request.mode {
+            ComputerUseWaitMode::TextPresent {
+                contains_text,
+                case_sensitive,
+            } => snapshot_contains_text(&snapshot, contains_text, *case_sensitive),
+            ComputerUseWaitMode::Settled => {
+                let current_sha256 = sha256_hex(snapshot.as_bytes());
+                let settled = previous_snapshot_sha256
+                    .as_deref()
+                    .is_some_and(|previous| previous == current_sha256);
+                previous_snapshot_sha256 = Some(current_sha256);
+                settled
+            }
+        };
+        if matched {
+            let result = match &request.mode {
+                ComputerUseWaitMode::TextPresent { .. } => "matched",
+                ComputerUseWaitMode::Settled => "settled",
+            };
+            return Ok(ComputerUseWaitOutcome {
+                result,
+                snapshot,
+                attempts,
+                elapsed_ms: started.elapsed().as_millis(),
+            });
+        }
+
+        let now = Instant::now();
+        if now >= deadline {
+            return Ok(ComputerUseWaitOutcome {
+                result: "timed_out",
+                snapshot,
+                attempts,
+                elapsed_ms: started.elapsed().as_millis(),
+            });
+        }
+        let remaining = deadline.saturating_duration_since(now);
+        sleep(std::cmp::min(poll_interval, remaining)).await;
+    }
+}
+
+fn snapshot_contains_text(snapshot: &str, contains_text: &str, case_sensitive: bool) -> bool {
+    if case_sensitive {
+        snapshot.contains(contains_text)
+    } else {
+        snapshot
+            .to_lowercase()
+            .contains(&contains_text.to_lowercase())
+    }
+}
+
 fn render_status(prompt: bool) -> String {
     let status = inspect_computer_use(prompt);
     format!(
@@ -347,8 +566,9 @@ fn render_status(prompt: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        ComputerUseTool, MAX_SET_TEXT_CHARS, load_snapshot_record, resolve_snapshot_record,
-        save_snapshot_record, snapshot_record_path,
+        ComputerUseTool, ComputerUseWaitMode, MAX_SET_TEXT_CHARS, load_snapshot_record,
+        resolve_snapshot_record, save_snapshot_record, snapshot_contains_text,
+        snapshot_record_path,
     };
     use crate::tools::{Tool, ToolContext};
     use serde_json::json;
@@ -478,6 +698,78 @@ mod tests {
         assert!(format!("{error:#}").contains("unsupported computer_use key"));
     }
 
+    #[tokio::test]
+    async fn wait_text_present_requires_contains_text() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tool = ComputerUseTool;
+        let error = tool
+            .execute(
+                json!({ "action": "wait", "wait_until": "text_present" }),
+                &ctx(tmp.path()),
+            )
+            .await
+            .expect_err("missing contains_text");
+
+        assert!(format!("{error:#}").contains("requires `contains_text`"));
+    }
+
+    #[tokio::test]
+    async fn wait_rejects_unsupported_mode() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tool = ComputerUseTool;
+        let error = tool
+            .execute(
+                json!({ "action": "wait", "wait_until": "gone" }),
+                &ctx(tmp.path()),
+            )
+            .await
+            .expect_err("unsupported wait mode");
+
+        assert!(format!("{error:#}").contains("unsupported computer_use wait_until"));
+    }
+
+    #[test]
+    fn wait_request_defaults_to_settled_and_clamps_bounds() {
+        let args: super::ComputerUseArgs = serde_json::from_value(json!({
+            "action": "wait",
+            "timeout_seconds": 500,
+            "poll_interval_ms": 1
+        }))
+        .expect("args");
+        let request = args.wait_request().expect("wait request");
+
+        assert_eq!(request.mode, ComputerUseWaitMode::Settled);
+        assert_eq!(request.timeout_seconds, super::MAX_WAIT_TIMEOUT_SECONDS);
+        assert_eq!(request.poll_interval_ms, 100);
+    }
+
+    #[test]
+    fn wait_request_infers_text_present_from_contains_text() {
+        let args: super::ComputerUseArgs = serde_json::from_value(json!({
+            "action": "wait",
+            "contains_text": "Ready",
+            "case_sensitive": true
+        }))
+        .expect("args");
+        let request = args.wait_request().expect("wait request");
+
+        assert_eq!(
+            request.mode,
+            ComputerUseWaitMode::TextPresent {
+                contains_text: "Ready".to_string(),
+                case_sensitive: true,
+            }
+        );
+    }
+
+    #[test]
+    fn snapshot_text_matching_can_ignore_case() {
+        let snapshot = "frontmost_app: Notes\n- @u1 role='button' name='Continue'";
+
+        assert!(snapshot_contains_text(snapshot, "continue", false));
+        assert!(!snapshot_contains_text(snapshot, "continue", true));
+    }
+
     #[test]
     fn definition_exposes_snapshot_bounds() {
         let tool = ComputerUseTool;
@@ -487,6 +779,7 @@ mod tests {
         assert!(schema.contains("\"max_items\""));
         assert!(schema.contains("\"max_depth\""));
         assert!(schema.contains("\"snapshot\""));
+        assert!(schema.contains("\"wait\""));
         assert!(schema.contains("\"focus\""));
         assert!(schema.contains("\"click\""));
         assert!(schema.contains("\"set_text\""));
@@ -494,6 +787,10 @@ mod tests {
         assert!(schema.contains("\"reference\""));
         assert!(schema.contains("\"text\""));
         assert!(schema.contains("\"key\""));
+        assert!(schema.contains("\"wait_until\""));
+        assert!(schema.contains("\"contains_text\""));
+        assert!(schema.contains("\"timeout_seconds\""));
+        assert!(schema.contains("\"poll_interval_ms\""));
         assert!(schema.contains("\"snapshot_id\""));
     }
 

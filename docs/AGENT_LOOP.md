@@ -171,6 +171,8 @@ UI can show:
 - Main and background model request completion status and duration.
 - Prompt context preparation budgets, retained blocks, trimming labels, and preparation
   duration without exposing raw prompt content.
+- Context compaction events with before/after message counts, estimated token counts,
+  summary usage, and pruned-tool-output counts.
 - Tool call start and completion.
 - Approval requests.
 - Delegated run lifecycle.

@@ -2987,6 +2987,8 @@ function summarizeEvent(event: Record<string, unknown> & { type?: string }): str
       return `后台 ${String(event.purpose || "")} ${String(event.status || "")}${formatEventDuration(event.duration_ms)} ${truncate(String(event.content_preview || ""), 60)}`;
     case "context_prepared":
       return `上下文 ${String(event.projected_tokens || 0)}/${String(event.request_budget_tokens || 0)} tokens，块 ${String(event.kept_blocks || 0)}/${String(event.total_blocks || 0)}${formatContextTrimSummary(event)}${formatEventDuration(event.duration_ms)}`;
+    case "context_compacted":
+      return `上下文压缩 ${String(event.original_message_count || 0)} -> ${String(event.compressed_message_count || 0)} 条消息，tokens ${String(event.original_estimated_tokens || 0)} -> ${String(event.compressed_estimated_tokens || 0)}${Number(event.pruned_tool_messages || 0) > 0 ? `，裁剪 ${String(event.pruned_tool_messages)} 条工具输出` : ""}`;
     case "tool_batch_started":
       return `并发批次 ${String(event.batch_id || "")} 启动，${String(event.total_calls || 0)} 个工具`;
     case "tool_batch_progress":
@@ -4769,6 +4771,19 @@ export default function Page() {
           const duration = formatDurationMs(readDurationMs(event.duration_ms));
           const suffix = duration ? ` · ${duration}` : "";
           setAgentActivity(`上下文已准备 ${projected}/${budget} tokens · ${kept}/${total} 块${suffix}`);
+        }
+        break;
+      case "context_compacted":
+        {
+          const before = Number(event.original_estimated_tokens || 0);
+          const after = Number(event.compressed_estimated_tokens || 0);
+          const messagesBefore = Number(event.original_message_count || 0);
+          const messagesAfter = Number(event.compressed_message_count || 0);
+          const pruned = Number(event.pruned_tool_messages || 0);
+          const suffix = pruned > 0 ? ` · 裁剪 ${pruned} 条工具输出` : "";
+          setAgentActivity(
+            `上下文已压缩 ${before}/${after} tokens · ${messagesBefore}/${messagesAfter} 条消息${suffix}`,
+          );
         }
         break;
       case "assistant_delta":

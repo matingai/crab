@@ -37,6 +37,9 @@ and uses semantic versioning once stable release boundaries are established.
 - Prompt context preparation now emits a structured `context_prepared` event with projected
   tokens, request budget, message counts, retained context blocks, trim labels, and elapsed
   preparation time without exposing raw prompt content.
+- Context compression now emits a structured `context_compacted` event with before/after
+  message counts, estimated tokens, summary usage, trigger reason, and pruned-tool-output
+  counts without exposing the compacted summary body.
 - Desktop installer packaging now passes explicit Tauri targets in CI and emits a sibling
   `.json` release manifest beside each DMG or Windows setup `.exe`, including version,
   target, bundle type, and SHA-256 metadata.

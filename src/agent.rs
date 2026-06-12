@@ -3518,6 +3518,17 @@ impl Agent {
         outcome: crate::context_compression::ContextCompressionOutcome,
         prefix: Option<&str>,
     ) {
+        let reason = prefix.unwrap_or("iteration_preflight");
+        handler.on_event(AgentEvent::ContextCompacted {
+            session_id: self.session.session_id.clone(),
+            reason: reason.to_string(),
+            original_message_count: outcome.original_message_count,
+            compressed_message_count: outcome.compressed_message_count,
+            original_estimated_tokens: outcome.original_estimated_tokens,
+            compressed_estimated_tokens: outcome.compressed_estimated_tokens,
+            pruned_tool_messages: outcome.pruned_tool_messages,
+            used_summary: outcome.used_summary,
+        });
         let action = if outcome.used_summary {
             "长会话已压缩"
         } else {
@@ -3548,8 +3559,9 @@ impl Agent {
         handler.on_event(AgentEvent::Nudge {
             session_id: self.session.session_id.clone(),
             kind: "context".to_string(),
-            message,
+            message: message.clone(),
         });
+        self.append_archive_event("context_compacted", "Context compacted", &message);
     }
 
     fn check_stop_requested(&self, handler: &mut dyn EventHandler) -> Result<()> {
@@ -7793,6 +7805,21 @@ mod tests {
             event,
             AgentEvent::Nudge { kind, message, .. }
             if kind == "context" && message.contains("请求超限后已自动压缩")
+        )));
+        assert!(handler.events().iter().any(|event| matches!(
+            event,
+            AgentEvent::ContextCompacted {
+                reason,
+                original_message_count,
+                compressed_message_count,
+                original_estimated_tokens,
+                compressed_estimated_tokens,
+                used_summary,
+                ..
+            } if reason == "请求超限后已自动压缩"
+                && *original_message_count > *compressed_message_count
+                && *original_estimated_tokens > *compressed_estimated_tokens
+                && *used_summary
         )));
     }
 

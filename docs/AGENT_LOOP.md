@@ -168,6 +168,8 @@ UI can show:
 
 - Model request and streaming output.
 - Main and background model request completion status and duration.
+- Prompt context preparation budgets, retained blocks, trimming labels, and preparation
+  duration without exposing raw prompt content.
 - Tool call start and completion.
 - Approval requests.
 - Delegated run lifecycle.

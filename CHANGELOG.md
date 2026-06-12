@@ -32,6 +32,9 @@ and uses semantic versioning once stable release boundaries are established.
   tool-call count, and a redacted response preview so UIs can show a clear run boundary.
 - Main and background model completion events now include status-aware elapsed duration,
   making retry, routing fallback, and auxiliary-model latency visible in the desktop shell.
+- Prompt context preparation now emits a structured `context_prepared` event with projected
+  tokens, request budget, message counts, retained context blocks, trim labels, and elapsed
+  preparation time without exposing raw prompt content.
 - Subdirectory instruction discovery now returns root-to-leaf context stacks, tracks loaded
   hint files instead of permanently marking empty directories, and labels blocked context
   with the exact display path.

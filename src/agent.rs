@@ -1969,6 +1969,7 @@ impl Agent {
                 );
             }
 
+            let context_started_at = Instant::now();
             let (injections, matched_skill_labels) = self
                 .collect_turn_context_injections(handler, iteration, user_input, &mut progress)
                 .await;
@@ -1985,6 +1986,16 @@ impl Agent {
                 Some(&injections),
                 Some(&injection_stats),
                 tool_definitions.len(),
+            );
+            self.emit_context_prepared(
+                handler,
+                "main_request_preflight",
+                Some(iteration),
+                projected_tokens,
+                messages.len(),
+                tool_definitions.len(),
+                &injection_stats,
+                context_started_at,
             );
             if injection_stats.was_trimmed() {
                 handler.on_event(AgentEvent::Nudge {
@@ -2556,6 +2567,7 @@ impl Agent {
         system_prompt.push_str(
             "\n\n# Tool budget exhausted\nThe tool-calling budget for this turn is exhausted. Do not call more tools. Provide the best final answer using the available conversation and tool results. Be explicit about anything that remains unverified.",
         );
+        let context_started_at = Instant::now();
         let (injections, matched_skill_labels) = self
             .collect_turn_context_injections(
                 handler,
@@ -2577,6 +2589,16 @@ impl Agent {
             Some(&injections),
             Some(&injection_stats),
             0,
+        );
+        self.emit_context_prepared(
+            handler,
+            "final_request_preflight",
+            Some(self.config.max_iterations + 1),
+            projected_tokens,
+            messages.len(),
+            0,
+            &injection_stats,
+            context_started_at,
         );
         if injection_stats.was_trimmed() {
             handler.on_event(AgentEvent::Nudge {
@@ -3226,6 +3248,44 @@ impl Agent {
                 "本次请求预计占用约 {} tokens，{}发送预算 {} tokens。",
                 projected_tokens, severity, budget_tokens
             ),
+        });
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn emit_context_prepared(
+        &self,
+        handler: &mut dyn EventHandler,
+        phase: &str,
+        iteration: Option<usize>,
+        projected_tokens: usize,
+        message_count: usize,
+        tool_count: usize,
+        stats: &ContextInjectionStats,
+        started_at: Instant,
+    ) {
+        handler.on_event(AgentEvent::ContextPrepared {
+            session_id: self.session.session_id.clone(),
+            phase: phase.to_string(),
+            iteration,
+            projected_tokens,
+            request_budget_tokens: self.request_context_budget_tokens(),
+            message_count,
+            tool_count,
+            total_blocks: stats.total_blocks,
+            kept_blocks: stats.kept_blocks,
+            original_chars: stats.original_chars,
+            final_chars: stats.final_chars,
+            clipped_labels: stats
+                .clipped_labels
+                .iter()
+                .map(|label| (*label).to_string())
+                .collect(),
+            skipped_labels: stats
+                .skipped_labels
+                .iter()
+                .map(|label| (*label).to_string())
+                .collect(),
+            duration_ms: elapsed_ms(started_at),
         });
     }
 
@@ -7425,6 +7485,28 @@ mod tests {
                 tool_call_count,
                 ..
             }) if status == "ok" && *duration_ms < 30_000 && *tool_call_count == 0
+        ));
+        assert!(matches!(
+            handler
+                .events()
+                .iter()
+                .find(|event| matches!(event, AgentEvent::ContextPrepared { .. })),
+            Some(AgentEvent::ContextPrepared {
+                phase,
+                iteration,
+                projected_tokens,
+                request_budget_tokens,
+                message_count,
+                tool_count,
+                duration_ms,
+                ..
+            }) if phase == "main_request_preflight"
+                && *iteration == Some(1)
+                && *projected_tokens > 0
+                && *request_budget_tokens > 0
+                && *message_count > 0
+                && *tool_count > 0
+                && *duration_ms < 30_000
         ));
     }
 

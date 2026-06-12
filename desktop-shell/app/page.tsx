@@ -2975,6 +2975,8 @@ function summarizeEvent(event: Record<string, unknown> & { type?: string }): str
       return `后台 ${String(event.purpose || "")} 请求 ${String(event.model || "")}`;
     case "background_model_request_finished":
       return `后台 ${String(event.purpose || "")} ${String(event.status || "")}${formatEventDuration(event.duration_ms)} ${truncate(String(event.content_preview || ""), 60)}`;
+    case "context_prepared":
+      return `上下文 ${String(event.projected_tokens || 0)}/${String(event.request_budget_tokens || 0)} tokens，块 ${String(event.kept_blocks || 0)}/${String(event.total_blocks || 0)}${formatContextTrimSummary(event)}${formatEventDuration(event.duration_ms)}`;
     case "tool_batch_started":
       return `并发批次 ${String(event.batch_id || "")} 启动，${String(event.total_calls || 0)} 个工具`;
     case "tool_batch_progress":
@@ -3142,6 +3144,22 @@ function formatModelRequestStatus(status: string): string {
     default:
       return status ? ` ${status}` : "结束";
   }
+}
+
+function formatContextTrimSummary(event: Record<string, unknown>): string {
+  const clipped = Array.isArray(event.clipped_labels) ? event.clipped_labels.length : 0;
+  const skipped = Array.isArray(event.skipped_labels) ? event.skipped_labels.length : 0;
+  if (!clipped && !skipped) {
+    return "";
+  }
+  const parts: string[] = [];
+  if (clipped) {
+    parts.push(`裁剪 ${clipped}`);
+  }
+  if (skipped) {
+    parts.push(`跳过 ${skipped}`);
+  }
+  return `，${parts.join("，")}`;
 }
 
 function formatInterruptedSessionSummary(
@@ -4712,6 +4730,17 @@ export default function Page() {
               ? `后台模型请求完成${suffix}`
               : `后台模型请求未完成${suffix}`,
           );
+        }
+        break;
+      case "context_prepared":
+        {
+          const projected = Number(event.projected_tokens || 0);
+          const budget = Number(event.request_budget_tokens || 0);
+          const kept = Number(event.kept_blocks || 0);
+          const total = Number(event.total_blocks || 0);
+          const duration = formatDurationMs(readDurationMs(event.duration_ms));
+          const suffix = duration ? ` · ${duration}` : "";
+          setAgentActivity(`上下文已准备 ${projected}/${budget} tokens · ${kept}/${total} 块${suffix}`);
         }
         break;
       case "assistant_delta":

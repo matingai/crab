@@ -191,6 +191,7 @@ fn event_session_id(event: &BridgeEventEnvelope) -> Option<String> {
         | crate::events::AgentEvent::IterationStarted { session_id, .. }
         | crate::events::AgentEvent::AssistantDelta { session_id, .. }
         | crate::events::AgentEvent::SkillMatched { session_id, .. }
+        | crate::events::AgentEvent::ContextPrepared { session_id, .. }
         | crate::events::AgentEvent::ModelRequestStarted { session_id, .. }
         | crate::events::AgentEvent::ModelRequestFinished { session_id, .. }
         | crate::events::AgentEvent::BackgroundModelRequestStarted { session_id, .. }

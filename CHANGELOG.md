@@ -9,8 +9,9 @@ and uses semantic versioning once stable release boundaries are established.
 
 ### Changed
 
-- Tool calls now pass through a local `tool_policy` preflight that can require approval
-  or disable configured tools and path patterns before execution.
+- Tool calls now pass through a local `tool_policy` preflight that protects common
+  sensitive paths by default and can require approval or disable configured tools/path
+  patterns before execution.
 - Tool observations, live previews, session timeline details, archive records, and saved
   assistant tool-call arguments now redact common credential patterns before persistence.
 - Subdirectory instruction discovery now returns root-to-leaf context stacks, tracks loaded

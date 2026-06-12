@@ -188,9 +188,8 @@ The loop is designed around these ideas:
 - **Approval-aware execution**: sensitive operations can pause for approval and later
   resume through the same session/event path. Terminal commands and `execute_code`
   snippets share the same destructive shell-risk checks.
-- **Configurable tool policy**: local config can require approval for selected tools or
-  disable tools entirely, with exact names, prefix patterns such as `browser_*`, and
-  path-scoped rules for sensitive files.
+- **Configurable tool policy**: common sensitive paths are protected by default, and
+  local config can add approval requirements or disable selected tools/paths entirely.
 - **Secret-aware observations**: tool outputs, live previews, timeline details, archive
   records, and stored assistant tool-call arguments redact common credential patterns
   before they become long-lived context.
@@ -219,8 +218,9 @@ Important safety notes:
   trusted workspace and review model outputs before approving sensitive actions.
 - `execute_code` is also gated by shell access and pauses for approval when inline or
   file-backed scripts contain obvious destructive shell fragments.
-- Local `tool_policy` can protect sensitive paths such as `.env*` or
-  `.github/workflows/*` before any matching tool implementation runs.
+- Local `tool_policy` protects common sensitive paths such as `.env*`, `.ssh/*`,
+  `.aws/*`, and private key files by default before any matching tool implementation
+  runs. You can extend those rules or opt out explicitly in local config.
 - Runtime redaction is best-effort and targets common key/token/password formats. It is
   not a replacement for keeping secrets out of prompts and generated files.
 - In Git workspaces, file mutation tools protect existing paths with uncommitted changes
@@ -438,12 +438,16 @@ skills:
   include_bundled: false
 ```
 
-Local tool policy can require approval or disable selected tools and paths. Tool patterns
-are exact names, `*`, or prefix wildcards ending in `*`; path patterns support exact
-directories and `*` wildcards:
+Local tool policy protects common sensitive paths by default, including `.env*`,
+`.ssh/*`, `.aws/*`, `.gnupg/*`, private key files, and common credential config files.
+You can extend those defaults, require approval for selected tools, or disable selected
+tools and paths. Tool patterns are exact names, `*`, or prefix wildcards ending in `*`;
+path patterns support exact directories and `*` wildcards:
 
 ```yaml
 tool_policy:
+  # Defaults to true. Set to false only when you want to own the full path policy.
+  include_default_protected_paths: true
   require_approval:
     - terminal
     - execute_code

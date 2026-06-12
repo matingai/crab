@@ -78,9 +78,11 @@ Approval boundaries apply across equivalent execution surfaces. A destructive sh
 fragment should pause whether it arrives through the terminal tool or through a local
 script runner such as `execute_code`.
 
-The registry also supports local `tool_policy` preflight rules. A workspace can require
-approval for entire tool families such as `browser_*`, protect path patterns such as
-`.env*`, or disable a tool/path before it reaches its implementation.
+The registry also supports local `tool_policy` preflight rules. Common sensitive paths
+such as `.env*`, `.ssh/*`, `.aws/*`, private keys, and credential config files are
+protected by default before a tool implementation runs. A workspace can extend those
+rules, require approval for entire tool families such as `browser_*`, opt out of the
+defaults, or disable a tool/path before it reaches its implementation.
 
 ## Delegation Model
 

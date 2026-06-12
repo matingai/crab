@@ -151,8 +151,8 @@ agent loop 是这个项目真正的中心。Crab 把主 agent 设计成一个面
   delegated runs 都会在本地持久化，方便跨轮次、跨桌面重启继续工作。
 - **审批感知执行**：敏感操作可以暂停等待 approval，用户确认后再通过同一条 session/event 路径恢复。
   terminal 命令和 `execute_code` 片段共用同一套破坏性 shell 风险识别。
-- **可配置工具策略**：本地配置可以要求指定工具先审批，也可以完全禁用某些工具；支持精确工具名和
-  `browser_*` 这类前缀模式，也支持针对敏感文件的路径级规则。
+- **可配置工具策略**：`.env*`、`.ssh/*`、私钥等常见敏感路径默认受保护；本地配置还可以继续添加审批要求，
+  或完全禁用指定工具/路径。
 - **敏感信息感知的观察结果**：工具输出、实时预览、timeline 详情、archive 记录和已保存的 assistant
   tool-call 参数会在进入长期上下文前清洗常见 credential 形态。
 - **保护未提交改动**：文件修改类工具默认拒绝覆盖、patch、删除或移动 Git 工作区里已有未提交改动的路径；
@@ -174,7 +174,8 @@ agent loop 是这个项目真正的中心。Crab 把主 agent 设计成一个面
 - 浏览器、文件、Office、shell 相关工具会在本机执行。请只在可信工作区使用，并在敏感操作前审阅模型输出。
 - `execute_code` 同样受 shell 开关约束；当 inline 或文件脚本里包含明显破坏性 shell 片段时，会先暂停等待
   approval。
-- 本地 `tool_policy` 可以在具体工具执行前保护 `.env*`、`.github/workflows/*` 这类敏感路径。
+- 本地 `tool_policy` 默认会在具体工具执行前保护 `.env*`、`.ssh/*`、`.aws/*` 和私钥文件等常见敏感路径；
+  你可以扩展这些规则，也可以在本地配置中显式关闭默认规则。
 - 运行时 redaction 是 best-effort，主要处理常见 key/token/password 格式；它不能替代从源头避免把密钥写进
   prompt 或生成文件。
 - 在 Git 工作区中，文件修改类工具默认保护已有未提交改动的路径；只有确认要改动本地用户改动时，
@@ -383,11 +384,14 @@ skills:
   include_bundled: false
 ```
 
-本地工具策略可以要求审批或禁用指定工具和路径。工具模式可以是精确工具名、`*`，或以 `*` 结尾的前缀通配；
-路径模式支持精确目录和 `*` 通配：
+本地工具策略默认保护 `.env*`、`.ssh/*`、`.aws/*`、`.gnupg/*`、私钥文件和常见 credential 配置文件。
+你可以扩展这些默认规则，也可以要求指定工具审批，或禁用指定工具/路径。工具模式可以是精确工具名、`*`，
+或以 `*` 结尾的前缀通配；路径模式支持精确目录和 `*` 通配：
 
 ```yaml
 tool_policy:
+  # 默认值为 true。只有当你想完全自管路径策略时才建议设为 false。
+  include_default_protected_paths: true
   require_approval:
     - terminal
     - execute_code

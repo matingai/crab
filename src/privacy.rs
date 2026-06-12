@@ -114,12 +114,12 @@ mod tests {
     #[test]
     fn redacts_common_secret_assignments_and_tokens() {
         let input = r#"
-OPENAI_API_KEY=sk-test0123456789abcdef
-"api_key": "sk-proj-abcdefghijklmnopqrstuvwxyz"
+OPENAI_API_KEY=test-redaction-fixture
+"api_key": "provider-redaction-fixture"
 password: hunter2
 Authorization: Bearer abcdefghijklmnopqrstuvwxyz
-github_pat_1234567890abcdefghijklmnopqrstuvwxyz
-AKIA1234567890ABCDEF
+sk-redactionfixture
+github_pat_redaction_fixture_001
 "#;
 
         let output = redact_secrets(input);
@@ -128,9 +128,9 @@ AKIA1234567890ABCDEF
         assert!(output.contains(r#""api_key": "[REDACTED]""#));
         assert!(output.contains("password: [REDACTED]"));
         assert!(output.contains("Authorization: Bearer [REDACTED]"));
-        assert!(!output.contains("sk-test0123456789abcdef"));
-        assert!(!output.contains("github_pat_1234567890abcdefghijklmnopqrstuvwxyz"));
-        assert!(!output.contains("AKIA1234567890ABCDEF"));
+        assert!(!output.contains("test-redaction-fixture"));
+        assert!(!output.contains("sk-redactionfixture"));
+        assert!(!output.contains("github_pat_redaction_fixture_001"));
     }
 
     #[test]
@@ -144,7 +144,7 @@ AKIA1234567890ABCDEF
     fn redacts_chat_message_content_and_tool_arguments() {
         let message = ChatMessage {
             role: "assistant".to_string(),
-            content: Some(json!("Use OPENAI_API_KEY=sk-test0123456789abcdef")),
+            content: Some(json!("Use OPENAI_API_KEY=test-redaction-fixture")),
             tool_calls: Some(vec![ToolCall {
                 id: "call-1".to_string(),
                 kind: "function".to_string(),
@@ -158,7 +158,7 @@ AKIA1234567890ABCDEF
 
         let redacted = redact_chat_message_secrets(message);
 
-        assert!(!redacted.content_text().contains("sk-test"));
+        assert!(!redacted.content_text().contains("test-redaction-fixture"));
         assert!(
             !redacted.tool_calls.unwrap()[0]
                 .function

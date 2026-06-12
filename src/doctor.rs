@@ -215,11 +215,22 @@ fn push_tool_policy_check(checks: &mut Vec<DoctorCheck>, data_dir: &Path) {
             "safety",
             "Tool policy",
             DoctorLevel::Pass,
-            "default tool policy is active".to_string(),
+            "no active custom tool policy rules".to_string(),
             Some(
-                "Set tool_policy in the local config to require approval or disable tools."
+                "Set tool_policy in the local config to require approval, disable tools, or restore default sensitive path protection."
                     .to_string(),
             ),
+        ),
+        Ok(policy) if !policy.has_custom_rules() => push_check(
+            checks,
+            "safety",
+            "Tool policy",
+            DoctorLevel::Pass,
+            "default sensitive path policy is active".to_string(),
+            Some(format!(
+                "protected_paths=[{}]",
+                policy.protected_paths.join(", ")
+            )),
         ),
         Ok(policy) => push_check(
             checks,
@@ -609,6 +620,26 @@ mod tests {
                 .unwrap_or_default()
                 .contains("terminal")
         );
+        assert!(
+            checks[0]
+                .detail
+                .as_deref()
+                .unwrap_or_default()
+                .contains(".env*")
+        );
+    }
+
+    #[test]
+    fn tool_policy_check_reports_default_sensitive_paths() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut checks = Vec::new();
+
+        push_tool_policy_check(&mut checks, tmp.path());
+
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].level, DoctorLevel::Pass);
+        assert_eq!(checks[0].name, "Tool policy");
+        assert!(checks[0].message.contains("default sensitive path policy"));
         assert!(
             checks[0]
                 .detail

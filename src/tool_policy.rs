@@ -8,7 +8,26 @@ use std::path::{Path, PathBuf};
 
 use crate::approval::{ApprovalRequest, consume_approved_request, request_approval};
 
-#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+const DEFAULT_PROTECTED_PATHS: &[&str] = &[
+    ".env*",
+    ".ssh/*",
+    ".gnupg/*",
+    ".aws/*",
+    ".git/config",
+    ".git-credentials",
+    ".netrc",
+    ".npmrc",
+    ".pypirc",
+    "*.pem",
+    "*.key",
+    "*id_rsa*",
+    "*id_dsa*",
+    "*id_ecdsa*",
+    "*id_ed25519*",
+    "secrets/*",
+];
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct ToolPolicyConfig {
     #[serde(default, alias = "disabled_tools", alias = "disabledTools")]
     pub disabled: Vec<String>,
@@ -28,6 +47,13 @@ pub struct ToolPolicyConfig {
         alias = "blockedPaths"
     )]
     pub disabled_paths: Vec<String>,
+    #[serde(
+        default = "default_true",
+        alias = "includeDefaultProtectedPaths",
+        alias = "inherit_default_protected_paths",
+        alias = "inheritDefaultProtectedPaths"
+    )]
+    pub include_default_protected_paths: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -51,6 +77,26 @@ impl ToolPolicyConfig {
             && self.disabled_paths.is_empty()
     }
 
+    pub fn has_custom_rules(&self) -> bool {
+        if !self.disabled.is_empty()
+            || !self.require_approval.is_empty()
+            || !self.disabled_paths.is_empty()
+        {
+            return true;
+        }
+        let default_paths = if self.include_default_protected_paths {
+            normalize_patterns(
+                DEFAULT_PROTECTED_PATHS
+                    .iter()
+                    .map(|item| item.to_string())
+                    .collect(),
+            )
+        } else {
+            Vec::new()
+        };
+        self.protected_paths != default_paths
+    }
+
     pub fn disables(&self, tool_name: &str) -> bool {
         self.disabled
             .iter()
@@ -72,18 +118,35 @@ impl ToolPolicyConfig {
     }
 
     fn normalized(self) -> Self {
+        let mut protected_paths = self.protected_paths;
+        if self.include_default_protected_paths {
+            protected_paths.extend(DEFAULT_PROTECTED_PATHS.iter().map(|item| item.to_string()));
+        }
         Self {
             disabled: normalize_patterns(self.disabled),
             require_approval: normalize_patterns(self.require_approval),
-            protected_paths: normalize_patterns(self.protected_paths),
+            protected_paths: normalize_patterns(protected_paths),
             disabled_paths: normalize_patterns(self.disabled_paths),
+            include_default_protected_paths: self.include_default_protected_paths,
+        }
+    }
+}
+
+impl Default for ToolPolicyConfig {
+    fn default() -> Self {
+        Self {
+            disabled: Vec::new(),
+            require_approval: Vec::new(),
+            protected_paths: Vec::new(),
+            disabled_paths: Vec::new(),
+            include_default_protected_paths: true,
         }
     }
 }
 
 pub fn load_tool_policy_config(data_dir: &Path) -> Result<ToolPolicyConfig> {
     let Some(config_path) = existing_config_path(data_dir) else {
-        return Ok(ToolPolicyConfig::default());
+        return Ok(ToolPolicyConfig::default().normalized());
     };
     let raw = fs::read_to_string(&config_path)
         .with_context(|| format!("failed to read {}", config_path.display()))?;
@@ -188,6 +251,10 @@ fn normalize_patterns(items: Vec<String>) -> Vec<String> {
         .collect()
 }
 
+fn default_true() -> bool {
+    true
+}
+
 fn first_path_pattern_match(patterns: &[String], paths: &[String]) -> Option<String> {
     patterns.iter().find_map(|pattern| {
         paths
@@ -285,7 +352,31 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let config = load_tool_policy_config(tmp.path()).expect("policy");
 
+        assert!(!config.is_empty());
+        assert!(!config.has_custom_rules());
+        assert!(config.include_default_protected_paths);
+        assert!(config.protected_paths.contains(&".env*".to_string()));
+        assert!(config.protected_paths.contains(&".ssh/*".to_string()));
+        assert!(config.protected_paths.contains(&"*.pem".to_string()));
+    }
+
+    #[test]
+    fn default_protected_paths_can_be_disabled() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        fs::write(
+            tmp.path().join("config.yaml"),
+            r#"
+tool_policy:
+  include_default_protected_paths: false
+"#,
+        )
+        .expect("write config");
+
+        let config = load_tool_policy_config(tmp.path()).expect("policy");
         assert!(config.is_empty());
+        assert!(!config.has_custom_rules());
+        assert!(!config.include_default_protected_paths);
+        assert!(config.protected_paths.is_empty());
     }
 
     #[test]
@@ -315,8 +406,15 @@ tool_policy:
         let config = load_tool_policy_config(tmp.path()).expect("policy");
         assert_eq!(config.disabled, vec!["browser_eval"]);
         assert_eq!(config.require_approval, vec!["browser_*", "terminal"]);
-        assert_eq!(config.protected_paths, vec![".env*", ".github/workflows/*"]);
+        assert!(config.protected_paths.contains(&".env*".to_string()));
+        assert!(
+            config
+                .protected_paths
+                .contains(&".github/workflows/*".to_string())
+        );
+        assert!(config.protected_paths.contains(&".ssh/*".to_string()));
         assert_eq!(config.disabled_paths, vec!["secrets/*"]);
+        assert!(config.has_custom_rules());
     }
 
     #[test]
@@ -420,6 +518,26 @@ tool_policy:
 "#,
         )
         .expect("write config");
+
+        let decision = evaluate_tool_policy(
+            tmp.path(),
+            "session-1",
+            "write_file",
+            r#"{"path":".env.local","content":"OPENAI_API_KEY=secret"}"#,
+        )
+        .expect("policy");
+        let ToolPolicyPreflight::ApprovalRequired(approval) = decision else {
+            panic!("expected approval");
+        };
+
+        assert!(approval.reason.contains("path pattern `.env*`"));
+        assert!(!approval.command.contains(".env.local"));
+        assert!(!approval.command.contains("OPENAI_API_KEY"));
+    }
+
+    #[test]
+    fn default_protected_path_requires_approval_without_config() {
+        let tmp = tempfile::tempdir().expect("tempdir");
 
         let decision = evaluate_tool_policy(
             tmp.path(),

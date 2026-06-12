@@ -45,8 +45,10 @@ Reports are especially valuable when they involve:
 - The terminal tool is disabled by default and must be enabled explicitly.
 - The terminal tool and `execute_code` share destructive shell-risk checks; obvious
   dangerous command fragments pause for approval before execution.
-- Local `tool_policy` config can require approval for selected tools, protect sensitive
-  path patterns, or disable tools/paths entirely before execution.
+- Local `tool_policy` config protects common sensitive paths by default, including
+  `.env*`, `.ssh/*`, `.aws/*`, `.gnupg/*`, private key files, and common credential
+  config files. Local config can extend those protections, require approval for selected
+  tools, opt out of the defaults, or disable tools/paths entirely before execution.
 - Tool outputs, live previews, timeline details, archive records, and stored assistant
   tool-call arguments redact common credential patterns before becoming durable context.
 - In Git workspaces, file mutation tools refuse to overwrite, patch, delete, or move

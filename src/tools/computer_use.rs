@@ -93,13 +93,13 @@ impl Tool for ComputerUseTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::function(
             "computer_use",
-            "Inspect and prepare native computer-use automation. On macOS, this checks Accessibility trust, can request the permission prompt, can return/search/inspect a shallow Accessibility UI tree for the frontmost app, can focus, click, perform a whitelisted native Accessibility action, scroll, or set text on a UI ref after tool-policy approval, and can press a small whitelist of non-text keys after approval. Broad keyboard and app-control actions are intentionally not enabled yet.",
+            "Inspect and prepare native computer-use automation. On macOS, this checks Accessibility trust, can request the permission prompt, can return/search/inspect a shallow Accessibility UI tree for the frontmost app, can wait for a specific UI ref to become ready, can focus, click, perform a whitelisted native Accessibility action, scroll, or set text on a UI ref after tool-policy approval, and can press a small whitelist of non-text keys after approval. Broad keyboard and app-control actions are intentionally not enabled yet.",
             object_schema(
                 json!({
                     "action": {
                         "type": "string",
-                        "enum": ["status", "request_permission", "snapshot", "inspect_ref", "find", "wait", "focus", "click", "perform_action", "set_text", "scroll", "press_key"],
-                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; inspect_ref reads the current details and available actions for a snapshot ref; find searches a fresh snapshot for candidate UI refs; wait polls snapshots until text appears or the UI settles; focus sets keyboard focus to a snapshot ref such as @u2 after approval; click activates a snapshot ref after approval; perform_action runs one whitelisted native Accessibility action on a ref after approval; set_text sets the Accessibility value for a ref after approval; scroll performs a small Accessibility scroll action on a snapshot ref after approval; press_key sends one whitelisted non-text key to the frontmost app after approval."
+                        "enum": ["status", "request_permission", "snapshot", "inspect_ref", "find", "wait", "wait_ref", "focus", "click", "perform_action", "set_text", "scroll", "press_key"],
+                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; inspect_ref reads the current details and available actions for a snapshot ref; find searches a fresh snapshot for candidate UI refs; wait polls snapshots until text appears or the UI settles; wait_ref polls one UI ref until it exists and optional role, text, state, or native Accessibility action expectations match; focus sets keyboard focus to a snapshot ref such as @u2 after approval; click activates a snapshot ref after approval; perform_action runs one whitelisted native Accessibility action on a ref after approval; set_text sets the Accessibility value for a ref after approval; scroll performs a small Accessibility scroll action on a snapshot ref after approval; press_key sends one whitelisted non-text key to the frontmost app after approval."
                     },
                     "max_items": {
                         "type": "integer",
@@ -115,7 +115,7 @@ impl Tool for ComputerUseTool {
                     },
                     "reference": {
                         "type": "string",
-                        "description": "UI ref from the latest computer_use snapshot, such as @u2. Required for inspect_ref, focus, click, perform_action, set_text, and scroll."
+                        "description": "UI ref from the latest computer_use snapshot, such as @u2. Required for inspect_ref, wait_ref, focus, click, perform_action, set_text, and scroll."
                     },
                     "ref": {
                         "type": "string",
@@ -134,7 +134,7 @@ impl Tool for ComputerUseTool {
                     "native_action": {
                         "type": "string",
                         "enum": ["press", "show_menu", "confirm", "cancel", "increment", "decrement"],
-                        "description": "Whitelisted native Accessibility action for action=perform_action. AX-prefixed names such as AXPress and AXShowMenu are also accepted."
+                        "description": "Whitelisted native Accessibility action for action=perform_action, or an expected available action for action=wait_ref. AX-prefixed names such as AXPress and AXShowMenu are also accepted."
                     },
                     "direction": {
                         "type": "string",
@@ -181,17 +181,17 @@ impl Tool for ComputerUseTool {
                     "expect_role": {
                         "type": "string",
                         "maxLength": 120,
-                        "description": "Optional pre-action guard for focus, click, perform_action, set_text, and scroll. When set, the current ref line must still have this role before the write action runs."
+                        "description": "Optional expectation for wait_ref and optional pre-action guard for focus, click, perform_action, set_text, and scroll. When set, the current ref line must still have this role."
                     },
                     "expect_text": {
                         "type": "string",
                         "maxLength": 1000,
-                        "description": "Optional pre-action guard for focus, click, perform_action, set_text, and scroll. When set, the current ref line must still contain this text before the write action runs."
+                        "description": "Optional expectation for wait_ref and optional pre-action guard for focus, click, perform_action, set_text, and scroll. When set, the current ref line must still contain this text."
                     },
                     "expect_state": {
                         "type": "string",
                         "enum": ["focused", "selected", "enabled", "disabled"],
-                        "description": "Optional pre-action guard for focus, click, perform_action, set_text, and scroll. When set, the current ref line must still match this compact state before the write action runs."
+                        "description": "Optional expectation for wait_ref and optional pre-action guard for focus, click, perform_action, set_text, and scroll. When set, the current ref line must still match this compact state."
                     },
                     "case_sensitive": {
                         "type": "boolean",
@@ -201,13 +201,13 @@ impl Tool for ComputerUseTool {
                         "type": "integer",
                         "minimum": 1,
                         "maximum": 30,
-                        "description": "Maximum time to wait for action=wait. Defaults to 10 seconds."
+                        "description": "Maximum time to wait for action=wait or action=wait_ref. Defaults to 10 seconds."
                     },
                     "poll_interval_ms": {
                         "type": "integer",
                         "minimum": 100,
                         "maximum": 2000,
-                        "description": "Polling interval for action=wait. Defaults to 250 ms."
+                        "description": "Polling interval for action=wait or action=wait_ref. Defaults to 250 ms."
                     },
                     "snapshot_id": {
                         "type": "string",
@@ -260,6 +260,28 @@ impl Tool for ComputerUseTool {
                     outcome.elapsed_ms,
                     render_status(false),
                     outcome.snapshot.trim()
+                ))
+            }
+            "wait_ref" => {
+                let reference = args.reference()?;
+                let request = args.wait_ref_request()?;
+                let status = inspect_computer_use(false);
+                if !status.ready() {
+                    bail!("{}", status.guidance);
+                }
+                let max_items = args.max_items.clamp(1, 50);
+                let max_depth = args.max_depth.clamp(1, 6);
+                let outcome =
+                    wait_for_frontmost_app_ref(reference, &request, max_items, max_depth).await?;
+                let record = save_snapshot_record(ctx, max_items, max_depth, &outcome.details)?;
+                Ok(format!(
+                    "snapshot_id: {}\nwait_result: {}\nwait_until: ref_matches\nattempts: {}\nelapsed_ms: {}\n{}\n\n{}",
+                    record.snapshot_id,
+                    outcome.result,
+                    outcome.attempts,
+                    outcome.elapsed_ms,
+                    render_status(false),
+                    outcome.details.trim()
                 ))
             }
             "find" => {
@@ -426,7 +448,7 @@ impl Tool for ComputerUseTool {
                 ))
             }
             other => bail!(
-                "unsupported computer_use action `{other}`; use status, request_permission, snapshot, inspect_ref, find, wait, focus, click, perform_action, set_text, scroll, or press_key"
+                "unsupported computer_use action `{other}`; use status, request_permission, snapshot, inspect_ref, find, wait, wait_ref, focus, click, perform_action, set_text, scroll, or press_key"
             ),
         }
     }
@@ -525,6 +547,29 @@ impl ComputerUseArgs {
         };
         Ok(ComputerUseWaitRequest {
             mode,
+            timeout_seconds: self
+                .timeout_seconds
+                .unwrap_or(DEFAULT_WAIT_TIMEOUT_SECONDS)
+                .clamp(1, MAX_WAIT_TIMEOUT_SECONDS),
+            poll_interval_ms: self
+                .poll_interval_ms
+                .unwrap_or(DEFAULT_WAIT_POLL_INTERVAL_MS)
+                .clamp(100, 2_000),
+        })
+    }
+
+    fn wait_ref_request(&self) -> Result<ComputerUseWaitRefRequest> {
+        let guard = self.ref_guard_request()?;
+        let native_action = self
+            .native_action
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(normalize_computer_use_native_action)
+            .transpose()?;
+        Ok(ComputerUseWaitRefRequest {
+            guard,
+            native_action,
             timeout_seconds: self
                 .timeout_seconds
                 .unwrap_or(DEFAULT_WAIT_TIMEOUT_SECONDS)
@@ -662,6 +707,22 @@ impl ComputerUseWaitMode {
 struct ComputerUseWaitOutcome {
     result: &'static str,
     snapshot: String,
+    attempts: usize,
+    elapsed_ms: u128,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ComputerUseWaitRefRequest {
+    guard: Option<ComputerUseRefGuardRequest>,
+    native_action: Option<ComputerUseNativeAction>,
+    timeout_seconds: u64,
+    poll_interval_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ComputerUseWaitRefOutcome {
+    result: &'static str,
+    details: String,
     attempts: usize,
     elapsed_ms: u128,
 }
@@ -915,6 +976,54 @@ async fn wait_for_frontmost_app(
     }
 }
 
+async fn wait_for_frontmost_app_ref(
+    reference: &str,
+    request: &ComputerUseWaitRefRequest,
+    max_items: usize,
+    max_depth: usize,
+) -> Result<ComputerUseWaitRefOutcome> {
+    let started = Instant::now();
+    let deadline = started + Duration::from_secs(request.timeout_seconds);
+    let poll_interval = Duration::from_millis(request.poll_interval_ms);
+    let mut attempts = 0usize;
+    let mut latest_details: Option<String> = None;
+    let mut latest_error_sha256: Option<String> = None;
+
+    loop {
+        attempts += 1;
+        match frontmost_app_ref_details(reference, max_items, max_depth) {
+            Ok(details) => {
+                if details_match_wait_ref(reference, &details, request) {
+                    return Ok(ComputerUseWaitRefOutcome {
+                        result: "matched",
+                        details,
+                        attempts,
+                        elapsed_ms: started.elapsed().as_millis(),
+                    });
+                }
+                latest_details = Some(details);
+            }
+            Err(error) => {
+                latest_error_sha256 = Some(sha256_hex(format!("{error:#}").as_bytes()));
+            }
+        }
+
+        let now = Instant::now();
+        if now >= deadline {
+            return Ok(ComputerUseWaitRefOutcome {
+                result: "timed_out",
+                details: latest_details.unwrap_or_else(|| {
+                    render_wait_ref_unavailable(reference, latest_error_sha256.as_deref())
+                }),
+                attempts,
+                elapsed_ms: started.elapsed().as_millis(),
+            });
+        }
+        let remaining = deadline.saturating_duration_since(now);
+        sleep(std::cmp::min(poll_interval, remaining)).await;
+    }
+}
+
 fn snapshot_contains_text(snapshot: &str, contains_text: &str, case_sensitive: bool) -> bool {
     if case_sensitive {
         snapshot.contains(contains_text)
@@ -923,6 +1032,60 @@ fn snapshot_contains_text(snapshot: &str, contains_text: &str, case_sensitive: b
             .to_lowercase()
             .contains(&contains_text.to_lowercase())
     }
+}
+
+fn details_match_wait_ref(
+    reference: &str,
+    details: &str,
+    request: &ComputerUseWaitRefRequest,
+) -> bool {
+    if let Some(guard) = &request.guard {
+        let Some(line) = ref_line_from_details(details) else {
+            return false;
+        };
+        if check_ref_guard_line(reference, &line, guard).is_err() {
+            return false;
+        }
+    }
+
+    if let Some(native_action) = request.native_action
+        && !details_have_native_action(details, native_action)
+    {
+        return false;
+    }
+
+    true
+}
+
+fn ref_line_from_details(details: &str) -> Option<String> {
+    details.lines().find_map(|line| {
+        line.trim_start()
+            .strip_prefix("ref_line: ")
+            .map(|line| line.trim_end().to_string())
+    })
+}
+
+fn details_have_native_action(details: &str, expected: ComputerUseNativeAction) -> bool {
+    let Some(actions) = details.lines().find_map(|line| {
+        line.trim_start()
+            .strip_prefix("available_actions:")
+            .map(str::trim)
+    }) else {
+        return false;
+    };
+    actions
+        .split(',')
+        .map(str::trim)
+        .any(|action| action == expected.ax_action)
+}
+
+fn render_wait_ref_unavailable(reference: &str, latest_error_sha256: Option<&str>) -> String {
+    let error_sha256 = latest_error_sha256.unwrap_or("none");
+    format!(
+        "ref: {}\nwait_ref_last_error: ref_details_unavailable\nwait_ref_last_error_sha256: {}",
+        reference.trim(),
+        error_sha256
+    )
 }
 
 fn find_snapshot_lines(snapshot: &str, request: &ComputerUseFindRequest) -> ComputerUseFindOutcome {
@@ -1114,10 +1277,13 @@ fn render_status(prompt: bool) -> String {
 mod tests {
     use super::{
         ComputerUseFindRequest, ComputerUseFindState, ComputerUseRefGuardRequest, ComputerUseTool,
-        ComputerUseWaitMode, MAX_SET_TEXT_CHARS, check_ref_guard_line, find_snapshot_lines,
-        load_snapshot_record, resolve_snapshot_record, save_snapshot_record,
-        snapshot_contains_text, snapshot_line_for_ref, snapshot_record_path,
+        ComputerUseWaitMode, ComputerUseWaitRefRequest, MAX_SET_TEXT_CHARS, check_ref_guard_line,
+        details_have_native_action, details_match_wait_ref, find_snapshot_lines,
+        load_snapshot_record, ref_line_from_details, render_wait_ref_unavailable,
+        resolve_snapshot_record, save_snapshot_record, snapshot_contains_text,
+        snapshot_line_for_ref, snapshot_record_path,
     };
+    use crate::computer_use::normalize_computer_use_native_action;
     use crate::tools::{Tool, ToolContext};
     use serde_json::json;
 
@@ -1360,6 +1526,18 @@ mod tests {
         assert!(format!("{error:#}").contains("requires a non-empty"));
     }
 
+    #[tokio::test]
+    async fn wait_ref_requires_reference() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tool = ComputerUseTool;
+        let error = tool
+            .execute(json!({ "action": "wait_ref" }), &ctx(tmp.path()))
+            .await
+            .expect_err("missing ref");
+
+        assert!(format!("{error:#}").contains("requires a non-empty"));
+    }
+
     #[test]
     fn wait_request_defaults_to_settled_and_clamps_bounds() {
         let args: super::ComputerUseArgs = serde_json::from_value(json!({
@@ -1392,6 +1570,46 @@ mod tests {
                 case_sensitive: true,
             }
         );
+    }
+
+    #[test]
+    fn wait_ref_request_parses_expectations_and_clamps_bounds() {
+        let args: super::ComputerUseArgs = serde_json::from_value(json!({
+            "action": "wait_ref",
+            "ref": "@u2",
+            "expect_role": " button ",
+            "expect_text": " Continue ",
+            "expect_state": "available",
+            "native_action": "AXPress",
+            "timeout_seconds": 500,
+            "poll_interval_ms": 1
+        }))
+        .expect("args");
+        let request = args.wait_ref_request().expect("wait_ref request");
+        let guard = request.guard.expect("guard");
+
+        assert_eq!(guard.role.as_deref(), Some("button"));
+        assert_eq!(guard.text.as_deref(), Some("Continue"));
+        assert_eq!(guard.state, Some(ComputerUseFindState::Enabled));
+        assert_eq!(
+            request.native_action.expect("native action").ax_action,
+            "AXPress"
+        );
+        assert_eq!(request.timeout_seconds, super::MAX_WAIT_TIMEOUT_SECONDS);
+        assert_eq!(request.poll_interval_ms, 100);
+    }
+
+    #[test]
+    fn wait_ref_request_allows_ref_existence_only() {
+        let args: super::ComputerUseArgs = serde_json::from_value(json!({
+            "action": "wait_ref",
+            "ref": "@u2"
+        }))
+        .expect("args");
+        let request = args.wait_ref_request().expect("wait_ref request");
+
+        assert_eq!(request.guard, None);
+        assert_eq!(request.native_action, None);
     }
 
     #[test]
@@ -1641,6 +1859,61 @@ ui_tree:
     }
 
     #[test]
+    fn wait_ref_details_match_guard_and_native_action() {
+        let details = r#"
+ref: @u3
+ref_line: - @u3 role='button' name='Continue' bounds=(20,20,80x28)
+available_actions: AXPress, AXShowMenu
+"#;
+        let request = ComputerUseWaitRefRequest {
+            guard: Some(ComputerUseRefGuardRequest {
+                role: Some("button".to_string()),
+                text: Some("continue".to_string()),
+                state: Some(ComputerUseFindState::Enabled),
+                case_sensitive: false,
+            }),
+            native_action: Some(normalize_computer_use_native_action("press").expect("action")),
+            timeout_seconds: 10,
+            poll_interval_ms: 250,
+        };
+
+        assert_eq!(
+            ref_line_from_details(details).expect("ref line"),
+            "- @u3 role='button' name='Continue' bounds=(20,20,80x28)"
+        );
+        assert!(details_match_wait_ref("@u3", details, &request));
+    }
+
+    #[test]
+    fn wait_ref_details_rejects_missing_native_action() {
+        let details = r#"
+ref: @u3
+ref_line: - @u3 role='button' name='Continue' bounds=(20,20,80x28)
+available_actions: AXShowMenu
+"#;
+        let action = normalize_computer_use_native_action("press").expect("action");
+        let request = ComputerUseWaitRefRequest {
+            guard: None,
+            native_action: Some(action),
+            timeout_seconds: 10,
+            poll_interval_ms: 250,
+        };
+
+        assert!(!details_have_native_action(details, action));
+        assert!(!details_match_wait_ref("@u3", details, &request));
+    }
+
+    #[test]
+    fn wait_ref_unavailable_output_does_not_echo_raw_error() {
+        let raw_error = "Private Window Title could not be inspected";
+        let rendered =
+            render_wait_ref_unavailable("@u8", Some(&super::sha256_hex(raw_error.as_bytes())));
+
+        assert!(rendered.contains("wait_ref_last_error_sha256:"));
+        assert!(!rendered.contains("Private Window Title"));
+    }
+
+    #[test]
     fn definition_exposes_snapshot_bounds() {
         let tool = ComputerUseTool;
         let definition = tool.definition();
@@ -1652,6 +1925,7 @@ ui_tree:
         assert!(schema.contains("\"inspect_ref\""));
         assert!(schema.contains("\"find\""));
         assert!(schema.contains("\"wait\""));
+        assert!(schema.contains("\"wait_ref\""));
         assert!(schema.contains("\"focus\""));
         assert!(schema.contains("\"click\""));
         assert!(schema.contains("\"perform_action\""));

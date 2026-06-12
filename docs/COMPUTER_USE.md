@@ -12,6 +12,8 @@ The current implementation is deliberately conservative:
   element references such as `@u1`.
 - Read-only inspection for a current ref, including its current line and reported native
   Accessibility actions.
+- Read-only waiting for a current ref to exist and match role, text, state, or native
+  Accessibility action expectations before any write is attempted.
 - Read-only searching across a fresh Accessibility snapshot to locate candidate refs by
   text, role, and compact state.
 - Read-only waiting for text to appear or for the frontmost Accessibility tree to settle.
@@ -35,7 +37,7 @@ side effect of ordinary chat.
 
 ## Tool Surface
 
-The built-in `computer_use` tool supports twelve actions:
+The built-in `computer_use` tool supports thirteen actions:
 
 | Action | Behavior |
 | --- | --- |
@@ -45,6 +47,7 @@ The built-in `computer_use` tool supports twelve actions:
 | `inspect_ref` | Reads current details and reported native Accessibility actions for a snapshot ref. |
 | `find` | Searches a fresh snapshot for candidate UI refs by query, role, or state, and returns matching element lines. |
 | `wait` | Polls snapshots until target text appears or the UI tree settles, then returns the latest snapshot. |
+| `wait_ref` | Polls one UI ref until it exists and optional role, text, state, or native action expectations match. |
 | `focus` | Sets keyboard focus to a snapshot ref such as `@u2`, then returns a post-focus snapshot. |
 | `click` | Activates a snapshot ref such as `@u2`, then returns a post-click snapshot. |
 | `perform_action` | Runs one whitelisted native Accessibility action on a snapshot ref, then returns a post-action snapshot. |
@@ -106,6 +109,31 @@ This helps the agent choose between `perform_action`, `click`, `scroll`, `set_te
 a key-driven flow based on the UI element's reported native actions instead of guessing
 from text alone.
 
+`wait_ref` is the read-only readiness check for one observed ref. It is useful when the
+agent has already found a likely control, but needs to wait for it to become enabled or
+for a native action such as `AXPress` to appear before requesting approval for the write
+step:
+
+```json
+{
+  "action": "wait_ref",
+  "ref": "@u8",
+  "expect_role": "button",
+  "expect_text": "Continue",
+  "expect_state": "enabled",
+  "native_action": "AXPress",
+  "timeout_seconds": 10,
+  "poll_interval_ms": 250,
+  "max_items": 40,
+  "max_depth": 3
+}
+```
+
+When `wait_ref` matches or times out, it returns the latest details for that ref and a
+fresh `snapshot_id`. If the ref never becomes inspectable, it returns a compact
+unavailable marker with a hash of the last internal error rather than echoing raw UI
+text from the failure path.
+
 `find` is the lightweight targeting step for native UI work. It takes a fresh snapshot,
 saves a new `snapshot_id`, and returns only matching element lines. Use it when the agent
 knows what it wants but should avoid dumping the entire UI tree again:
@@ -125,7 +153,8 @@ knows what it wants but should avoid dumping the entire UI tree again:
 At least one of `query`, `role`, or `state` is required. `state` accepts `focused`,
 `selected`, `enabled`, and `disabled`; `enabled` means the snapshot line does not include
 `enabled=false`. The returned `snapshot_id` can be used immediately by approval-gated
-`focus`, `click`, `set_text`, or `press_key` calls.
+`focus`, `click`, `set_text`, or `press_key` calls, or by read-only `wait_ref` when the
+agent wants to confirm a specific ref is ready before asking for approval.
 
 `wait` is the read-only observation loop for native UI work. It returns a fresh
 `snapshot_id` and the latest snapshot whether the condition matched or timed out, so the
@@ -239,9 +268,9 @@ guard fails, the write action is not attempted and the agent should run `snapsho
 `focus`, `click`, `perform_action`, `set_text`, `scroll`, and `press_key` are write
 actions. Crab's default tool policy requires approval before they run, even if the user
 has not configured a custom `tool_policy`. `status`, `snapshot`, `inspect_ref`, `find`,
-and `wait` stay available without approval. `set_text` does not send global keystrokes;
-it attempts to set the target Accessibility element's value directly, so it is mainly for
-text fields and similar controls.
+`wait`, and `wait_ref` stay available without approval. `set_text` does not send global
+keystrokes; it attempts to set the target Accessibility element's value directly, so it
+is mainly for text fields and similar controls.
 
 `perform_action` accepts only a small native Accessibility action allowlist: `press`,
 `show_menu`, `confirm`, `cancel`, `increment`, and `decrement`. AX-prefixed names such as
@@ -288,6 +317,7 @@ gives it a bounded, inspectable desktop UI tree. Future write actions should sta
 - explicit tool names and arguments;
 - read-only ref inspection before choosing an available native action;
 - read-only find steps before choosing an observed ref;
+- read-only ref readiness waits before requesting a write action;
 - pre-action ref guards for role, text, and state when the target is important;
 - a small native action allowlist instead of arbitrary AX action execution;
 - read-only waits after actions before choosing the next ref;

@@ -23,6 +23,9 @@ and uses semantic versioning once stable release boundaries are established.
 - Approval requests now store redacted display commands/reasons and use a stable command
   hash for approval matching, while preserving compatibility with legacy raw-command
   approval files.
+- Tool outcomes now carry explicit error status across events, timeline entries, archive
+  records, goal-state reconciliation, and the desktop shell; parallel batches report
+  `completed_with_errors` when all tools finish but one or more fail.
 - Subdirectory instruction discovery now returns root-to-leaf context stacks, tracks loaded
   hint files instead of permanently marking empty directories, and labels blocked context
   with the exact display path.

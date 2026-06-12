@@ -112,6 +112,7 @@ pub enum AgentEvent {
         iteration: usize,
         tool_call_id: String,
         tool_name: String,
+        status: String,
         output_preview: String,
         execution_mode: String,
         batch_id: Option<String>,

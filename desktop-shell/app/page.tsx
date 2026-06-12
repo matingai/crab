@@ -108,6 +108,14 @@ type BridgeRunResult = {
   status: "completed" | "awaiting_approval";
 };
 
+type ToolPhase = "running" | "done" | "error" | "approval";
+type ParallelBatchStatus =
+  | "running"
+  | "completed"
+  | "completed_with_errors"
+  | "awaiting_approval"
+  | "canceled";
+
 type LatestContextDebugSnapshot = {
   path: string | null;
   debugDir: string;
@@ -234,7 +242,7 @@ type StoredTimelineEntry =
       name: string;
       detail: string;
       command?: string | null;
-      phase: "running" | "done" | "approval";
+      phase: ToolPhase;
       execution_mode?: string | null;
       batch_id?: string | null;
       batch_index?: number | null;
@@ -248,7 +256,7 @@ type StoredTimelineEntry =
       iteration: number;
       total_calls: number;
       completed_calls: number;
-      status: "running" | "completed" | "awaiting_approval" | "canceled";
+      status: ParallelBatchStatus;
     }
   | {
       type: "approval";
@@ -383,7 +391,7 @@ type EventLogEntry = {
 type ToolEntry = {
   id: string;
   name: string;
-  phase: "running" | "done" | "approval";
+  phase: ToolPhase;
   detail: string;
   executionMode?: string;
   batchId?: string | null;
@@ -394,7 +402,7 @@ type ParallelBatchState = {
   iteration: number;
   totalCalls: number;
   completedCalls: number;
-  status: "running" | "completed" | "awaiting_approval" | "canceled";
+  status: ParallelBatchStatus;
 };
 
 type TimelineEntry =
@@ -416,7 +424,7 @@ type TimelineEntry =
       name: string;
       detail: string;
       commandPreview?: string;
-      phase: "running" | "done" | "approval";
+      phase: ToolPhase;
       executionMode?: string;
       batchId?: string | null;
       batchIndex?: number | null;
@@ -3063,6 +3071,8 @@ function formatParallelBatchStatus(status: ParallelBatchState["status"]): string
       return "并发批次等待审批";
     case "canceled":
       return "并发批次已取消";
+    case "completed_with_errors":
+      return "并发批次完成，有失败工具";
     case "completed":
       return "并发批次完成";
     default:
@@ -4383,18 +4393,19 @@ export default function Page() {
     batchIndex?: number | null,
     batchTotal?: number | null,
     commandPreview?: string,
+    phase: Extract<ToolPhase, "done" | "error"> = "done",
   ) {
     clearToolEntryAutoExpanded(id);
     setTools((prev) => {
       const index = prev.findIndex((entry) => entry.id === id);
       if (index === -1) {
         return [
-          { id, name, phase: "done" as const, detail, executionMode, batchId },
+          { id, name, phase, detail, executionMode, batchId },
           ...prev,
         ].slice(0, 40);
       }
       const next = [...prev];
-      next[index] = { ...next[index], phase: "done" as const, detail, executionMode, batchId };
+      next[index] = { ...next[index], phase, detail, executionMode, batchId };
       return next;
     });
     setTimeline((prev) => {
@@ -4406,7 +4417,7 @@ export default function Page() {
           name,
           detail,
           commandPreview: resolveToolCommandPreview(commandPreview, detail),
-          phase: "done",
+          phase,
           executionMode,
           batchId,
           batchIndex,
@@ -4427,7 +4438,7 @@ export default function Page() {
           next[index].type === "tool"
             ? resolveToolCommandPreview(commandPreview, detail, next[index].commandPreview)
             : resolveToolCommandPreview(commandPreview, detail),
-        phase: "done",
+        phase,
         executionMode,
         batchId,
         batchIndex,
@@ -4645,20 +4656,27 @@ export default function Page() {
       case "tool_batch_finished":
         {
           sealActiveAssistantSegment();
+          const status = String(event.status || "");
           setAgentActivity(
-            String(event.status || "") === "awaiting_approval" ? "等待审批" : "工具批次已完成",
+            status === "awaiting_approval"
+              ? "等待审批"
+              : status === "completed_with_errors"
+                ? "工具批次完成，有失败"
+                : "工具批次已完成",
           );
           const batch = {
-          batchId: String(event.batch_id || `parallel-${envelope.seq}`),
-          iteration: Number(event.iteration || 0),
-          totalCalls: Number(event.total_calls || 0),
-          completedCalls: Number(event.completed_calls || 0),
-          status:
-            String(event.status || "") === "awaiting_approval"
-              ? "awaiting_approval"
-              : String(event.status || "") === "canceled"
-                ? "canceled"
-                : "completed",
+            batchId: String(event.batch_id || `parallel-${envelope.seq}`),
+            iteration: Number(event.iteration || 0),
+            totalCalls: Number(event.total_calls || 0),
+            completedCalls: Number(event.completed_calls || 0),
+            status:
+              status === "awaiting_approval"
+                ? "awaiting_approval"
+                : status === "canceled"
+                  ? "canceled"
+                  : status === "completed_with_errors"
+                    ? "completed_with_errors"
+                    : "completed",
           } as const;
           setParallelBatch(batch);
           upsertBatchTimeline(batch);
@@ -4733,6 +4751,8 @@ export default function Page() {
           revealBrowserViewer({ loadStream: false });
           requestBrowserUiSync(isNavigationBrowserTool(String(event.tool_name || "")));
         }
+        const toolPhase = String(event.status || "") === "error" ? "error" : "done";
+        setAgentActivity(toolPhase === "error" ? "工具执行失败" : "工具执行完成");
         markToolFinished(
           String(event.tool_call_id || `${envelope.seq}-${String(event.tool_name || "tool")}`),
           String(event.tool_name || "tool"),
@@ -4741,6 +4761,8 @@ export default function Page() {
           typeof event.batch_id === "string" ? event.batch_id : null,
           typeof event.batch_index === "number" ? event.batch_index : null,
           typeof event.batch_total === "number" ? event.batch_total : null,
+          undefined,
+          toolPhase,
         );
         void loadApprovals();
         if (String(event.tool_name || "") === "delegate_task") {
@@ -6469,7 +6491,9 @@ export default function Page() {
                                                   ? "运行中"
                                                   : entry.phase === "approval"
                                                     ? "待审批"
-                                                    : "已完成"}
+                                                    : entry.phase === "error"
+                                                      ? "失败"
+                                                      : "已完成"}
                                               </span>
                                               {entry.executionMode ? (
                                                 <>

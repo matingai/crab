@@ -12,6 +12,7 @@ use crate::types::ChatMessage;
 pub enum StoredToolPhase {
     Running,
     Done,
+    Error,
     Approval,
 }
 
@@ -20,6 +21,7 @@ pub enum StoredToolPhase {
 pub enum StoredBatchStatus {
     Running,
     Completed,
+    CompletedWithErrors,
     AwaitingApproval,
     Canceled,
 }

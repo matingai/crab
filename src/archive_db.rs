@@ -730,7 +730,9 @@ impl ArchiveStore {
                                 state.arguments_raw = Some(detail.clone());
                             }
                         }
-                        StoredToolPhase::Approval | StoredToolPhase::Done => {
+                        StoredToolPhase::Approval
+                        | StoredToolPhase::Done
+                        | StoredToolPhase::Error => {
                             state.output_raw = Some(detail.clone());
                         }
                     }
@@ -1244,6 +1246,7 @@ fn phase_to_str(phase: &StoredToolPhase) -> &'static str {
     match phase {
         StoredToolPhase::Running => "running",
         StoredToolPhase::Done => "done",
+        StoredToolPhase::Error => "error",
         StoredToolPhase::Approval => "approval",
     }
 }

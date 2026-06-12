@@ -678,6 +678,7 @@ fn format_timeline_entry(entry: &SessionTimelineEntry) -> String {
             let phase = match phase {
                 StoredToolPhase::Running => "running",
                 StoredToolPhase::Done => "done",
+                StoredToolPhase::Error => "error",
                 StoredToolPhase::Approval => "approval",
             };
             let mode = execution_mode.as_deref().unwrap_or("unknown");
@@ -700,6 +701,7 @@ fn format_timeline_entry(entry: &SessionTimelineEntry) -> String {
             let status = match status {
                 StoredBatchStatus::Running => "running",
                 StoredBatchStatus::Completed => "completed",
+                StoredBatchStatus::CompletedWithErrors => "completed_with_errors",
                 StoredBatchStatus::AwaitingApproval => "awaiting_approval",
                 StoredBatchStatus::Canceled => "canceled",
             };

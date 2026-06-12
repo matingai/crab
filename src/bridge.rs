@@ -1215,7 +1215,7 @@ mod tests {
     };
     use crate::approval::{ApprovalStatus, list_requests, load_pending_approval, resolve_request};
     use crate::events::AgentEvent;
-    use crate::session::{SessionStore, StoredSession};
+    use crate::session::{SessionStore, SessionTimelineEntry, StoredSession, StoredToolPhase};
     use crate::skills::{SkillActivation, SkillStore};
     use crate::todo::{TodoItem, TodoStore};
     use std::sync::mpsc;
@@ -1679,6 +1679,7 @@ mod tests {
             .id;
         resolve_request(&data_dir, &approval_id, false).expect("deny");
 
+        let mut resumed_sink = RecordingBridgeEventSink::new();
         let resumed = AgentBridge::resume_approval_with_event_sink(
             SessionCommandRequest {
                 workspace_root: tmp.path().to_path_buf(),
@@ -1697,7 +1698,7 @@ mod tests {
                 enable_shell_tool: true,
             },
             approval_id.clone(),
-            &mut RecordingBridgeEventSink::new(),
+            &mut resumed_sink,
         )
         .await
         .expect("resume");
@@ -1710,6 +1711,25 @@ mod tests {
                 .expect("pending removed")
                 .is_none()
         );
+        assert!(
+            resumed_sink.events().iter().any(|item| matches!(
+                &item.event,
+                AgentEvent::ToolCallFinished { status, .. } if status == "error"
+            )),
+            "denied approval should finish the resumed tool call with error status"
+        );
+        let stored = SessionStore::new(data_dir.clone())
+            .expect("store")
+            .load(&session_id)
+            .expect("load session")
+            .expect("session");
+        assert!(stored.timeline.iter().any(|entry| matches!(
+            entry,
+            SessionTimelineEntry::Tool {
+                phase: StoredToolPhase::Error,
+                ..
+            }
+        )));
     }
 
     #[test]

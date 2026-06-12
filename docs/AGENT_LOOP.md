@@ -135,6 +135,12 @@ can be summarized and routed into the right state:
 - Archive records for later search.
 - UI events for live progress.
 
+Tool completion is classified before it enters those surfaces. `tool_error:` responses,
+approval denials, timeouts, cancellations, and non-zero shell exit codes are recorded as
+`error` rather than ordinary `done` observations. Parallel batches can still complete as a
+batch while reporting `completed_with_errors`, which lets the main loop continue with
+clear evidence about which tool calls need repair.
+
 The point is to preserve meaning, not just bytes.
 
 ## Context Pressure And Recovery

@@ -184,6 +184,7 @@ fn extract_recent_signals(session: &StoredSession) -> Vec<String> {
                 match phase {
                     StoredToolPhase::Running => "running",
                     StoredToolPhase::Done => "done",
+                    StoredToolPhase::Error => "error",
                     StoredToolPhase::Approval => "approval",
                 },
                 inline_clip(detail, 120)
@@ -198,6 +199,7 @@ fn extract_recent_signals(session: &StoredSession) -> Vec<String> {
                 match status {
                     StoredBatchStatus::Running => "running",
                     StoredBatchStatus::Completed => "completed",
+                    StoredBatchStatus::CompletedWithErrors => "completed_with_errors",
                     StoredBatchStatus::AwaitingApproval => "awaiting_approval",
                     StoredBatchStatus::Canceled => "canceled",
                 },

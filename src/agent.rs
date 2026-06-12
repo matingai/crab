@@ -1763,11 +1763,12 @@ impl Agent {
             None => result,
         };
         let result = redact_secrets(result);
+        let tool_status = classify_tool_result_status(&result);
         self.session.record_tool_timeline_entry(
             pending.tool_call_id.clone(),
             pending.tool_name.clone(),
             result.clone(),
-            StoredToolPhase::Done,
+            tool_status_to_phase(tool_status),
             Some(&pending.execution_mode),
             pending.batch_id.as_deref(),
             pending.batch_index,
@@ -1780,7 +1781,7 @@ impl Agent {
             pending.batch_id.as_deref(),
             pending.batch_index,
             pending.batch_total,
-            "done",
+            tool_status,
             Some(&pending.raw_arguments),
             Some(&result),
         );
@@ -1789,7 +1790,7 @@ impl Agent {
             &pending.tool_name,
             &result,
             &pending.execution_mode,
-            "done",
+            tool_status,
         );
         let reconcile_summary = self
             .reconcile_goal_state_after_tool_outcome(
@@ -1798,7 +1799,7 @@ impl Agent {
                 &pending.tool_name,
                 &result,
                 &pending.execution_mode,
-                "done",
+                tool_status,
             )
             .await;
         handler.on_event(AgentEvent::ToolCallFinished {
@@ -1806,6 +1807,7 @@ impl Agent {
             iteration: 0,
             tool_call_id: pending.tool_call_id.clone(),
             tool_name: pending.tool_name.clone(),
+            status: tool_status.to_string(),
             output_preview: redacted_truncated(result.clone(), 500),
             execution_mode: pending.execution_mode.clone(),
             batch_id: pending.batch_id.clone(),
@@ -1818,7 +1820,7 @@ impl Agent {
             summarize_tool_result_for_history(
                 &pending.tool_name,
                 &result,
-                "done",
+                tool_status,
                 reconcile_summary.as_deref(),
             ),
         ));
@@ -2170,11 +2172,12 @@ impl Agent {
                     self.persist_session_with_handler(handler)?;
                     return Ok(APPROVAL_PENDING_RESPONSE.to_string());
                 }
+                let tool_status = classify_tool_result_status(&result);
                 self.session.record_tool_timeline_entry(
                     call.id.clone(),
                     call.function.name.clone(),
                     result.clone(),
-                    StoredToolPhase::Done,
+                    tool_status_to_phase(tool_status),
                     Some("sequential"),
                     None,
                     None,
@@ -2187,7 +2190,7 @@ impl Agent {
                     None,
                     None,
                     None,
-                    "done",
+                    tool_status,
                     Some(&call.function.arguments),
                     Some(&result),
                 );
@@ -2196,7 +2199,7 @@ impl Agent {
                     &call.function.name,
                     &result,
                     "sequential",
-                    "done",
+                    tool_status,
                 );
                 let reconcile_summary = self
                     .reconcile_goal_state_after_tool_outcome(
@@ -2205,7 +2208,7 @@ impl Agent {
                         &call.function.name,
                         &result,
                         "sequential",
-                        "done",
+                        tool_status,
                     )
                     .await;
                 let tool_name = call.function.name.clone();
@@ -2214,6 +2217,7 @@ impl Agent {
                     iteration,
                     tool_call_id: call.id.clone(),
                     tool_name: tool_name.clone(),
+                    status: tool_status.to_string(),
                     output_preview: redacted_truncated(result.clone(), 500),
                     execution_mode: "sequential".to_string(),
                     batch_id: None,
@@ -2226,7 +2230,7 @@ impl Agent {
                     summarize_tool_result_for_history(
                         &tool_name,
                         &result,
-                        "done",
+                        tool_status,
                         reconcile_summary.as_deref(),
                     ),
                 ));
@@ -3572,6 +3576,7 @@ impl Agent {
         };
 
         let mut completed_calls = 0;
+        let mut error_calls = 0;
         self.finish_parallel_batch_if_stop_requested(
             handler,
             iteration,
@@ -3710,11 +3715,15 @@ impl Agent {
                 return Ok(Some(APPROVAL_PENDING_RESPONSE.to_string()));
             }
 
+            let tool_status = classify_tool_result_status(&result);
+            if tool_status == "error" {
+                error_calls += 1;
+            }
             self.session.record_tool_timeline_entry(
                 call.id.clone(),
                 call.function.name.clone(),
                 result.clone(),
-                StoredToolPhase::Done,
+                tool_status_to_phase(tool_status),
                 Some("parallel"),
                 Some(&batch_id),
                 Some(index + 1),
@@ -3727,7 +3736,7 @@ impl Agent {
                 Some(&batch_id),
                 Some(index + 1),
                 Some(batch_total),
-                "done",
+                tool_status,
                 Some(&call.function.arguments),
                 Some(&result),
             );
@@ -3736,7 +3745,7 @@ impl Agent {
                 &call.function.name,
                 &result,
                 "parallel",
-                "done",
+                tool_status,
             );
             let reconcile_summary = self
                 .reconcile_goal_state_after_tool_outcome(
@@ -3745,7 +3754,7 @@ impl Agent {
                     &call.function.name,
                     &result,
                     "parallel",
-                    "done",
+                    tool_status,
                 )
                 .await;
             let tool_name = call.function.name.clone();
@@ -3754,6 +3763,7 @@ impl Agent {
                 iteration,
                 tool_call_id: call.id.clone(),
                 tool_name: tool_name.clone(),
+                status: tool_status.to_string(),
                 output_preview: redacted_truncated(result.clone(), 500),
                 execution_mode: "parallel".to_string(),
                 batch_id: Some(batch_id.clone()),
@@ -3766,7 +3776,7 @@ impl Agent {
                 summarize_tool_result_for_history(
                     &tool_name,
                     &result,
-                    "done",
+                    tool_status,
                     reconcile_summary.as_deref(),
                 ),
             ));
@@ -3795,20 +3805,29 @@ impl Agent {
             completed_calls,
             batch_total,
         )?;
+        let batch_status = if error_calls > 0 {
+            "completed_with_errors"
+        } else {
+            "completed"
+        };
         handler.on_event(AgentEvent::ToolBatchFinished {
             session_id: self.session.session_id.clone(),
             iteration,
             batch_id: batch_id.clone(),
             completed_calls,
             total_calls: batch_total,
-            status: "completed".to_string(),
+            status: batch_status.to_string(),
         });
         self.session.record_batch_timeline_entry(
             batch_id,
             iteration,
             batch_total,
             completed_calls,
-            StoredBatchStatus::Completed,
+            if error_calls > 0 {
+                StoredBatchStatus::CompletedWithErrors
+            } else {
+                StoredBatchStatus::Completed
+            },
         );
         let _ = self.persist_session();
 
@@ -4241,6 +4260,50 @@ fn map_tool_status_to_solve_step_status(status: &str) -> &'static str {
         "done" | "completed" => "completed",
         _ => "in_progress",
     }
+}
+
+fn classify_tool_result_status(result: &str) -> &'static str {
+    if tool_result_indicates_error(result) {
+        "error"
+    } else {
+        "done"
+    }
+}
+
+fn tool_status_to_phase(status: &str) -> StoredToolPhase {
+    match status {
+        "error" | "failed" => StoredToolPhase::Error,
+        "approval_required" | "awaiting_approval" => StoredToolPhase::Approval,
+        _ => StoredToolPhase::Done,
+    }
+}
+
+fn tool_result_indicates_error(result: &str) -> bool {
+    let lowered = result.trim_start().to_ascii_lowercase();
+    if lowered.starts_with("tool_error:") || lowered.starts_with("approval denied") {
+        return true;
+    }
+    for line in result.lines() {
+        let normalized = line.trim().to_ascii_lowercase();
+        if let Some(value) = normalized.strip_prefix("status:") {
+            if matches!(
+                value.trim(),
+                "timeout" | "canceled" | "cancelled" | "failed" | "error"
+            ) {
+                return true;
+            }
+        }
+        if let Some(value) = normalized.strip_prefix("exit_code:") {
+            if value
+                .trim()
+                .parse::<i32>()
+                .is_ok_and(|exit_code| exit_code != 0)
+            {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn map_goal_status_to_todo_status(status: &str) -> &'static str {
@@ -5773,6 +5836,9 @@ fn classify_tool_cognition_kind(result: &str, status: &str) -> &'static str {
     if status == "approval_required" {
         return "risk";
     }
+    if status == "error" {
+        return "risk";
+    }
     let lowered = result.to_lowercase();
     if lowered.starts_with("tool_error:") || lowered.contains("approval denied") {
         return "risk";
@@ -5785,6 +5851,9 @@ fn classify_tool_cognition_kind(result: &str, status: &str) -> &'static str {
 
 fn tool_observation_confidence(result: &str, status: &str) -> f32 {
     if status == "approval_required" {
+        return 0.95;
+    }
+    if status == "error" {
         return 0.95;
     }
     let lowered = result.to_lowercase();
@@ -5927,6 +5996,7 @@ fn summarize_tool_result(tool_name: &str, result: &str, status: &str) -> String 
     let snippet = inline_clip(&normalized, 180);
     match status {
         "approval_required" => format!("Tool `{tool_name}` requires approval: {snippet}"),
+        "error" => format!("Tool `{tool_name}` failed: {snippet}"),
         "done" => {
             if normalized.to_lowercase().starts_with("tool_error:") {
                 format!("Tool `{tool_name}` failed: {snippet}")
@@ -5944,6 +6014,7 @@ fn tool_history_headline(tool_name: &str, result: &str, status: &str) -> String 
     }
     match status {
         "approval_required" => format!("Tool `{tool_name}` requires approval."),
+        "error" => format!("Tool `{tool_name}` failed."),
         "done" => {
             if result
                 .trim()
@@ -6482,15 +6553,15 @@ mod tests {
     use super::{
         Agent, ContextInjection, ContextInjectionStats, PROMPT_HISTORY_MAX_USER_TURNS,
         TurnModelRuntime, apply_goal_state_reconcile_patch, assemble_turn_messages,
-        classify_tool_cognition_kind, continuation_prefix_digest, finalize_context_injections,
-        latest_turn_transcript, needs_goal_state_compaction, parse_goal_state_compaction_response,
-        parse_goal_state_delta_response, parse_goal_state_execution_brief_response,
-        parse_goal_state_reconcile_response, parse_tool_result_summary_response,
-        render_context_budget_nudge, render_goal_execution_brief_block,
-        render_goal_execution_guidance, render_goal_state_delta_block,
-        render_tool_result_summary_for_reconcile, repair_dangling_tool_calls,
-        should_parallelize_tool_batch, should_reconcile_goal_state_after_tool,
-        should_run_context_compression_before_iteration,
+        classify_tool_cognition_kind, classify_tool_result_status, continuation_prefix_digest,
+        finalize_context_injections, latest_turn_transcript, needs_goal_state_compaction,
+        parse_goal_state_compaction_response, parse_goal_state_delta_response,
+        parse_goal_state_execution_brief_response, parse_goal_state_reconcile_response,
+        parse_tool_result_summary_response, render_context_budget_nudge,
+        render_goal_execution_brief_block, render_goal_execution_guidance,
+        render_goal_state_delta_block, render_tool_result_summary_for_reconcile,
+        repair_dangling_tool_calls, should_parallelize_tool_batch,
+        should_reconcile_goal_state_after_tool, should_run_context_compression_before_iteration,
         should_summarize_tool_result_for_reconcile, summarize_active_todos_for_goal_loop,
         summarize_tool_result, summarize_tool_result_for_history, sync_todos_from_goal_state,
         trim_prompt_history,
@@ -6561,6 +6632,33 @@ mod tests {
                 arguments: arguments.to_string(),
             },
         }
+    }
+
+    #[test]
+    fn classifies_tool_result_status_from_error_markers() {
+        assert_eq!(classify_tool_result_status("path: README.md\nok"), "done");
+        assert_eq!(
+            classify_tool_result_status("tool_error: failed to read missing.txt"),
+            "error"
+        );
+        assert_eq!(
+            classify_tool_result_status("status: timeout\nexit_code: -1"),
+            "error"
+        );
+        assert_eq!(
+            classify_tool_result_status("status: completed\nexit_code: 2\nstderr:\nfailed"),
+            "error"
+        );
+        assert_eq!(
+            classify_tool_result_status(
+                "language: bash\nprogram: bash\nstatus: completed\nexit_code: 0"
+            ),
+            "done"
+        );
+        assert_eq!(
+            classify_tool_result_status("approval denied for command `rm -rf build`: denied"),
+            "error"
+        );
     }
 
     #[test]

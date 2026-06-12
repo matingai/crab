@@ -333,6 +333,7 @@ fn render_timeline(session: &StoredSession) -> Vec<String> {
                 let phase = match phase {
                     StoredToolPhase::Running => "running",
                     StoredToolPhase::Done => "done",
+                    StoredToolPhase::Error => "error",
                     StoredToolPhase::Approval => "approval",
                 };
                 let mut meta = vec![format!("phase={phase}")];

@@ -274,8 +274,12 @@ is mainly for text fields and similar controls.
 
 `perform_action` accepts only a small native Accessibility action allowlist: `press`,
 `show_menu`, `confirm`, `cancel`, `increment`, and `decrement`. AX-prefixed names such as
-`AXPress` and `AXShowMenu` are accepted and normalized. Use `inspect_ref` first when
-possible so the chosen native action is backed by current UI evidence.
+`AXPress` and `AXShowMenu` are accepted and normalized. Before the action runs, Crab
+re-reads the ref details and verifies that the current element still reports the chosen
+native action in `available_actions`. The write result includes a
+`native_action_guard_details_sha256` evidence hash, not the raw ref details. Use
+`inspect_ref` or `wait_ref` first when possible so the chosen native action is backed by
+current UI evidence.
 
 `scroll` intentionally acts on a specific observed ref and accepts only `up`, `down`,
 `left`, or `right`, with `scroll_steps` clamped to `1..=10`. It is for moving within
@@ -320,6 +324,7 @@ gives it a bounded, inspectable desktop UI tree. Future write actions should sta
 - read-only ref readiness waits before requesting a write action;
 - pre-action ref guards for role, text, and state when the target is important;
 - a small native action allowlist instead of arbitrary AX action execution;
+- pre-action native action guards for `perform_action`;
 - read-only waits after actions before choosing the next ref;
 - snapshot-bound refs instead of coordinate guessing;
 - small, ref-bound scrolling instead of global wheel injection;

@@ -337,6 +337,7 @@ impl Tool for ComputerUseTool {
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
                     ref_guard.as_ref(),
+                    None,
                     &result,
                 ))
             }
@@ -353,6 +354,12 @@ impl Tool for ComputerUseTool {
                 }
                 let ref_guard =
                     run_ref_guard(reference, max_items, max_depth, ref_guard_request.as_ref())?;
+                let native_action_guard = run_native_action_guard(
+                    reference,
+                    max_items,
+                    max_depth,
+                    request.native_action,
+                )?;
                 let result = perform_frontmost_app_ref_action(
                     reference,
                     request.native_action.label,
@@ -362,6 +369,7 @@ impl Tool for ComputerUseTool {
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
                     ref_guard.as_ref(),
+                    Some(&native_action_guard),
                     &result,
                 ))
             }
@@ -381,6 +389,7 @@ impl Tool for ComputerUseTool {
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
                     ref_guard.as_ref(),
+                    None,
                     &result,
                 ))
             }
@@ -401,6 +410,7 @@ impl Tool for ComputerUseTool {
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
                     ref_guard.as_ref(),
+                    None,
                     &result,
                 ))
             }
@@ -427,6 +437,7 @@ impl Tool for ComputerUseTool {
                 Ok(render_write_result(
                     &snapshot_record.snapshot_id,
                     ref_guard.as_ref(),
+                    None,
                     &result,
                 ))
             }
@@ -812,6 +823,13 @@ struct ComputerUseRefGuardOutcome {
     line_sha256: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ComputerUseNativeActionGuardOutcome {
+    reference: String,
+    native_action: &'static str,
+    details_sha256: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct ComputerUseSnapshotRecord {
     snapshot_id: String,
@@ -1193,6 +1211,41 @@ fn run_ref_guard(
     }))
 }
 
+fn run_native_action_guard(
+    reference: &str,
+    max_items: usize,
+    max_depth: usize,
+    native_action: ComputerUseNativeAction,
+) -> Result<ComputerUseNativeActionGuardOutcome> {
+    parse_ui_ref(reference)?;
+    let details = frontmost_app_ref_details(reference, max_items, max_depth).map_err(|error| {
+        anyhow::anyhow!(
+            "computer_use native action guard could not inspect {reference} before perform_action (error_sha256: {}). call inspect_ref or wait_ref again",
+            sha256_hex(format!("{error:#}").as_bytes())
+        )
+    })?;
+    check_native_action_guard_details(reference, &details, native_action)
+}
+
+fn check_native_action_guard_details(
+    reference: &str,
+    details: &str,
+    native_action: ComputerUseNativeAction,
+) -> Result<ComputerUseNativeActionGuardOutcome> {
+    let details_sha256 = sha256_hex(details.as_bytes());
+    if !details_have_native_action(details, native_action) {
+        bail!(
+            "computer_use native action guard failed for {reference}: expected native action `{}` was not reported by the current ref (details_sha256: {details_sha256}). call inspect_ref or wait_ref again",
+            native_action.ax_action
+        );
+    }
+    Ok(ComputerUseNativeActionGuardOutcome {
+        reference: reference.to_string(),
+        native_action: native_action.ax_action,
+        details_sha256,
+    })
+}
+
 fn snapshot_line_for_ref(snapshot: &str, reference: &str) -> Result<String> {
     let target_index = parse_ui_ref(reference)?;
     let prefix = format!("- @u{target_index}");
@@ -1245,6 +1298,7 @@ fn check_ref_guard_line(
 fn render_write_result(
     snapshot_id: &str,
     ref_guard: Option<&ComputerUseRefGuardOutcome>,
+    native_action_guard: Option<&ComputerUseNativeActionGuardOutcome>,
     result: &str,
 ) -> String {
     let mut output = format!("using_snapshot_id: {snapshot_id}\n");
@@ -1252,6 +1306,14 @@ fn render_write_result(
         output.push_str(&format!(
             "ref_guard: passed\nref_guard_ref: {}\nref_guard_line_sha256: {}\n",
             ref_guard.reference, ref_guard.line_sha256
+        ));
+    }
+    if let Some(native_action_guard) = native_action_guard {
+        output.push_str(&format!(
+            "native_action_guard: passed\nnative_action_guard_ref: {}\nnative_action_guard_action: {}\nnative_action_guard_details_sha256: {}\n",
+            native_action_guard.reference,
+            native_action_guard.native_action,
+            native_action_guard.details_sha256
         ));
     }
     output.push_str(&render_status(false));
@@ -1277,11 +1339,11 @@ fn render_status(prompt: bool) -> String {
 mod tests {
     use super::{
         ComputerUseFindRequest, ComputerUseFindState, ComputerUseRefGuardRequest, ComputerUseTool,
-        ComputerUseWaitMode, ComputerUseWaitRefRequest, MAX_SET_TEXT_CHARS, check_ref_guard_line,
-        details_have_native_action, details_match_wait_ref, find_snapshot_lines,
-        load_snapshot_record, ref_line_from_details, render_wait_ref_unavailable,
-        resolve_snapshot_record, save_snapshot_record, snapshot_contains_text,
-        snapshot_line_for_ref, snapshot_record_path,
+        ComputerUseWaitMode, ComputerUseWaitRefRequest, MAX_SET_TEXT_CHARS,
+        check_native_action_guard_details, check_ref_guard_line, details_have_native_action,
+        details_match_wait_ref, find_snapshot_lines, load_snapshot_record, ref_line_from_details,
+        render_wait_ref_unavailable, render_write_result, resolve_snapshot_record,
+        save_snapshot_record, snapshot_contains_text, snapshot_line_for_ref, snapshot_record_path,
     };
     use crate::computer_use::normalize_computer_use_native_action;
     use crate::tools::{Tool, ToolContext};
@@ -1901,6 +1963,57 @@ available_actions: AXShowMenu
 
         assert!(!details_have_native_action(details, action));
         assert!(!details_match_wait_ref("@u3", details, &request));
+    }
+
+    #[test]
+    fn native_action_guard_details_passes_and_hashes_details() {
+        let details = r#"
+ref: @u3
+ref_line: - @u3 role='button' name='Private Continue' bounds=(20,20,80x28)
+available_actions: AXPress, AXShowMenu
+"#;
+        let action = normalize_computer_use_native_action("press").expect("action");
+        let guard =
+            check_native_action_guard_details("@u3", details, action).expect("native guard");
+
+        assert_eq!(guard.reference, "@u3");
+        assert_eq!(guard.native_action, "AXPress");
+        assert_eq!(guard.details_sha256, super::sha256_hex(details.as_bytes()));
+    }
+
+    #[test]
+    fn native_action_guard_rejects_missing_action_without_echoing_details() {
+        let details = r#"
+ref: @u3
+ref_line: - @u3 role='button' name='Private Project Name' bounds=(20,20,80x28)
+available_actions: AXShowMenu
+"#;
+        let action = normalize_computer_use_native_action("press").expect("action");
+        let error = check_native_action_guard_details("@u3", details, action)
+            .expect_err("missing native action");
+        let error = format!("{error:#}");
+
+        assert!(error.contains("native action guard failed"));
+        assert!(error.contains("details_sha256:"));
+        assert!(!error.contains("Private Project Name"));
+    }
+
+    #[test]
+    fn render_write_result_includes_native_action_guard_evidence() {
+        let details = r#"
+ref: @u3
+ref_line: - @u3 role='button' name='Continue' bounds=(20,20,80x28)
+available_actions: AXPress
+"#;
+        let action = normalize_computer_use_native_action("press").expect("action");
+        let guard =
+            check_native_action_guard_details("@u3", details, action).expect("native guard");
+        let rendered = render_write_result("cu_test", None, Some(&guard), "frontmost_app: TestApp");
+
+        assert!(rendered.contains("native_action_guard: passed"));
+        assert!(rendered.contains("native_action_guard_ref: @u3"));
+        assert!(rendered.contains("native_action_guard_action: AXPress"));
+        assert!(rendered.contains("native_action_guard_details_sha256:"));
     }
 
     #[test]

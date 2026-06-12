@@ -20,8 +20,8 @@ compatibility risk.
   ```bash
   cd desktop-shell
   npm ci
-  npm run build
-  npm run tauri:release -- --bundles dmg
+  cd ..
+  scripts/package-desktop.sh
   ```
 
 - Review open-source hygiene:
@@ -59,7 +59,8 @@ CLI archives:
 - `crab-vX.Y.Z-x86_64-pc-windows-msvc.zip`
 - matching `.sha256` checksum files
 
-Use `scripts/package-release.sh` for a local single-platform archive before tagging.
+Use `scripts/package-release.sh` for a local single-platform CLI archive and
+`scripts/package-desktop.sh` for a local single-platform desktop installer before tagging.
 
 Each archive should contain:
 

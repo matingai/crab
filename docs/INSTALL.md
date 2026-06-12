@@ -166,12 +166,12 @@ Open `http://localhost:1420`.
 To build a local Tauri installer:
 
 ```bash
-cd desktop-shell
-npm run tauri:release -- --bundles dmg
+scripts/package-desktop.sh
 ```
 
-Use `--bundles nsis` on Windows to build the setup `.exe`. See
-[Desktop Packaging](DESKTOP_PACKAGING.md) for CI asset names and signing notes.
+On macOS this writes a DMG into `dist/`. On Windows, run the same script from Git Bash to
+write an NSIS setup `.exe`. See [Desktop Packaging](DESKTOP_PACKAGING.md) for CI asset
+names and signing notes.
 
 ## Local State
 

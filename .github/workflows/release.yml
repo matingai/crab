@@ -105,15 +105,12 @@ jobs:
           - os: macos-14
             target: aarch64-apple-darwin
             bundles: dmg
-            extension: dmg
           - os: macos-15-intel
             target: x86_64-apple-darwin
             bundles: dmg
-            extension: dmg
           - os: windows-2025
             target: x86_64-pc-windows-msvc
             bundles: nsis
-            extension: exe
 
     steps:
       - name: Checkout
@@ -134,44 +131,15 @@ jobs:
         working-directory: desktop-shell
         run: npm ci
 
-      - name: Build installer
-        working-directory: desktop-shell
+      - name: Build and package installer
         shell: bash
         env:
           NEXT_TELEMETRY_DISABLED: "1"
-        run: npm run tauri:bundle -- --bundles "${{ matrix.bundles }}"
-
-      - name: Package installer asset
-        shell: bash
+          CRAB_VERSION: ${{ github.ref_name }}
+          CRAB_TARGET: ${{ matrix.target }}
+          CRAB_DESKTOP_BUNDLE: ${{ matrix.bundles }}
         run: |
-          set -euo pipefail
-
-          version="${GITHUB_REF_NAME}"
-          if [[ "${version}" == refs/* ]]; then
-            version="dev"
-          fi
-
-          bundle_dir="desktop-shell/src-tauri/target/release/bundle"
-          installer="$(find "${bundle_dir}" -type f -name "*.${{ matrix.extension }}" | sort | head -n 1)"
-          if [[ -z "${installer}" ]]; then
-            echo "No .${{ matrix.extension }} installer found in ${bundle_dir}" >&2
-            find "${bundle_dir}" -maxdepth 3 -type f >&2 || true
-            exit 1
-          fi
-
-          mkdir -p dist
-          if [[ "${{ matrix.extension }}" == "exe" ]]; then
-            asset_name="crab-desktop-${version}-${{ matrix.target }}-setup.exe"
-          else
-            asset_name="crab-desktop-${version}-${{ matrix.target }}.${{ matrix.extension }}"
-          fi
-          cp "${installer}" "dist/${asset_name}"
-
-          if command -v shasum >/dev/null 2>&1; then
-            (cd dist && shasum -a 256 "${asset_name}" > "${asset_name}.sha256")
-          else
-            (cd dist && sha256sum "${asset_name}" > "${asset_name}.sha256")
-          fi
+          scripts/package-desktop.sh
 
       - name: Upload desktop artifact
         uses: actions/upload-artifact@v7

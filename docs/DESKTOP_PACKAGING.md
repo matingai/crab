@@ -29,16 +29,28 @@ npm install
 Build a macOS DMG:
 
 ```bash
-npm run tauri:release -- --bundles dmg
+cd ..
+scripts/package-desktop.sh
 ```
 
 Build a Windows setup installer from Windows:
 
 ```powershell
-npm run tauri:release -- --bundles nsis
+cd ..
+bash scripts/package-desktop.sh
 ```
 
-Tauri writes bundles under `desktop-shell/src-tauri/target/release/bundle/`.
+The helper writes release-ready assets into `dist/`, for example
+`crab-desktop-v0.1.4-aarch64-apple-darwin.dmg`, plus a matching `.sha256` checksum. Tauri's
+native bundle output remains under `desktop-shell/src-tauri/target/release/bundle/`.
+
+For direct Tauri debugging, run the bundler from `desktop-shell/`:
+
+```bash
+npm run tauri:release -- --bundles dmg
+```
+
+Use `--bundles nsis` on Windows.
 
 ## CI Build
 
@@ -48,8 +60,8 @@ Tauri writes bundles under `desktop-shell/src-tauri/target/release/bundle/`.
 - `macos-15-intel` for Intel Mac DMG.
 - `windows-2025` for Windows x64 NSIS setup `.exe`.
 
-The release workflow renames Tauri's native output into stable GitHub asset names and
-generates SHA-256 checksum files before publishing the release.
+The release workflow uses `scripts/package-desktop.sh` so local packaging and CI packaging
+share the same stable asset names and SHA-256 checksum behavior.
 
 ## Signing And Trust
 

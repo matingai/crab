@@ -161,12 +161,11 @@ npm run dev
 构建本地 Tauri 安装包：
 
 ```bash
-cd desktop-shell
-npm run tauri:release -- --bundles dmg
+scripts/package-desktop.sh
 ```
 
-Windows 下使用 `--bundles nsis` 构建 setup `.exe`。CI asset 命名和签名说明见
-[桌面安装包文档](DESKTOP_PACKAGING.md)。
+macOS 下会把 DMG 写入 `dist/`。Windows 下可以在 Git Bash 中运行同一脚本生成 NSIS setup `.exe`。
+CI asset 命名和签名说明见 [桌面安装包文档](DESKTOP_PACKAGING.md)。
 
 ## 本地状态
 

@@ -1717,6 +1717,18 @@ mod tests {
         assert!(
             resumed_sink.events().iter().any(|item| matches!(
                 &item.event,
+                AgentEvent::ApprovalResolved {
+                    approval_id: resolved_approval_id,
+                    status,
+                    approved,
+                    ..
+                } if resolved_approval_id == &approval_id && status == "denied" && !approved
+            )),
+            "denied approval should emit a resolved approval event"
+        );
+        assert!(
+            resumed_sink.events().iter().any(|item| matches!(
+                &item.event,
                 AgentEvent::ToolCallFinished { status, .. } if status == "error"
             )),
             "denied approval should finish the resumed tool call with error status"

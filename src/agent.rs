@@ -1859,32 +1859,56 @@ impl Agent {
             batch_index: pending.batch_index,
             batch_total: pending.batch_total,
         });
-        let tool_started_at = Instant::now();
-        let result = match approval.status {
-            ApprovalStatus::Approved => {
-                self.call_tool_with_live_updates(
-                    handler,
-                    0,
-                    &pending.tool_call_id,
-                    &pending.tool_name,
-                    &pending.raw_arguments,
-                    &pending.execution_mode,
-                    pending.batch_id.as_deref(),
-                    pending.batch_index,
-                    pending.batch_total,
-                )
-                .await
-            }
-            ApprovalStatus::Denied => format!(
-                "approval denied for command `{}`: {}",
-                pending.command, approval.reason
-            ),
+        let approval_approved = match approval.status {
+            ApprovalStatus::Approved => true,
+            ApprovalStatus::Denied => false,
             ApprovalStatus::Pending => {
                 bail!("approval `{approval_id}` is still pending");
             }
             ApprovalStatus::Consumed => {
                 bail!("approval `{approval_id}` was already consumed");
             }
+        };
+        let approval_status = approval_status_label(&approval.status);
+        handler.on_event(AgentEvent::ApprovalResolved {
+            session_id: self.session.session_id.clone(),
+            tool_call_id: pending.tool_call_id.clone(),
+            tool_name: pending.tool_name.clone(),
+            approval_id: approval_id.to_string(),
+            status: approval_status.to_string(),
+            approved: approval_approved,
+            execution_mode: pending.execution_mode.clone(),
+            batch_id: pending.batch_id.clone(),
+            batch_index: pending.batch_index,
+            batch_total: pending.batch_total,
+        });
+        self.append_archive_event(
+            "approval_resolved",
+            "Tool approval resolved",
+            &format!(
+                "approval_id={approval_id}; tool={}; status={approval_status}; execution_mode={}",
+                pending.tool_name, pending.execution_mode
+            ),
+        );
+        let tool_started_at = Instant::now();
+        let result = if approval_approved {
+            self.call_tool_with_live_updates(
+                handler,
+                0,
+                &pending.tool_call_id,
+                &pending.tool_name,
+                &pending.raw_arguments,
+                &pending.execution_mode,
+                pending.batch_id.as_deref(),
+                pending.batch_index,
+                pending.batch_total,
+            )
+            .await
+        } else {
+            format!(
+                "approval denied for command `{}`: {}",
+                pending.command, approval.reason
+            )
         };
         let duration_ms = elapsed_ms(tool_started_at);
         let result = match parse_tool_args(&pending.raw_arguments) {
@@ -4617,6 +4641,15 @@ fn map_tool_status_to_solve_step_status(status: &str) -> &'static str {
         "failed" | "error" => "blocked",
         "done" | "completed" => "completed",
         _ => "in_progress",
+    }
+}
+
+fn approval_status_label(status: &ApprovalStatus) -> &'static str {
+    match status {
+        ApprovalStatus::Pending => "pending",
+        ApprovalStatus::Approved => "approved",
+        ApprovalStatus::Denied => "denied",
+        ApprovalStatus::Consumed => "consumed",
     }
 }
 
@@ -7888,6 +7921,27 @@ mod tests {
                 batch_total,
                 ..
             }) if tool_call_id == "tool-terminal-1"
+                && execution_mode == "parallel"
+                && batch_id.as_deref() == Some("parallel-1-call-terminal")
+                && *batch_index == Some(2)
+                && *batch_total == Some(3)
+        ));
+        assert!(matches!(
+            handler.events().iter().find(|event| matches!(event, AgentEvent::ApprovalResolved { .. })),
+            Some(AgentEvent::ApprovalResolved {
+                tool_call_id,
+                approval_id,
+                status,
+                approved,
+                execution_mode,
+                batch_id,
+                batch_index,
+                batch_total,
+                ..
+            }) if tool_call_id == "tool-terminal-1"
+                && approval_id == &approval.id
+                && status == "approved"
+                && *approved
                 && execution_mode == "parallel"
                 && batch_id.as_deref() == Some("parallel-1-call-terminal")
                 && *batch_index == Some(2)

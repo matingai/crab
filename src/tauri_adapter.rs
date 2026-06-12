@@ -207,6 +207,7 @@ fn event_session_id(event: &BridgeEventEnvelope) -> Option<String> {
         | crate::events::AgentEvent::ToolCallDelta { session_id, .. }
         | crate::events::AgentEvent::ToolCallFinished { session_id, .. }
         | crate::events::AgentEvent::ApprovalRequired { session_id, .. }
+        | crate::events::AgentEvent::ApprovalResolved { session_id, .. }
         | crate::events::AgentEvent::AssistantMessage { session_id, .. }
         | crate::events::AgentEvent::SessionSaved { session_id, .. }
         | crate::events::AgentEvent::Nudge { session_id, .. }

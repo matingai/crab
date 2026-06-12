@@ -3025,6 +3025,8 @@ function summarizeEvent(event: Record<string, unknown> & { type?: string }): str
       return truncate(String(event.content || ""), 80);
     case "approval_required":
       return `${String(event.tool_name || "")} ${truncate(String(event.reason || ""), 60)}`;
+    case "approval_resolved":
+      return `${String(event.tool_name || "tool")} 审批${event.approved ? "已批准" : "已拒绝"}`;
     case "error":
       return String(event.message || "");
     default:
@@ -5091,6 +5093,19 @@ export default function Page() {
           `${String(event.tool_name || "tool")} 需要审批: ${String(event.reason || "")}`,
         );
         void loadApprovals();
+        break;
+      case "approval_resolved":
+        {
+          const approved = Boolean(event.approved);
+          const toolName = String(event.tool_name || "tool");
+          sealActiveAssistantSegment();
+          setAgentActivity(approved ? "审批已批准" : "审批已拒绝");
+          pushNotice(
+            approved ? "success" : "nudge",
+            `${toolName} 审批${approved ? "已批准" : "已拒绝"}`,
+          );
+          void loadApprovals();
+        }
         break;
       case "skill_lifecycle_suggested":
         pushNotice(

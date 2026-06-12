@@ -179,7 +179,8 @@ UI can show:
 - Turn interruption events for user-requested stops, including the turn id, runtime phase,
   reason, and redacted display message.
 - Tool call start and completion.
-- Approval requests.
+- Approval request and resolution boundaries, including whether a paused tool was
+  approved or denied before execution resumes.
 - Delegated run lifecycle.
 - Context pressure warnings.
 - Runtime status.

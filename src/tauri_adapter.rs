@@ -193,6 +193,7 @@ fn event_session_id(event: &BridgeEventEnvelope) -> Option<String> {
         | crate::events::AgentEvent::AssistantDelta { session_id, .. }
         | crate::events::AgentEvent::SkillMatched { session_id, .. }
         | crate::events::AgentEvent::GoalStateUpdated { session_id, .. }
+        | crate::events::AgentEvent::TodoStateUpdated { session_id, .. }
         | crate::events::AgentEvent::ContextPrepared { session_id, .. }
         | crate::events::AgentEvent::ContextCompacted { session_id, .. }
         | crate::events::AgentEvent::ModelRecovery { session_id, .. }

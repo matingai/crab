@@ -178,6 +178,8 @@ UI can show:
   summary usage, and pruned-tool-output counts.
 - Goal-state update events for user-seeded goals, tool evidence, tool-result reconcile,
   and turn-end reconcile, with summary metrics instead of raw working memory.
+- Todo-state update events for goal-state sync, explicit todo-tool writes, and delegated
+  worker step updates, with counts and redacted active-item previews.
 - Turn interruption events for user-requested stops, including the turn id, runtime phase,
   reason, and redacted display message.
 - Tool call start and completion.

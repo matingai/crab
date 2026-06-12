@@ -2985,6 +2985,11 @@ function summarizeEvent(event: Record<string, unknown> & { type?: string }): str
         const status = String(event.focus_goal_status || "");
         return `目标状态${source ? ` · ${source}` : ""}${focus ? ` · ${truncate(focus, 60)}` : ""}${status ? ` · ${status}` : ""}`;
       }
+    case "todo_state_updated":
+      {
+        const source = formatTodoStateSource(String(event.source || ""));
+        return `任务列表${source ? ` · ${source}` : ""} · active ${String(event.active_count || 0)}/${String(event.total || 0)}`;
+      }
     case "model_request_started":
       return `请求模型 ${String(event.model || "")}${formatModelRequestMetadata(event)}，${String(event.message_count || 0)} 条消息`;
     case "model_request_finished":
@@ -3211,6 +3216,19 @@ function formatGoalStateSource(source: string): string {
       return "工具复盘";
     case "turn_reconcile":
       return "回合复盘";
+    default:
+      return source;
+  }
+}
+
+function formatTodoStateSource(source: string): string {
+  switch (source) {
+    case "goal_state_sync":
+      return "目标同步";
+    case "delegate_worker":
+      return "worker 步骤";
+    case "todo_tool":
+      return "todo 工具";
     default:
       return source;
   }
@@ -4944,6 +4962,19 @@ export default function Page() {
           const counts = `${String(event.active_goal_count || 0)}/${String(event.goal_count || 0)} goals`;
           setAgentActivity(
             `目标状态已更新${source ? ` · ${source}` : ""}${focus ? ` · ${truncate(focus, 36)}` : ""}${status ? ` · ${status}` : ""} · ${counts}`,
+          );
+        }
+        break;
+      case "todo_state_updated":
+        {
+          const source = formatTodoStateSource(String(event.source || ""));
+          const active = Number(event.active_count || 0);
+          const total = Number(event.total || 0);
+          const preview = Array.isArray(event.active_preview)
+            ? event.active_preview.map(String).filter(Boolean)[0]
+            : "";
+          setAgentActivity(
+            `任务列表已更新${source ? ` · ${source}` : ""} · active ${active}/${total}${preview ? ` · ${truncate(preview, 44)}` : ""}`,
           );
         }
         break;

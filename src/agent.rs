@@ -42,7 +42,7 @@ use crate::smart_model_routing::resolve_turn_route;
 use crate::solve_trace::{SolveDecision, SolveOutcome, SolveStep, SolveTraceStore};
 use crate::subdir_hints::SubdirectoryHintTracker;
 use crate::title_generation::{generate_title, should_generate_title};
-use crate::todo::{TodoItem, TodoStore};
+use crate::todo::{TodoItem, TodoStore, summarize_todos};
 use crate::tools::{
     ToolContext, ToolRegistry, ToolRuntimeEvent, clear_tool_event_sender,
     register_tool_event_sender, truncated, with_tool_runtime_scope,
@@ -677,6 +677,38 @@ impl Agent {
         });
     }
 
+    fn emit_todo_state_updated(
+        &self,
+        handler: &mut dyn EventHandler,
+        source: &str,
+        items: &[TodoItem],
+    ) {
+        let summary = summarize_todos(items);
+        let active_preview = items
+            .iter()
+            .filter(|item| item.is_active())
+            .take(4)
+            .map(|item| {
+                redacted_truncated(
+                    format!("{} [{}] {}", item.id, item.status, item.content),
+                    140,
+                )
+            })
+            .collect::<Vec<_>>();
+        handler.on_event(AgentEvent::TodoStateUpdated {
+            session_id: self.session.session_id.clone(),
+            source: source.to_string(),
+            total: summary.total,
+            pending: summary.pending,
+            in_progress: summary.in_progress,
+            blocked: summary.blocked,
+            completed: summary.completed,
+            cancelled: summary.cancelled,
+            active_count: items.iter().filter(|item| item.is_active()).count(),
+            active_preview,
+        });
+    }
+
     fn start_solve_episode(&self, user_input: &str) {
         let turn_id = self.active_archive_turn_id();
         let focus = self
@@ -721,22 +753,26 @@ impl Agent {
         }
     }
 
-    fn sync_goal_runtime_state(&self) {
+    fn sync_goal_runtime_state(&self) -> Option<Vec<TodoItem>> {
         let Ok(mut state) = self.goal_state_store.load(&self.session.session_id) else {
-            return;
+            return None;
         };
         if state.goals.is_empty() && state.cognition.is_empty() && state.hot_data.is_empty() {
-            return;
+            return None;
         }
 
         let Ok(mut todos) = self.todo_store.load(&self.session.session_id) else {
-            return;
+            return None;
         };
+        let original_todos = todos.clone();
         sync_todos_from_goal_state(&state, &mut todos);
-        if todos.is_empty() {
-            let _ = self.todo_store.clear(&self.session.session_id);
-        } else {
-            let _ = self.todo_store.save(&self.session.session_id, &todos);
+        let todos_changed = todos != original_todos;
+        if todos_changed {
+            if todos.is_empty() {
+                let _ = self.todo_store.clear(&self.session.session_id);
+            } else {
+                let _ = self.todo_store.save(&self.session.session_id, &todos);
+            }
         }
 
         if let Some(summary) = summarize_active_todos_for_goal_loop(&todos) {
@@ -763,6 +799,7 @@ impl Agent {
         let _ = self
             .goal_state_store
             .replace(&self.session.session_id, state);
+        todos_changed.then_some(todos)
     }
 
     fn update_goal_state_from_tool_outcome(
@@ -843,8 +880,13 @@ impl Agent {
         {
             self.emit_goal_state_updated(handler, "tool_outcome", &state);
         }
+        if tool_name == "todo" {
+            if let Ok(todos) = self.todo_store.load(&self.session.session_id) {
+                self.emit_todo_state_updated(handler, "todo_tool", &todos);
+            }
+        }
         if tool_name == "delegate_to_worker" {
-            self.update_delegate_worker_todos_from_tool_outcome(tool_call_id, result);
+            self.update_delegate_worker_todos_from_tool_outcome(handler, tool_call_id, result);
             self.record_delegate_worker_solve_trace(tool_call_id, result, status);
         } else {
             self.record_tool_solve_trace(tool_call_id, tool_name, result, status);
@@ -955,7 +997,12 @@ impl Agent {
         render_tool_result_summary_for_reconcile(&summary, tool_name, status)
     }
 
-    fn update_delegate_worker_todos_from_tool_outcome(&self, tool_call_id: &str, result: &str) {
+    fn update_delegate_worker_todos_from_tool_outcome(
+        &self,
+        handler: &mut dyn EventHandler,
+        tool_call_id: &str,
+        result: &str,
+    ) {
         let Some(observation) = parse_delegate_worker_observation(result) else {
             return;
         };
@@ -967,7 +1014,13 @@ impl Agent {
             return;
         };
         sync_todos_from_delegate_worker(tool_call_id, &observation, &mut todos);
-        let _ = self.todo_store.save(&self.session.session_id, &todos);
+        if self
+            .todo_store
+            .save(&self.session.session_id, &todos)
+            .is_ok()
+        {
+            self.emit_todo_state_updated(handler, "delegate_worker", &todos);
+        }
     }
 
     fn record_turn_solve_outcome(&self, assistant_response: &str) {
@@ -4289,7 +4342,11 @@ impl Agent {
 
     fn persist_session(&mut self) -> Result<std::path::PathBuf> {
         self.session.touch();
-        self.sync_goal_runtime_state();
+        let _ = self.sync_goal_runtime_state();
+        self.persist_session_after_runtime_sync()
+    }
+
+    fn persist_session_after_runtime_sync(&mut self) -> Result<std::path::PathBuf> {
         let path = self.session_store.save(&self.session)?;
         self.upsert_archive_session();
         self.sync_wiki_views();
@@ -4297,7 +4354,11 @@ impl Agent {
     }
 
     fn persist_session_with_handler(&mut self, handler: &mut dyn EventHandler) -> Result<()> {
-        let path = self.persist_session()?;
+        self.session.touch();
+        if let Some(items) = self.sync_goal_runtime_state() {
+            self.emit_todo_state_updated(handler, "goal_state_sync", &items);
+        }
+        let path = self.persist_session_after_runtime_sync()?;
         handler.on_event(AgentEvent::SessionSaved {
             session_id: self.session.session_id.clone(),
             path: path.display().to_string(),
@@ -7777,6 +7838,27 @@ mod tests {
             handler
                 .events()
                 .iter()
+                .find(|event| matches!(event, AgentEvent::TodoStateUpdated { .. })),
+            Some(AgentEvent::TodoStateUpdated {
+                source,
+                total,
+                in_progress,
+                active_count,
+                active_preview,
+                ..
+            }) if source == "goal_state_sync"
+                && *total == 1
+                && *in_progress == 1
+                && *active_count == 1
+                && active_preview
+                    .iter()
+                    .any(|item| item.contains("OPENAI_API_KEY=[REDACTED]")
+                        && !item.contains("test-redaction-fixture"))
+        ));
+        assert!(matches!(
+            handler
+                .events()
+                .iter()
                 .rev()
                 .find(|event| matches!(event, AgentEvent::TurnFinished { .. })),
             Some(AgentEvent::TurnFinished {
@@ -9119,6 +9201,21 @@ mod tests {
                 && *goal_count == 1
                 && *cognition_count > 0
                 && *hot_data_count > 0
+        )));
+        assert!(handler.events().iter().any(|event| matches!(
+            event,
+            AgentEvent::TodoStateUpdated {
+                source,
+                total,
+                completed,
+                active_count,
+                active_preview,
+                ..
+            } if source == "delegate_worker"
+                && *total == 1
+                && *completed == 1
+                && *active_count == 0
+                && active_preview.is_empty()
         )));
 
         let state = agent

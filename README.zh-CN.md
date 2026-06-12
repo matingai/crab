@@ -175,6 +175,7 @@ agent loop 是这个项目真正的中心。Crab 把主 agent 设计成一个面
 - `execute_code` 同样受 shell 开关约束；当 inline 或文件脚本里包含明显破坏性 shell 片段时，会先暂停等待
   approval。
 - 本地 `tool_policy` 默认会在具体工具执行前保护 `.env*`、`.ssh/*`、`.aws/*` 和私钥文件等常见敏感路径；
+  preflight 会递归检查 path-like 工具参数，包括嵌套数组和 camelCase key，因此复杂工具也走同一套护栏。
   你可以扩展这些规则，也可以在本地配置中显式关闭默认规则。
 - 运行时 redaction 是 best-effort，主要处理常见 key/token/password 格式；它不能替代从源头避免把密钥写进
   prompt 或生成文件。
@@ -385,8 +386,9 @@ skills:
 ```
 
 本地工具策略默认保护 `.env*`、`.ssh/*`、`.aws/*`、`.gnupg/*`、私钥文件和常见 credential 配置文件。
-你可以扩展这些默认规则，也可以要求指定工具审批，或禁用指定工具/路径。工具模式可以是精确工具名、`*`，
-或以 `*` 结尾的前缀通配；路径模式支持精确目录和 `*` 通配：
+策略 preflight 会递归检查 `path`、`source_path`、`output_path`、`save_as`、`filePaths` 等 path-like
+工具参数，包括嵌套数组和对象。你可以扩展这些默认规则，也可以要求指定工具审批，或禁用指定工具/路径。
+工具模式可以是精确工具名、`*`，或以 `*` 结尾的前缀通配；路径模式支持精确目录和 `*` 通配：
 
 ```yaml
 tool_policy:

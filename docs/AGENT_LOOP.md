@@ -80,9 +80,11 @@ script runner such as `execute_code`.
 
 The registry also supports local `tool_policy` preflight rules. Common sensitive paths
 such as `.env*`, `.ssh/*`, `.aws/*`, private keys, and credential config files are
-protected by default before a tool implementation runs. A workspace can extend those
-rules, require approval for entire tool families such as `browser_*`, opt out of the
-defaults, or disable a tool/path before it reaches its implementation.
+protected by default before a tool implementation runs. The preflight recursively inspects
+path-like arguments in nested objects and arrays, so richer tools and plugin calls inherit
+the same guardrail. A workspace can extend those rules, require approval for entire tool
+families such as `browser_*`, opt out of the defaults, or disable a tool/path before it
+reaches its implementation.
 
 ## Delegation Model
 

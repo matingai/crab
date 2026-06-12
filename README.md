@@ -220,7 +220,9 @@ Important safety notes:
   file-backed scripts contain obvious destructive shell fragments.
 - Local `tool_policy` protects common sensitive paths such as `.env*`, `.ssh/*`,
   `.aws/*`, and private key files by default before any matching tool implementation
-  runs. You can extend those rules or opt out explicitly in local config.
+  runs. The preflight recursively inspects path-like tool arguments, including nested
+  arrays and camelCase keys, so complex tools get the same guardrail. You can extend
+  those rules or opt out explicitly in local config.
 - Runtime redaction is best-effort and targets common key/token/password formats. It is
   not a replacement for keeping secrets out of prompts and generated files.
 - In Git workspaces, file mutation tools protect existing paths with uncommitted changes
@@ -440,9 +442,11 @@ skills:
 
 Local tool policy protects common sensitive paths by default, including `.env*`,
 `.ssh/*`, `.aws/*`, `.gnupg/*`, private key files, and common credential config files.
-You can extend those defaults, require approval for selected tools, or disable selected
-tools and paths. Tool patterns are exact names, `*`, or prefix wildcards ending in `*`;
-path patterns support exact directories and `*` wildcards:
+Policy preflight recursively inspects path-like tool arguments such as `path`,
+`source_path`, `output_path`, `save_as`, and `filePaths`, including nested arrays and
+objects. You can extend those defaults, require approval for selected tools, or disable
+selected tools and paths. Tool patterns are exact names, `*`, or prefix wildcards ending
+in `*`; path patterns support exact directories and `*` wildcards:
 
 ```yaml
 tool_policy:

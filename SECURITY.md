@@ -47,8 +47,10 @@ Reports are especially valuable when they involve:
   dangerous command fragments pause for approval before execution.
 - Local `tool_policy` config protects common sensitive paths by default, including
   `.env*`, `.ssh/*`, `.aws/*`, `.gnupg/*`, private key files, and common credential
-  config files. Local config can extend those protections, require approval for selected
-  tools, opt out of the defaults, or disable tools/paths entirely before execution.
+  config files. The preflight recursively inspects path-like tool arguments, including
+  nested arrays/objects and camelCase aliases. Local config can extend those protections,
+  require approval for selected tools, opt out of the defaults, or disable tools/paths
+  entirely before execution.
 - Tool outputs, live previews, timeline details, archive records, and stored assistant
   tool-call arguments redact common credential patterns before becoming durable context.
 - In Git workspaces, file mutation tools refuse to overwrite, patch, delete, or move

@@ -10,10 +10,15 @@ use crate::approval::{ApprovalRequest, consume_approved_request, request_approva
 
 const DEFAULT_PROTECTED_PATHS: &[&str] = &[
     ".env*",
+    "*/.env*",
     ".ssh/*",
+    "*/.ssh/*",
     ".gnupg/*",
+    "*/.gnupg/*",
     ".aws/*",
+    "*/.aws/*",
     ".git/config",
+    "*/.git/config",
     ".git-credentials",
     ".netrc",
     ".npmrc",
@@ -25,6 +30,26 @@ const DEFAULT_PROTECTED_PATHS: &[&str] = &[
     "*id_ecdsa*",
     "*id_ed25519*",
     "secrets/*",
+    "*/secrets/*",
+];
+
+const POLICY_PATH_KEYS: &[&str] = &[
+    "path",
+    "paths",
+    "sourcepath",
+    "sourcepaths",
+    "destinationpath",
+    "destinationpaths",
+    "workdir",
+    "cwd",
+    "filepath",
+    "filepaths",
+    "outputpath",
+    "outputpaths",
+    "inputpath",
+    "inputpaths",
+    "saveas",
+    "files",
 ];
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -265,21 +290,44 @@ fn first_path_pattern_match(patterns: &[String], paths: &[String]) -> Option<Str
 }
 
 fn collect_policy_paths(value: &Value, paths: &mut Vec<String>) {
-    let Some(map) = value.as_object() else {
-        return;
-    };
-    for key in [
-        "path",
-        "source_path",
-        "destination_path",
-        "workdir",
-        "file_path",
-        "output_path",
-    ] {
-        if let Some(path) = map.get(key).and_then(Value::as_str) {
-            paths.push(path.to_string());
+    match value {
+        Value::Object(map) => {
+            for (key, value) in map {
+                if is_policy_path_key(key) {
+                    collect_policy_path_values(value, paths);
+                }
+                collect_policy_paths(value, paths);
+            }
         }
+        Value::Array(items) => {
+            for item in items {
+                collect_policy_paths(item, paths);
+            }
+        }
+        _ => {}
     }
+}
+
+fn collect_policy_path_values(value: &Value, paths: &mut Vec<String>) {
+    match value {
+        Value::String(path) => paths.push(path.to_string()),
+        Value::Array(items) => {
+            for item in items {
+                collect_policy_path_values(item, paths);
+            }
+        }
+        Value::Object(_) => collect_policy_paths(value, paths),
+        _ => {}
+    }
+}
+
+fn is_policy_path_key(key: &str) -> bool {
+    let normalized = key
+        .chars()
+        .filter(|ch| *ch != '_' && *ch != '-')
+        .flat_map(char::to_lowercase)
+        .collect::<String>();
+    POLICY_PATH_KEYS.contains(&normalized.as_str())
 }
 
 fn normalize_policy_path(path: &str) -> String {
@@ -463,6 +511,34 @@ tool_policy:
     }
 
     #[test]
+    fn extracts_nested_policy_paths_from_arrays_and_camel_case_keys() {
+        let paths = extract_policy_paths(
+            r#"{
+                "ops": [
+                    { "kind": "copy", "sourcePath": "src/input.txt", "destinationPath": "dist/output.txt" },
+                    { "kind": "save", "saveAs": "reports/final.docx" },
+                    { "kind": "upload", "filePaths": ["./nested/.env.local", "public/demo.txt"] }
+                ],
+                "metadata": {
+                    "files": ["../secrets/prod.json"]
+                }
+            }"#,
+        );
+
+        assert_eq!(
+            paths,
+            vec![
+                "dist/output.txt",
+                "nested/.env.local",
+                "public/demo.txt",
+                "reports/final.docx",
+                "secrets/prod.json",
+                "src/input.txt"
+            ]
+        );
+    }
+
+    #[test]
     fn approval_command_uses_stable_hash_without_raw_arguments() {
         let command = tool_policy_approval_command("read_file", r#"{"path":"secret.txt"}"#);
 
@@ -553,6 +629,30 @@ tool_policy:
         assert!(approval.reason.contains("path pattern `.env*`"));
         assert!(!approval.command.contains(".env.local"));
         assert!(!approval.command.contains("OPENAI_API_KEY"));
+    }
+
+    #[test]
+    fn nested_default_protected_path_requires_approval_without_config() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+
+        let decision = evaluate_tool_policy(
+            tmp.path(),
+            "session-1",
+            "office_apply_ops",
+            r#"{
+                "path": "draft.docx",
+                "ops": [
+                    { "kind": "append", "saveAs": "nested/.env.local" }
+                ]
+            }"#,
+        )
+        .expect("policy");
+        let ToolPolicyPreflight::ApprovalRequired(approval) = decision else {
+            panic!("expected approval");
+        };
+
+        assert!(approval.reason.contains("path pattern `*/.env*`"));
+        assert!(!approval.command.contains("nested/.env.local"));
     }
 
     #[test]

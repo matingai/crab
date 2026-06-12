@@ -709,7 +709,7 @@ impl Agent {
         });
     }
 
-    fn start_solve_episode(&self, user_input: &str) {
+    fn start_solve_episode(&self, handler: &mut dyn EventHandler, user_input: &str) {
         let turn_id = self.active_archive_turn_id();
         let focus = self
             .goal_state_store
@@ -732,7 +732,7 @@ impl Agent {
             .as_ref()
             .map(|(_, title, _)| title.clone())
             .unwrap_or_else(|| inline_clip(user_input, 120));
-        let _ = self.solve_trace_store.start_episode(
+        let episode = self.solve_trace_store.start_episode(
             &self.session.session_id,
             &turn_id,
             &turn_id,
@@ -741,6 +741,18 @@ impl Agent {
             focus.as_ref().map(|(id, _, _)| id.as_str()),
             focus.as_ref().map(|(_, title, _)| title.as_str()),
         );
+        if let Ok(episode) = &episode {
+            self.emit_solve_trace_updated(
+                handler,
+                "episode_start",
+                "episode",
+                &episode.id,
+                None,
+                &episode.status,
+                &episode.goal,
+                &episode.user_input,
+            );
+        }
         if let Some((_, _, Some(summary))) = focus {
             let _ = self.solve_trace_store.append_supplements(
                 &self.session.session_id,
@@ -751,6 +763,55 @@ impl Agent {
                 )],
             );
         }
+    }
+
+    fn emit_solve_trace_updated(
+        &self,
+        handler: &mut dyn EventHandler,
+        source: &str,
+        entry_kind: &str,
+        episode_id: &str,
+        entry_id: Option<&str>,
+        status: &str,
+        action: &str,
+        observation: &str,
+    ) {
+        let episode = self
+            .solve_trace_store
+            .load(&self.session.session_id)
+            .ok()
+            .and_then(|trace| {
+                trace
+                    .episodes
+                    .into_iter()
+                    .find(|episode| episode.id == episode_id)
+            });
+        let (turn_id, goal, step_count, decision_count, supplement_count) = episode
+            .map(|episode| {
+                (
+                    episode.turn_id,
+                    episode.goal,
+                    episode.steps.len(),
+                    episode.decisions.len(),
+                    episode.supplements.len(),
+                )
+            })
+            .unwrap_or_else(|| (self.active_archive_turn_id(), String::new(), 0, 0, 0));
+        handler.on_event(AgentEvent::SolveTraceUpdated {
+            session_id: self.session.session_id.clone(),
+            episode_id: episode_id.to_string(),
+            turn_id,
+            source: source.to_string(),
+            entry_kind: entry_kind.to_string(),
+            entry_id: entry_id.map(str::to_string),
+            status: status.to_string(),
+            goal_preview: redacted_truncated(goal, 160),
+            action_preview: redacted_truncated(action, 180),
+            observation_preview: redacted_truncated(observation, 220),
+            step_count,
+            decision_count,
+            supplement_count,
+        });
     }
 
     fn sync_goal_runtime_state(&self) -> Option<Vec<TodoItem>> {
@@ -887,9 +948,9 @@ impl Agent {
         }
         if tool_name == "delegate_to_worker" {
             self.update_delegate_worker_todos_from_tool_outcome(handler, tool_call_id, result);
-            self.record_delegate_worker_solve_trace(tool_call_id, result, status);
+            self.record_delegate_worker_solve_trace(handler, tool_call_id, result, status);
         } else {
-            self.record_tool_solve_trace(tool_call_id, tool_name, result, status);
+            self.record_tool_solve_trace(handler, tool_call_id, tool_name, result, status);
         }
     }
 
@@ -1023,7 +1084,7 @@ impl Agent {
         }
     }
 
-    fn record_turn_solve_outcome(&self, assistant_response: &str) {
+    fn record_turn_solve_outcome(&self, handler: &mut dyn EventHandler, assistant_response: &str) {
         let episode_id = self.active_archive_turn_id();
         let focus = self
             .goal_state_store
@@ -1055,9 +1116,24 @@ impl Agent {
             next_focus: focus.as_ref().map(|(_, title, _)| title.clone()),
             created_at_unix: unix_now_secs(),
         };
-        let _ = self
+        let outcome_status = outcome.status.clone();
+        let outcome_summary = outcome.summary.clone();
+        if self
             .solve_trace_store
-            .set_outcome(&self.session.session_id, &episode_id, outcome);
+            .set_outcome(&self.session.session_id, &episode_id, outcome)
+            .is_ok()
+        {
+            self.emit_solve_trace_updated(
+                handler,
+                "turn_outcome",
+                "outcome",
+                &episode_id,
+                Some("outcome"),
+                &outcome_status,
+                "Record turn outcome",
+                &outcome_summary,
+            );
+        }
         self.update_experience_from_episode(&episode_id);
     }
 
@@ -1145,6 +1221,7 @@ impl Agent {
 
     fn record_tool_solve_trace(
         &self,
+        handler: &mut dyn EventHandler,
         tool_call_id: &str,
         tool_name: &str,
         result: &str,
@@ -1161,14 +1238,43 @@ impl Agent {
             status: map_tool_status_to_solve_step_status(status).to_string(),
             created_at_unix: unix_now_secs(),
         };
-        let _ = self
+        let step_id = step.id.clone();
+        let step_status = step.status.clone();
+        let step_action = step.action.clone();
+        let step_observation = step.observation.clone();
+        if self
             .solve_trace_store
-            .append_step(&self.session.session_id, &episode_id, step);
+            .append_step(&self.session.session_id, &episode_id, step)
+            .is_ok()
+        {
+            self.emit_solve_trace_updated(
+                handler,
+                "tool_step",
+                "step",
+                &episode_id,
+                Some(&step_id),
+                &step_status,
+                &step_action,
+                &step_observation,
+            );
+        }
     }
 
-    fn record_delegate_worker_solve_trace(&self, tool_call_id: &str, result: &str, status: &str) {
+    fn record_delegate_worker_solve_trace(
+        &self,
+        handler: &mut dyn EventHandler,
+        tool_call_id: &str,
+        result: &str,
+        status: &str,
+    ) {
         let Some(observation) = parse_delegate_worker_observation(result) else {
-            self.record_tool_solve_trace(tool_call_id, "delegate_to_worker", result, status);
+            self.record_tool_solve_trace(
+                handler,
+                tool_call_id,
+                "delegate_to_worker",
+                result,
+                status,
+            );
             return;
         };
         let episode_id = self.active_archive_turn_id();
@@ -1199,9 +1305,26 @@ impl Agent {
             status: step_status.to_string(),
             created_at_unix: unix_now_secs(),
         };
-        let _ = self
+        let step_id = step.id.clone();
+        let step_status = step.status.clone();
+        let step_action = step.action.clone();
+        let step_observation = step.observation.clone();
+        if self
             .solve_trace_store
-            .append_step(&self.session.session_id, &episode_id, step);
+            .append_step(&self.session.session_id, &episode_id, step)
+            .is_ok()
+        {
+            self.emit_solve_trace_updated(
+                handler,
+                "delegate_worker",
+                "step",
+                &episode_id,
+                Some(&step_id),
+                &step_status,
+                &step_action,
+                &step_observation,
+            );
+        }
 
         let mut supplements = observation
             .payload
@@ -1248,11 +1371,24 @@ impl Agent {
                     .collect(),
                 created_at_unix: unix_now_secs(),
             };
-            let _ = self.solve_trace_store.append_decision(
-                &self.session.session_id,
-                &episode_id,
-                decision,
-            );
+            let decision_id = decision.id.clone();
+            let decision_chosen = decision.chosen.clone();
+            if self
+                .solve_trace_store
+                .append_decision(&self.session.session_id, &episode_id, decision)
+                .is_ok()
+            {
+                self.emit_solve_trace_updated(
+                    handler,
+                    "delegate_worker",
+                    "decision",
+                    &episode_id,
+                    Some(&decision_id),
+                    "completed",
+                    "Select delegated next actions",
+                    &decision_chosen,
+                );
+            }
         }
     }
 
@@ -1883,7 +2019,7 @@ impl Agent {
             self.active_turn_id = Some(turn_id.clone());
             self.emit_turn_started(handler, &turn_id, user_input, false);
             self.seed_goal_state_from_user_input(handler, user_input)?;
-            self.start_solve_episode(user_input);
+            self.start_solve_episode(handler, user_input);
             self.upsert_archive_turn(&self.active_archive_turn_id());
             self.append_archive_message("user", user_input, None, None);
             self.append_archive_event(
@@ -2223,7 +2359,7 @@ impl Agent {
                     .record_assistant_timeline_entry(final_text.clone());
                 self.reconcile_goal_state_after_turn(handler, user_input, &final_text)
                     .await;
-                self.record_turn_solve_outcome(&final_text);
+                self.record_turn_solve_outcome(handler, &final_text);
                 self.refresh_meta_patterns_with_model(handler).await;
             }
             self.persist_session_with_handler(handler)?;
@@ -2834,7 +2970,7 @@ impl Agent {
             .record_assistant_timeline_entry(final_text.clone());
         self.reconcile_goal_state_after_turn(handler, user_input, &final_text)
             .await;
-        self.record_turn_solve_outcome(&final_text);
+        self.record_turn_solve_outcome(handler, &final_text);
         self.refresh_meta_patterns_with_model(handler).await;
         self.persist_session_with_handler(handler)?;
         self.maybe_generate_session_title(handler, user_input, &final_text)
@@ -7859,6 +7995,25 @@ mod tests {
             handler
                 .events()
                 .iter()
+                .find(|event| matches!(event, AgentEvent::SolveTraceUpdated { .. })),
+            Some(AgentEvent::SolveTraceUpdated {
+                source,
+                entry_kind,
+                episode_id,
+                status,
+                observation_preview,
+                ..
+            }) if source == "episode_start"
+                && entry_kind == "episode"
+                && episode_id == "turn-1"
+                && status == "in_progress"
+                && observation_preview.contains("OPENAI_API_KEY=[REDACTED]")
+                && !observation_preview.contains("test-redaction-fixture")
+        ));
+        assert!(matches!(
+            handler
+                .events()
+                .iter()
                 .rev()
                 .find(|event| matches!(event, AgentEvent::TurnFinished { .. })),
             Some(AgentEvent::TurnFinished {
@@ -9217,6 +9372,36 @@ mod tests {
                 && *active_count == 0
                 && active_preview.is_empty()
         )));
+        assert!(handler.events().iter().any(|event| matches!(
+            event,
+            AgentEvent::SolveTraceUpdated {
+                source,
+                entry_kind,
+                entry_id,
+                status,
+                step_count,
+                ..
+            } if source == "delegate_worker"
+                && entry_kind == "step"
+                && entry_id.as_deref() == Some("delegate:tool-1")
+                && status == "completed"
+                && *step_count >= 1
+        )));
+        assert!(handler.events().iter().any(|event| matches!(
+            event,
+            AgentEvent::SolveTraceUpdated {
+                source,
+                entry_kind,
+                entry_id,
+                decision_count,
+                observation_preview,
+                ..
+            } if source == "delegate_worker"
+                && entry_kind == "decision"
+                && entry_id.as_deref() == Some("delegate:tool-1:next")
+                && *decision_count >= 1
+                && observation_preview.contains("Compare the shared trait definition")
+        )));
 
         let state = agent
             .goal_state_store
@@ -9282,7 +9467,20 @@ mod tests {
                 .any(|item| item.contains("primary root cause"))
         );
 
-        agent.record_turn_solve_outcome("Inspect the shared trait definition next.");
+        agent.record_turn_solve_outcome(&mut handler, "Inspect the shared trait definition next.");
+        assert!(handler.events().iter().any(|event| matches!(
+            event,
+            AgentEvent::SolveTraceUpdated {
+                source,
+                entry_kind,
+                status,
+                observation_preview,
+                ..
+            } if source == "turn_outcome"
+                && entry_kind == "outcome"
+                && status == "in_progress"
+                && observation_preview.contains("Investigate compile failures")
+        )));
         let experiences = agent
             .experience_store
             .load(&agent.session.session_id)

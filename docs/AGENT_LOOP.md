@@ -180,6 +180,8 @@ UI can show:
   and turn-end reconcile, with summary metrics instead of raw working memory.
 - Todo-state update events for goal-state sync, explicit todo-tool writes, and delegated
   worker step updates, with counts and redacted active-item previews.
+- Solve-trace update events for episode starts, tool/delegation steps, decisions, and
+  turn outcomes, with compact redacted previews and trace counters.
 - Turn interruption events for user-requested stops, including the turn id, runtime phase,
   reason, and redacted display message.
 - Tool call start and completion.

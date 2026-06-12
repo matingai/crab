@@ -2990,6 +2990,14 @@ function summarizeEvent(event: Record<string, unknown> & { type?: string }): str
         const source = formatTodoStateSource(String(event.source || ""));
         return `任务列表${source ? ` · ${source}` : ""} · active ${String(event.active_count || 0)}/${String(event.total || 0)}`;
       }
+    case "solve_trace_updated":
+      {
+        const source = formatSolveTraceSource(String(event.source || ""));
+        const kind = String(event.entry_kind || "");
+        const status = String(event.status || "");
+        const action = String(event.action_preview || event.observation_preview || "");
+        return `求解轨迹${source ? ` · ${source}` : ""}${kind ? ` · ${kind}` : ""}${status ? ` · ${status}` : ""}${action ? ` · ${truncate(action, 54)}` : ""}`;
+      }
     case "model_request_started":
       return `请求模型 ${String(event.model || "")}${formatModelRequestMetadata(event)}，${String(event.message_count || 0)} 条消息`;
     case "model_request_finished":
@@ -3229,6 +3237,21 @@ function formatTodoStateSource(source: string): string {
       return "worker 步骤";
     case "todo_tool":
       return "todo 工具";
+    default:
+      return source;
+  }
+}
+
+function formatSolveTraceSource(source: string): string {
+  switch (source) {
+    case "episode_start":
+      return "开始";
+    case "tool_step":
+      return "工具步骤";
+    case "delegate_worker":
+      return "worker 推进";
+    case "turn_outcome":
+      return "回合结果";
     default:
       return source;
   }
@@ -4975,6 +4998,19 @@ export default function Page() {
             : "";
           setAgentActivity(
             `任务列表已更新${source ? ` · ${source}` : ""} · active ${active}/${total}${preview ? ` · ${truncate(preview, 44)}` : ""}`,
+          );
+        }
+        break;
+      case "solve_trace_updated":
+        {
+          const source = formatSolveTraceSource(String(event.source || ""));
+          const kind = String(event.entry_kind || "");
+          const status = String(event.status || "");
+          const steps = Number(event.step_count || 0);
+          const decisions = Number(event.decision_count || 0);
+          const preview = String(event.action_preview || event.observation_preview || "");
+          setAgentActivity(
+            `求解轨迹已更新${source ? ` · ${source}` : ""}${kind ? ` · ${kind}` : ""}${status ? ` · ${status}` : ""} · steps ${steps} · decisions ${decisions}${preview ? ` · ${truncate(preview, 40)}` : ""}`,
           );
         }
         break;

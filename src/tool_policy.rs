@@ -775,6 +775,7 @@ tool_policy:
             r#"{"action":"status"}"#,
             r#"{"action":"request_permission"}"#,
             r#"{"action":"snapshot","max_items":10}"#,
+            r#"{"action":"inspect_ref","ref":"@u2"}"#,
             r#"{"action":"find","query":"Ready"}"#,
             r#"{"action":"find","role":"button","state":"enabled"}"#,
             r#"{"action":"wait","contains_text":"Ready"}"#,

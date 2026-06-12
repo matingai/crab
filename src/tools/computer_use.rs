@@ -10,9 +10,9 @@ use tokio::time::{Duration, Instant, sleep};
 
 use crate::computer_use::{
     ComputerUseKey, ComputerUseScrollDirection, click_frontmost_app_ref, focus_frontmost_app_ref,
-    frontmost_app_snapshot, inspect_computer_use, normalize_computer_use_key,
-    normalize_computer_use_scroll_direction, parse_ui_ref, press_frontmost_app_key,
-    scroll_frontmost_app_ref, set_frontmost_app_ref_text,
+    frontmost_app_ref_details, frontmost_app_snapshot, inspect_computer_use,
+    normalize_computer_use_key, normalize_computer_use_scroll_direction, parse_ui_ref,
+    press_frontmost_app_key, scroll_frontmost_app_ref, set_frontmost_app_ref_text,
 };
 use crate::tools::{Tool, ToolContext};
 use crate::types::{ToolDefinition, object_schema};
@@ -90,13 +90,13 @@ impl Tool for ComputerUseTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::function(
             "computer_use",
-            "Inspect and prepare native computer-use automation. On macOS, this checks Accessibility trust, can request the permission prompt, can return or search a shallow Accessibility UI tree for the frontmost app, can focus, click, scroll, or set text on a UI ref after tool-policy approval, and can press a small whitelist of non-text keys after approval. Broad keyboard and app-control actions are intentionally not enabled yet.",
+            "Inspect and prepare native computer-use automation. On macOS, this checks Accessibility trust, can request the permission prompt, can return/search/inspect a shallow Accessibility UI tree for the frontmost app, can focus, click, scroll, or set text on a UI ref after tool-policy approval, and can press a small whitelist of non-text keys after approval. Broad keyboard and app-control actions are intentionally not enabled yet.",
             object_schema(
                 json!({
                     "action": {
                         "type": "string",
-                        "enum": ["status", "request_permission", "snapshot", "find", "wait", "focus", "click", "set_text", "scroll", "press_key"],
-                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; find searches a fresh snapshot for candidate UI refs; wait polls snapshots until text appears or the UI settles; focus sets keyboard focus to a snapshot ref such as @u2 after approval; click activates a snapshot ref after approval; set_text sets the Accessibility value for a ref after approval; scroll performs a small Accessibility scroll action on a snapshot ref after approval; press_key sends one whitelisted non-text key to the frontmost app after approval."
+                        "enum": ["status", "request_permission", "snapshot", "inspect_ref", "find", "wait", "focus", "click", "set_text", "scroll", "press_key"],
+                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; inspect_ref reads the current details and available actions for a snapshot ref; find searches a fresh snapshot for candidate UI refs; wait polls snapshots until text appears or the UI settles; focus sets keyboard focus to a snapshot ref such as @u2 after approval; click activates a snapshot ref after approval; set_text sets the Accessibility value for a ref after approval; scroll performs a small Accessibility scroll action on a snapshot ref after approval; press_key sends one whitelisted non-text key to the frontmost app after approval."
                     },
                     "max_items": {
                         "type": "integer",
@@ -112,7 +112,7 @@ impl Tool for ComputerUseTool {
                     },
                     "reference": {
                         "type": "string",
-                        "description": "UI ref from the latest computer_use snapshot, such as @u2. Required for focus, click, set_text, and scroll."
+                        "description": "UI ref from the latest computer_use snapshot, such as @u2. Required for inspect_ref, focus, click, set_text, and scroll."
                     },
                     "ref": {
                         "type": "string",
@@ -274,6 +274,23 @@ impl Tool for ComputerUseTool {
                     render_find_matches(&outcome)
                 ))
             }
+            "inspect_ref" => {
+                let reference = args.reference()?;
+                let status = inspect_computer_use(false);
+                if !status.ready() {
+                    bail!("{}", status.guidance);
+                }
+                let max_items = args.max_items.clamp(1, 50);
+                let max_depth = args.max_depth.clamp(1, 6);
+                let details = frontmost_app_ref_details(reference, max_items, max_depth)?;
+                let record = save_snapshot_record(ctx, max_items, max_depth, &details)?;
+                Ok(format!(
+                    "snapshot_id: {}\n{}\n\n{}",
+                    record.snapshot_id,
+                    render_status(false),
+                    details.trim()
+                ))
+            }
             "click" => {
                 let reference = args.reference()?;
                 let max_items = args.max_items.clamp(1, 50);
@@ -376,7 +393,7 @@ impl Tool for ComputerUseTool {
                 ))
             }
             other => bail!(
-                "unsupported computer_use action `{other}`; use status, request_permission, snapshot, find, wait, focus, click, set_text, scroll, or press_key"
+                "unsupported computer_use action `{other}`; use status, request_permission, snapshot, inspect_ref, find, wait, focus, click, set_text, scroll, or press_key"
             ),
         }
     }
@@ -1254,6 +1271,18 @@ mod tests {
         assert!(format!("{error:#}").contains("requires at least one"));
     }
 
+    #[tokio::test]
+    async fn inspect_ref_requires_reference() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tool = ComputerUseTool;
+        let error = tool
+            .execute(json!({ "action": "inspect_ref" }), &ctx(tmp.path()))
+            .await
+            .expect_err("missing ref");
+
+        assert!(format!("{error:#}").contains("requires a non-empty"));
+    }
+
     #[test]
     fn wait_request_defaults_to_settled_and_clamps_bounds() {
         let args: super::ComputerUseArgs = serde_json::from_value(json!({
@@ -1529,6 +1558,7 @@ ui_tree:
         assert!(schema.contains("\"max_items\""));
         assert!(schema.contains("\"max_depth\""));
         assert!(schema.contains("\"snapshot\""));
+        assert!(schema.contains("\"inspect_ref\""));
         assert!(schema.contains("\"find\""));
         assert!(schema.contains("\"wait\""));
         assert!(schema.contains("\"focus\""));

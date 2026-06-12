@@ -10,6 +10,8 @@ The current implementation is deliberately conservative:
 - A permission-prompt path for first-time setup.
 - A shallow frontmost-app Accessibility UI tree when permission is granted, with stable
   element references such as `@u1`.
+- Read-only inspection for a current ref, including its current line and reported native
+  Accessibility actions.
 - Read-only searching across a fresh Accessibility snapshot to locate candidate refs by
   text, role, and compact state.
 - Read-only waiting for text to appear or for the frontmost Accessibility tree to settle.
@@ -31,13 +33,14 @@ side effect of ordinary chat.
 
 ## Tool Surface
 
-The built-in `computer_use` tool supports ten actions:
+The built-in `computer_use` tool supports eleven actions:
 
 | Action | Behavior |
 | --- | --- |
 | `status` | Reports platform support, Accessibility trust, prompt support, and setup guidance. |
 | `request_permission` | Calls the macOS Accessibility prompt API and reports the resulting state. |
 | `snapshot` | Reads a compact Accessibility UI tree for the frontmost application and its windows. |
+| `inspect_ref` | Reads current details and reported native Accessibility actions for a snapshot ref. |
 | `find` | Searches a fresh snapshot for candidate UI refs by query, role, or state, and returns matching element lines. |
 | `wait` | Polls snapshots until target text appears or the UI tree settles, then returns the latest snapshot. |
 | `focus` | Sets keyboard focus to a snapshot ref such as `@u2`, then returns a post-focus snapshot. |
@@ -82,6 +85,22 @@ approval-gated actions can target a concrete element without guessing coordinate
 Snapshot state flags are intentionally sparse: `focused=true` and `selected=true` are
 shown only when present, and `enabled=false` marks unavailable controls without adding
 noise to every enabled element.
+
+`inspect_ref` is a read-only preflight for a single observed ref. It re-reads the current
+frontmost app, returns the target element line plus `available_actions`, and saves a fresh
+`snapshot_id` that can be used by the next action:
+
+```json
+{
+  "action": "inspect_ref",
+  "ref": "@u8",
+  "max_items": 40,
+  "max_depth": 3
+}
+```
+
+This helps the agent choose between `click`, `scroll`, `set_text`, or a key-driven flow
+based on the UI element's reported native actions instead of guessing from text alone.
 
 `find` is the lightweight targeting step for native UI work. It takes a fresh snapshot,
 saves a new `snapshot_id`, and returns only matching element lines. Use it when the agent
@@ -202,9 +221,10 @@ guard fails, the write action is not attempted and the agent should run `snapsho
 
 `focus`, `click`, `set_text`, `scroll`, and `press_key` are write actions. Crab's default tool
 policy requires approval before they run, even if the user has not configured a custom
-`tool_policy`. `status`, `snapshot`, `find`, and `wait` stay available without approval.
-`set_text` does not send global keystrokes; it attempts to set the target Accessibility
-element's value directly, so it is mainly for text fields and similar controls.
+`tool_policy`. `status`, `snapshot`, `inspect_ref`, `find`, and `wait` stay available
+without approval. `set_text` does not send global keystrokes; it attempts to set the
+target Accessibility element's value directly, so it is mainly for text fields and
+similar controls.
 
 `scroll` intentionally acts on a specific observed ref and accepts only `up`, `down`,
 `left`, or `right`, with `scroll_steps` clamped to `1..=10`. It is for moving within
@@ -244,6 +264,7 @@ actions on observed refs. It lets the agent know whether native automation is po
 gives it a bounded, inspectable desktop UI tree. Future write actions should stay gated by:
 
 - explicit tool names and arguments;
+- read-only ref inspection before choosing an available native action;
 - read-only find steps before choosing an observed ref;
 - pre-action ref guards for role, text, and state when the target is important;
 - read-only waits after actions before choosing the next ref;

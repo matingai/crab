@@ -38,6 +38,14 @@ pub fn frontmost_app_snapshot(max_items: usize, max_depth: usize) -> Result<Stri
     platform::frontmost_app_snapshot(max_items, max_depth)
 }
 
+pub fn frontmost_app_ref_details(
+    reference: &str,
+    max_items: usize,
+    max_depth: usize,
+) -> Result<String> {
+    platform::frontmost_app_ref_details(reference, max_items, max_depth)
+}
+
 pub fn click_frontmost_app_ref(
     reference: &str,
     max_items: usize,
@@ -407,6 +415,44 @@ mod platform {
         Ok(stdout.trim().to_string())
     }
 
+    pub fn frontmost_app_ref_details(
+        reference: &str,
+        max_items: usize,
+        max_depth: usize,
+    ) -> Result<String> {
+        if !accessibility_trusted(false) {
+            bail!(
+                "computer_use inspect_ref requires macOS Accessibility permission. Run action=request_permission, then enable Crab or the launching terminal in System Settings > Privacy & Security > Accessibility."
+            );
+        }
+
+        let target_index = parse_ui_ref(reference)?;
+        let max_items = max_items.clamp(1, 50);
+        if target_index > max_items {
+            bail!(
+                "computer_use ref @u{target_index} is outside max_items={max_items}; use a ref from the latest bounded snapshot or increase max_items up to 50"
+            );
+        }
+        let max_depth = max_depth.clamp(1, 6);
+        let script = frontmost_ref_details_script(target_index, max_items, max_depth);
+        let mut command = Command::new("osascript");
+        for line in &script {
+            command.arg("-e").arg(line);
+        }
+        let output = command
+            .output()
+            .context("failed to run osascript for Accessibility inspect_ref")?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!(
+                "Accessibility inspect_ref failed: {}",
+                stderr.trim().trim_end_matches('.')
+            );
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(stdout.trim().to_string())
+    }
+
     pub fn click_frontmost_app_ref(
         reference: &str,
         max_items: usize,
@@ -665,6 +711,144 @@ mod platform {
         .collect()
     }
 
+    fn frontmost_ref_details_script(
+        target_index: usize,
+        max_items: usize,
+        max_depth: usize,
+    ) -> Vec<String> {
+        [
+            "global itemIndex, maxItems, maxDepth, targetIndex, foundOutput",
+            &format!("set targetIndex to {target_index}"),
+            &format!("set maxItems to {max_items}"),
+            &format!("set maxDepth to {max_depth}"),
+            "set itemIndex to 0",
+            "set foundOutput to \"\"",
+            "on cleanText(valueText)",
+            "try",
+            "set textValue to valueText as text",
+            "on error",
+            "return \"\"",
+            "end try",
+            "set oldDelimiters to AppleScript's text item delimiters",
+            "set AppleScript's text item delimiters to linefeed",
+            "set textItems to text items of textValue",
+            "set AppleScript's text item delimiters to \" \"",
+            "set textValue to textItems as text",
+            "set AppleScript's text item delimiters to return",
+            "set textItems to text items of textValue",
+            "set AppleScript's text item delimiters to \" \"",
+            "set textValue to textItems as text",
+            "set AppleScript's text item delimiters to oldDelimiters",
+            "if length of textValue is greater than 120 then set textValue to text 1 thru 117 of textValue & \"...\"",
+            "return textValue",
+            "end cleanText",
+            "on describeTarget(elementRef)",
+            "global itemIndex, targetIndex",
+            "tell application \"System Events\"",
+            "try",
+            "set roleText to role description of elementRef as text",
+            "on error",
+            "try",
+            "set roleText to role of elementRef as text",
+            "on error",
+            "set roleText to \"unknown\"",
+            "end try",
+            "end try",
+            "try",
+            "set nameText to name of elementRef as text",
+            "on error",
+            "set nameText to \"\"",
+            "end try",
+            "try",
+            "set valueText to value of elementRef as text",
+            "on error",
+            "set valueText to \"\"",
+            "end try",
+            "try",
+            "set {x, y} to position of elementRef",
+            "set {wide, high} to size of elementRef",
+            "set boundsText to \" bounds=(\" & x & \",\" & y & \",\" & wide & \"x\" & high & \")\"",
+            "on error",
+            "set boundsText to \"\"",
+            "end try",
+            "try",
+            "set enabledText to enabled of elementRef as text",
+            "on error",
+            "set enabledText to \"\"",
+            "end try",
+            "try",
+            "set focusedText to focused of elementRef as text",
+            "on error",
+            "set focusedText to \"\"",
+            "end try",
+            "try",
+            "set selectedText to selected of elementRef as text",
+            "on error",
+            "set selectedText to \"\"",
+            "end try",
+            "set lineText to \"- @u\" & targetIndex & \" role=\" & quoted form of (my cleanText(roleText))",
+            "if nameText is not \"\" then set lineText to lineText & \" name=\" & quoted form of (my cleanText(nameText))",
+            "if valueText is not \"\" then set lineText to lineText & \" value=\" & quoted form of (my cleanText(valueText))",
+            "set lineText to lineText & boundsText",
+            "if enabledText is \"false\" then set lineText to lineText & \" enabled=false\"",
+            "if focusedText is \"true\" then set lineText to lineText & \" focused=true\"",
+            "if selectedText is \"true\" then set lineText to lineText & \" selected=true\"",
+            "set actionNames to \"\"",
+            "try",
+            "set actionRefs to actions of elementRef",
+            "repeat with actionRef in actionRefs",
+            "try",
+            "set actionName to name of actionRef as text",
+            "if actionNames is \"\" then",
+            "set actionNames to actionName",
+            "else",
+            "set actionNames to actionNames & \", \" & actionName",
+            "end if",
+            "end try",
+            "end repeat",
+            "end try",
+            "if actionNames is \"\" then set actionNames to \"(none reported)\"",
+            "return \"ref: @u\" & targetIndex & linefeed & \"ref_line: \" & lineText & linefeed & \"available_actions: \" & actionNames",
+            "end tell",
+            "end describeTarget",
+            "on visitElement(elementRef, depth)",
+            "global itemIndex, maxItems, maxDepth, targetIndex, foundOutput",
+            "if itemIndex is greater than or equal to maxItems then return false",
+            "tell application \"System Events\"",
+            "set itemIndex to itemIndex + 1",
+            "if itemIndex is targetIndex then",
+            "set foundOutput to my describeTarget(elementRef)",
+            "return true",
+            "end if",
+            "if depth is less than maxDepth then",
+            "try",
+            "set childElements to UI elements of elementRef",
+            "repeat with childElement in childElements",
+            "if itemIndex is greater than or equal to maxItems then exit repeat",
+            "if my visitElement(childElement, depth + 1) then return true",
+            "end repeat",
+            "end try",
+            "end if",
+            "end tell",
+            "return false",
+            "end visitElement",
+            "tell application \"System Events\"",
+            "set frontApp to first application process whose frontmost is true",
+            "set appName to name of frontApp",
+            "set appPid to unix id of frontApp",
+            "repeat with windowRef in windows of frontApp",
+            "if itemIndex is greater than or equal to maxItems then exit repeat",
+            "if my visitElement(windowRef, 0) then exit repeat",
+            "end repeat",
+            "if foundOutput is \"\" then error \"UI ref @u\" & targetIndex & \" was not found in the current Accessibility snapshot\"",
+            "return \"frontmost_app: \" & appName & linefeed & \"pid: \" & appPid & linefeed & foundOutput",
+            "end tell",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+    }
+
     fn frontmost_click_script(
         target_index: usize,
         max_items: usize,
@@ -899,7 +1083,8 @@ mod platform {
     mod tests {
         use super::{
             frontmost_click_script, frontmost_focus_script, frontmost_press_key_script,
-            frontmost_scroll_script, frontmost_set_text_script, frontmost_snapshot_script,
+            frontmost_ref_details_script, frontmost_scroll_script, frontmost_set_text_script,
+            frontmost_snapshot_script,
         };
         use crate::computer_use::{
             normalize_computer_use_key, normalize_computer_use_scroll_direction,
@@ -965,6 +1150,26 @@ mod platform {
             let script = frontmost_focus_script(2, 8, 2);
             let tmp = tempfile::tempdir().expect("tempdir");
             let output_path = tmp.path().join("computer-use-focus.scpt");
+            let mut command = Command::new("osacompile");
+            command.arg("-o").arg(&output_path);
+            for line in script {
+                command.arg("-e").arg(line);
+            }
+
+            let output = command.output().expect("run osacompile");
+            assert!(
+                output.status.success(),
+                "osacompile failed\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        #[test]
+        fn ref_details_script_compiles() {
+            let script = frontmost_ref_details_script(2, 8, 2);
+            let tmp = tempfile::tempdir().expect("tempdir");
+            let output_path = tmp.path().join("computer-use-ref-details.scpt");
             let mut command = Command::new("osacompile");
             command.arg("-o").arg(&output_path);
             for line in script {
@@ -1062,6 +1267,14 @@ mod platform {
     }
 
     pub fn frontmost_app_snapshot(_max_items: usize, _max_depth: usize) -> Result<String> {
+        bail!("native Accessibility-backed computer use currently supports macOS only")
+    }
+
+    pub fn frontmost_app_ref_details(
+        _reference: &str,
+        _max_items: usize,
+        _max_depth: usize,
+    ) -> Result<String> {
         bail!("native Accessibility-backed computer use currently supports macOS only")
     }
 

@@ -184,6 +184,7 @@ To build a local Tauri installer:
 
 ```bash
 cd desktop-shell
+npm run release:check
 npm run package:desktop
 ```
 

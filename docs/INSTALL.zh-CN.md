@@ -179,6 +179,7 @@ npm run dev
 
 ```bash
 cd desktop-shell
+npm run release:check
 npm run package:desktop
 ```
 

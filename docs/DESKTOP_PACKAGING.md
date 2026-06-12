@@ -49,6 +49,17 @@ cd desktop-shell
 npm install
 ```
 
+Run the fast packaging preflight before doing an expensive native bundle:
+
+```bash
+cd desktop-shell
+npm run release:check
+```
+
+The preflight verifies version alignment, required Tauri bundle metadata, DMG and NSIS
+coverage, desktop icons, packaging helper behavior, and the GitHub Release workflow matrix.
+It also prints the desktop asset names that the next tag will publish.
+
 Build the installer for the current platform:
 
 ```bash
@@ -109,6 +120,8 @@ Use `--bundles nsis` on Windows.
 
 The release workflow uses `scripts/package-desktop.sh` so local packaging and CI packaging
 share the same stable asset names, SHA-256 checksum behavior, and release manifest shape.
+It also runs `scripts/check-desktop-release.mjs` before the native bundle step so version
+or packaging drift fails early.
 
 Release assets should include, for each desktop installer:
 

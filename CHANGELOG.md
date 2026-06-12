@@ -75,6 +75,9 @@ and uses semantic versioning once stable release boundaries are established.
 - Desktop installer packaging now has a cross-platform Node helper plus
   `npm run package:desktop`, `npm run package:dmg`, and `npm run package:exe` shortcuts for
   release-ready local builds.
+- Desktop release packaging now has a fast preflight check that verifies version alignment,
+  Tauri DMG/NSIS configuration, required icons, packaging helper behavior, and the GitHub
+  Release workflow matrix before native installers are built.
 - The English and Chinese READMEs now surface desktop DMG and Windows setup `.exe`
   downloads near the top of the project page, with release asset names and unsigned
   preview-build notes for first-time users.

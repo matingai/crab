@@ -128,6 +128,9 @@ jobs:
           cache: npm
           cache-dependency-path: desktop-shell/package-lock.json
 
+      - name: Check desktop release packaging
+        run: node scripts/check-desktop-release.mjs
+
       - name: Install frontend dependencies
         working-directory: desktop-shell
         run: npm ci

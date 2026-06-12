@@ -12,6 +12,7 @@ compatibility risk.
   cargo test --locked
   cargo run -- doctor
   cargo metadata --no-deps --format-version 1
+  node scripts/check-desktop-release.mjs
   scripts/package-release.sh
   ```
 
@@ -20,6 +21,7 @@ compatibility risk.
   ```bash
   cd desktop-shell
   npm ci
+  npm run release:check
   npm run package:desktop
   cd ..
   ```

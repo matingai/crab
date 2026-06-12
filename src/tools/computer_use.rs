@@ -134,7 +134,7 @@ impl Tool for ComputerUseTool {
                     "native_action": {
                         "type": "string",
                         "enum": ["press", "show_menu", "confirm", "cancel", "increment", "decrement"],
-                        "description": "Whitelisted native Accessibility action for action=perform_action, or an expected available action for action=wait_ref. AX-prefixed names such as AXPress and AXShowMenu are also accepted."
+                        "description": "Whitelisted native Accessibility action for action=perform_action, an expected available action for action=wait_ref, or a reported action filter for action=find. AX-prefixed names such as AXPress and AXShowMenu are also accepted."
                     },
                     "direction": {
                         "type": "string",
@@ -160,17 +160,17 @@ impl Tool for ComputerUseTool {
                     "query": {
                         "type": "string",
                         "maxLength": 1000,
-                        "description": "Text to search for in frontmost Accessibility element lines when action=find."
+                        "description": "Text to search for in frontmost Accessibility element lines when action=find. At least one of query, role, state, or native_action is required."
                     },
                     "role": {
                         "type": "string",
                         "maxLength": 120,
-                        "description": "Optional role filter for action=find, such as button, text field, menu item, or window."
+                        "description": "Optional role filter for action=find, such as button, text field, menu item, or window. At least one of query, role, state, or native_action is required."
                     },
                     "state": {
                         "type": "string",
                         "enum": ["focused", "selected", "enabled", "disabled"],
-                        "description": "Optional state filter for action=find. enabled means no enabled=false flag is present in the snapshot line."
+                        "description": "Optional state filter for action=find. enabled means no enabled=false flag is present in the snapshot line. At least one of query, role, state, or native_action is required."
                     },
                     "max_results": {
                         "type": "integer",
@@ -294,7 +294,7 @@ impl Tool for ComputerUseTool {
                 let max_depth = args.max_depth.clamp(1, 6);
                 let snapshot = frontmost_app_snapshot(max_items, max_depth)?;
                 let record = save_snapshot_record(ctx, max_items, max_depth, &snapshot)?;
-                let outcome = find_snapshot_lines(&snapshot, &request);
+                let outcome = find_snapshot_lines(&snapshot, &request, max_items, max_depth)?;
                 Ok(format!(
                     "snapshot_id: {}\nfind_result_count: {}\nfind_truncated: {}\n{}\n\n{}",
                     record.snapshot_id,
@@ -642,14 +642,24 @@ impl ComputerUseArgs {
             .as_deref()
             .map(ComputerUseFindState::parse)
             .transpose()?;
-        if query.is_none() && role.is_none() && state.is_none() {
-            bail!("computer_use find requires at least one of `query`, `role`, or `state`");
+        let native_action = self
+            .native_action
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(normalize_computer_use_native_action)
+            .transpose()?;
+        if query.is_none() && role.is_none() && state.is_none() && native_action.is_none() {
+            bail!(
+                "computer_use find requires at least one of `query`, `role`, `state`, or `native_action`"
+            );
         }
 
         Ok(ComputerUseFindRequest {
             query,
             role,
             state,
+            native_action,
             case_sensitive: self.case_sensitive.unwrap_or(false),
             max_results: self
                 .max_results
@@ -775,6 +785,7 @@ struct ComputerUseFindRequest {
     query: Option<String>,
     role: Option<String>,
     state: Option<ComputerUseFindState>,
+    native_action: Option<ComputerUseNativeAction>,
     case_sensitive: bool,
     max_results: usize,
 }
@@ -1132,13 +1143,23 @@ fn render_wait_ref_unavailable(reference: &str, latest_error_sha256: Option<&str
     )
 }
 
-fn find_snapshot_lines(snapshot: &str, request: &ComputerUseFindRequest) -> ComputerUseFindOutcome {
+fn find_snapshot_lines(
+    snapshot: &str,
+    request: &ComputerUseFindRequest,
+    max_items: usize,
+    max_depth: usize,
+) -> Result<ComputerUseFindOutcome> {
     let mut matches = Vec::new();
     let mut truncated = false;
 
     for line in snapshot.lines() {
         let trimmed = line.trim_start();
         if !trimmed.starts_with("- @u") || !matches_find_request(trimmed, request) {
+            continue;
+        }
+        if let Some(native_action) = request.native_action
+            && !snapshot_line_ref_has_native_action(trimmed, native_action, max_items, max_depth)?
+        {
             continue;
         }
         if matches.len() >= request.max_results {
@@ -1148,7 +1169,7 @@ fn find_snapshot_lines(snapshot: &str, request: &ComputerUseFindRequest) -> Comp
         matches.push(line.trim_end().to_string());
     }
 
-    ComputerUseFindOutcome { matches, truncated }
+    Ok(ComputerUseFindOutcome { matches, truncated })
 }
 
 fn matches_find_request(line: &str, request: &ComputerUseFindRequest) -> bool {
@@ -1168,6 +1189,33 @@ fn matches_find_request(line: &str, request: &ComputerUseFindRequest) -> bool {
         return false;
     }
     true
+}
+
+fn snapshot_line_ref_has_native_action(
+    line: &str,
+    native_action: ComputerUseNativeAction,
+    max_items: usize,
+    max_depth: usize,
+) -> Result<bool> {
+    let Some(reference) = ui_ref_from_snapshot_line(line) else {
+        return Ok(false);
+    };
+    parse_ui_ref(&reference)?;
+    let details = match frontmost_app_ref_details(&reference, max_items, max_depth) {
+        Ok(details) => details,
+        Err(_) => return Ok(false),
+    };
+    Ok(details_have_native_action(&details, native_action))
+}
+
+fn ui_ref_from_snapshot_line(line: &str) -> Option<String> {
+    let trimmed = line.trim_start();
+    let rest = trimmed.strip_prefix("- @u")?;
+    let digits: String = rest.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        return None;
+    }
+    Some(format!("@u{digits}"))
 }
 
 fn contains_match(value: &str, query: &str, case_sensitive: bool) -> bool {
@@ -1370,6 +1418,7 @@ mod tests {
         details_match_wait_ref, find_snapshot_lines, load_snapshot_record, ref_line_from_details,
         render_wait_ref_unavailable, render_write_result, resolve_snapshot_record,
         save_snapshot_record, snapshot_contains_text, snapshot_line_for_ref, snapshot_record_path,
+        ui_ref_from_snapshot_line,
     };
     use crate::computer_use::normalize_computer_use_native_action;
     use crate::tools::{Tool, ToolContext};
@@ -1779,7 +1828,26 @@ mod tests {
 
         assert_eq!(request.query.as_deref(), Some("Continue"));
         assert_eq!(request.state, Some(ComputerUseFindState::Disabled));
+        assert_eq!(request.native_action, None);
         assert_eq!(request.max_results, super::MAX_FIND_RESULTS);
+    }
+
+    #[test]
+    fn find_request_accepts_native_action_only_filter() {
+        let args: super::ComputerUseArgs = serde_json::from_value(json!({
+            "action": "find",
+            "native_action": "AXPress"
+        }))
+        .expect("args");
+        let request = args.find_request().expect("find request");
+
+        assert_eq!(request.query, None);
+        assert_eq!(request.role, None);
+        assert_eq!(request.state, None);
+        assert_eq!(
+            request.native_action.expect("native action").ax_action,
+            "AXPress"
+        );
     }
 
     #[test]
@@ -1792,6 +1860,18 @@ mod tests {
         let error = args.find_request().expect_err("unsupported state");
 
         assert!(format!("{error:#}").contains("unsupported computer_use find state"));
+    }
+
+    #[test]
+    fn find_request_rejects_unsupported_native_action() {
+        let args: super::ComputerUseArgs = serde_json::from_value(json!({
+            "action": "find",
+            "native_action": "raise"
+        }))
+        .expect("args");
+        let error = args.find_request().expect_err("unsupported native action");
+
+        assert!(format!("{error:#}").contains("unsupported computer_use native_action"));
     }
 
     #[test]
@@ -1850,10 +1930,11 @@ ui_tree:
             query: Some("continue".to_string()),
             role: Some("button".to_string()),
             state: Some(ComputerUseFindState::Disabled),
+            native_action: None,
             case_sensitive: false,
             max_results: 12,
         };
-        let outcome = find_snapshot_lines(snapshot, &request);
+        let outcome = find_snapshot_lines(snapshot, &request, 40, 3).expect("find lines");
 
         assert_eq!(outcome.matches.len(), 1);
         assert!(outcome.matches[0].contains("@u3"));
@@ -1867,6 +1948,7 @@ ui_tree:
             query: Some("continue".to_string()),
             role: None,
             state: None,
+            native_action: None,
             case_sensitive: false,
             max_results: 12,
         };
@@ -1876,13 +1958,15 @@ ui_tree:
         };
 
         assert_eq!(
-            find_snapshot_lines(snapshot, &case_insensitive)
+            find_snapshot_lines(snapshot, &case_insensitive, 40, 3)
+                .expect("find lines")
                 .matches
                 .len(),
             1
         );
         assert!(
-            find_snapshot_lines(snapshot, &case_sensitive)
+            find_snapshot_lines(snapshot, &case_sensitive, 40, 3)
+                .expect("find lines")
                 .matches
                 .is_empty()
         );
@@ -1900,10 +1984,11 @@ ui_tree:
             query: None,
             role: Some("text_field".to_string()),
             state: Some(ComputerUseFindState::Enabled),
+            native_action: None,
             case_sensitive: false,
             max_results: 12,
         };
-        let outcome = find_snapshot_lines(snapshot, &request);
+        let outcome = find_snapshot_lines(snapshot, &request, 40, 3).expect("find lines");
 
         assert_eq!(outcome.matches.len(), 1);
         assert!(outcome.matches[0].contains("@u1"));
@@ -1922,13 +2007,24 @@ ui_tree:
             query: None,
             role: Some("button".to_string()),
             state: None,
+            native_action: None,
             case_sensitive: false,
             max_results: 2,
         };
-        let outcome = find_snapshot_lines(snapshot, &request);
+        let outcome = find_snapshot_lines(snapshot, &request, 40, 3).expect("find lines");
 
         assert_eq!(outcome.matches.len(), 2);
         assert!(outcome.truncated);
+    }
+
+    #[test]
+    fn ui_ref_from_snapshot_line_extracts_exact_ref() {
+        assert_eq!(
+            ui_ref_from_snapshot_line("  - @u10 role='button' name='Ten'").as_deref(),
+            Some("@u10")
+        );
+        assert_eq!(ui_ref_from_snapshot_line("- @u role='button'"), None);
+        assert_eq!(ui_ref_from_snapshot_line("- @e1 role='button'"), None);
     }
 
     #[test]

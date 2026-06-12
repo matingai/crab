@@ -15,7 +15,7 @@ The current implementation is deliberately conservative:
 - Read-only waiting for a current ref to exist and match role, text, state, or native
   Accessibility action expectations before any write is attempted.
 - Read-only searching across a fresh Accessibility snapshot to locate candidate refs by
-  text, role, and compact state.
+  text, role, compact state, and reported native Accessibility action.
 - Read-only waiting for text to appear, disappear, or for the frontmost Accessibility
   tree to settle.
 - Optional pre-action ref guards that check a current ref's role, text, or compact state
@@ -145,17 +145,21 @@ knows what it wants but should avoid dumping the entire UI tree again:
   "query": "Continue",
   "role": "button",
   "state": "enabled",
+  "native_action": "AXPress",
   "max_results": 12,
   "max_items": 40,
   "max_depth": 3
 }
 ```
 
-At least one of `query`, `role`, or `state` is required. `state` accepts `focused`,
-`selected`, `enabled`, and `disabled`; `enabled` means the snapshot line does not include
-`enabled=false`. The returned `snapshot_id` can be used immediately by approval-gated
-`focus`, `click`, `set_text`, or `press_key` calls, or by read-only `wait_ref` when the
-agent wants to confirm a specific ref is ready before asking for approval.
+At least one of `query`, `role`, `state`, or `native_action` is required. `state` accepts
+`focused`, `selected`, `enabled`, and `disabled`; `enabled` means the snapshot line does
+not include `enabled=false`. When `native_action` is supplied, Crab takes an extra
+read-only details check for candidate refs and only returns elements that currently
+report the requested action in `available_actions`. The returned `snapshot_id` can be
+used immediately by approval-gated `focus`, `click`, `set_text`, or `press_key` calls, or
+by read-only `wait_ref` when the agent wants to confirm a specific ref is ready before
+asking for approval.
 
 `wait` is the read-only observation loop for native UI work. It returns a fresh
 `snapshot_id` and the latest snapshot whether the condition matched or timed out, so the

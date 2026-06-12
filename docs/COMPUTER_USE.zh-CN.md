@@ -11,7 +11,8 @@ Crab 的 computer-use 层是 browser tools 的原生桌面对照能力。Browser
 - 在已授权时读取前台应用的 Accessibility UI tree，并为元素生成 `@u1` 这类引用。
 - 支持对当前 ref 做只读检查，返回当前元素行和系统报告的原生 Accessibility actions。
 - 支持只读等待某个当前 ref 存在，并匹配 role、文本、状态或原生 Accessibility action 预期。
-- 支持在新的 Accessibility snapshot 里按文本、role 和紧凑状态只读搜索候选 ref。
+- 支持在新的 Accessibility snapshot 里按文本、role、紧凑状态和系统报告的原生 Accessibility action
+  只读搜索候选 ref。
 - 只读等待指定文本出现、消失，或等待前台 Accessibility tree 稳定。
 - 支持写动作前的可选 ref guard：先检查当前 ref 的 role、文本或紧凑状态，再执行经过 approval 的写动作。
 - 支持经过 approval 的当前 `@u` ref 聚焦。
@@ -125,16 +126,18 @@ snapshot 状态标记会刻意保持稀疏：`focused=true` 和 `selected=true` 
   "query": "Continue",
   "role": "button",
   "state": "enabled",
+  "native_action": "AXPress",
   "max_results": 12,
   "max_items": 40,
   "max_depth": 3
 }
 ```
 
-`query`、`role`、`state` 至少需要提供一个。`state` 支持 `focused`、`selected`、`enabled`
-和 `disabled`；其中 `enabled` 表示该 snapshot 行没有出现 `enabled=false`。返回的 `snapshot_id`
-可以立即交给经过 approval 的 `focus`、`click`、`set_text` 或 `press_key` 动作使用；如果 agent
-想先确认某个 ref 已经就绪，也可以继续交给只读 `wait_ref`。
+`query`、`role`、`state`、`native_action` 至少需要提供一个。`state` 支持 `focused`、`selected`、
+`enabled` 和 `disabled`；其中 `enabled` 表示该 snapshot 行没有出现 `enabled=false`。如果提供
+`native_action`，Crab 会对候选 ref 再做一次只读 details 检查，只返回当前在 `available_actions` 中报告了
+该 action 的元素。返回的 `snapshot_id` 可以立即交给经过 approval 的 `focus`、`click`、`set_text` 或
+`press_key` 动作使用；如果 agent 想先确认某个 ref 已经就绪，也可以继续交给只读 `wait_ref`。
 
 `wait` 是原生 UI 工作流里的只读观察循环。无论条件匹配还是超时，它都会返回新的 `snapshot_id`
 和最后一次 snapshot，方便下一步动作基于最新证据执行：

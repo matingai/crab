@@ -26,6 +26,7 @@ use crate::goal_state::{
 use crate::llm::{ApiMode, ModelResponse, OpenAiCompatClient, RequestOptions};
 use crate::memory_cards::build_memory_snapshot;
 use crate::meta_pattern_store::{MetaPatternState, MetaPatternStore, MetaPatternStrategyTemplate};
+use crate::privacy::{redact_chat_message_secrets, redact_secrets};
 use crate::prompts::build_system_prompt;
 use crate::request_recovery::{
     RetryableErrorKind, classify_retryable_error, is_context_overflow_error, jittered_backoff_ms,
@@ -1424,13 +1425,15 @@ impl Agent {
     ) {
         let turn_id = self.active_archive_turn_id();
         self.upsert_archive_turn(&turn_id);
+        let redacted_content = redact_secrets(content);
+        let redacted_raw_json = raw_json.map(redact_secrets);
         if let Err(error) = self.archive_store.append_message(
             &self.session.session_id,
             &turn_id,
             role,
-            content,
+            &redacted_content,
             tool_call_id,
-            raw_json,
+            redacted_raw_json.as_deref(),
         ) {
             warn!(
                 "failed to append archive message for session {} turn {}: {error:#}",
@@ -1441,12 +1444,13 @@ impl Agent {
 
     fn append_archive_event(&self, event_type: &str, title: &str, summary: &str) {
         let turn_id = self.active_turn_id.as_deref();
+        let redacted_summary = redact_secrets(summary);
         if let Err(error) = self.archive_store.append_event(
             &self.session.session_id,
             turn_id,
             event_type,
             title,
-            summary,
+            &redacted_summary,
         ) {
             warn!(
                 "failed to append archive event {} for session {}: {error:#}",
@@ -1470,6 +1474,8 @@ impl Agent {
     ) {
         let turn_id = self.active_archive_turn_id();
         self.upsert_archive_turn(&turn_id);
+        let redacted_arguments = arguments_raw.map(redact_secrets);
+        let redacted_output = output_raw.map(redact_secrets);
         if let Err(error) = self.archive_store.upsert_tool_call(
             tool_call_id,
             &self.session.session_id,
@@ -1480,8 +1486,8 @@ impl Agent {
             batch_index,
             batch_total,
             phase,
-            arguments_raw,
-            output_raw,
+            redacted_arguments.as_deref(),
+            redacted_output.as_deref(),
         ) {
             warn!(
                 "failed to upsert archive tool call {} for session {}: {error:#}",
@@ -1714,7 +1720,7 @@ impl Agent {
             iteration: 0,
             tool_call_id: pending.tool_call_id.clone(),
             tool_name: pending.tool_name.clone(),
-            arguments_preview: truncated(pending.raw_arguments.clone(), 300),
+            arguments_preview: redacted_truncated(pending.raw_arguments.clone(), 300),
             execution_mode: pending.execution_mode.clone(),
             batch_id: pending.batch_id.clone(),
             batch_index: pending.batch_index,
@@ -1756,6 +1762,7 @@ impl Agent {
             },
             None => result,
         };
+        let result = redact_secrets(result);
         self.session.record_tool_timeline_entry(
             pending.tool_call_id.clone(),
             pending.tool_name.clone(),
@@ -1799,7 +1806,7 @@ impl Agent {
             iteration: 0,
             tool_call_id: pending.tool_call_id.clone(),
             tool_name: pending.tool_name.clone(),
-            output_preview: truncated(result.clone(), 500),
+            output_preview: redacted_truncated(result.clone(), 500),
             execution_mode: pending.execution_mode.clone(),
             batch_id: pending.batch_id.clone(),
             batch_index: pending.batch_index,
@@ -1922,10 +1929,11 @@ impl Agent {
             };
 
             let tool_calls = assistant.tool_calls.clone().unwrap_or_default();
-            let final_text = assistant.content_text();
-            let assistant_raw_json = serde_json::to_string(&assistant).ok();
+            let sanitized_assistant = redact_chat_message_secrets(assistant);
+            let final_text = sanitized_assistant.content_text();
+            let assistant_raw_json = serde_json::to_string(&sanitized_assistant).ok();
 
-            self.session.history.push(assistant);
+            self.session.history.push(sanitized_assistant);
             self.append_archive_message(
                 "assistant",
                 &final_text,
@@ -2035,7 +2043,7 @@ impl Agent {
                     iteration,
                     tool_call_id: call.id.clone(),
                     tool_name: call.function.name.clone(),
-                    arguments_preview: truncated(call.function.arguments.clone(), 300),
+                    arguments_preview: redacted_truncated(call.function.arguments.clone(), 300),
                     execution_mode: "sequential".to_string(),
                     batch_id: None,
                     batch_index: None,
@@ -2066,6 +2074,7 @@ impl Agent {
                     }
                     None => result,
                 };
+                let result = redact_secrets(result);
                 if let Some(approval) = parse_approval_required(&result) {
                     self.session.record_tool_timeline_entry(
                         call.id.clone(),
@@ -2205,7 +2214,7 @@ impl Agent {
                     iteration,
                     tool_call_id: call.id.clone(),
                     tool_name: tool_name.clone(),
-                    output_preview: truncated(result.clone(), 500),
+                    output_preview: redacted_truncated(result.clone(), 500),
                     execution_mode: "sequential".to_string(),
                     batch_id: None,
                     batch_index: None,
@@ -2672,11 +2681,11 @@ impl Agent {
             ToolRuntimeEvent::Stdout {
                 tool_call_id: _,
                 chunk,
-            } => append_tail_capped(&mut live_output.stdout, &chunk, 12_000),
+            } => append_tail_capped(&mut live_output.stdout, &redact_secrets(chunk), 12_000),
             ToolRuntimeEvent::Stderr {
                 tool_call_id: _,
                 chunk,
-            } => append_tail_capped(&mut live_output.stderr, &chunk, 8_000),
+            } => append_tail_capped(&mut live_output.stderr, &redact_secrets(chunk), 8_000),
         }
 
         let detail = live_output.snapshot();
@@ -2738,9 +2747,9 @@ impl Agent {
 
         let live_output = live_outputs.entry(tool_call_id.clone()).or_default();
         if is_stderr {
-            append_tail_capped(&mut live_output.stderr, &chunk, 8_000);
+            append_tail_capped(&mut live_output.stderr, &redact_secrets(chunk), 8_000);
         } else {
-            append_tail_capped(&mut live_output.stdout, &chunk, 12_000);
+            append_tail_capped(&mut live_output.stdout, &redact_secrets(chunk), 12_000);
         }
 
         let detail = live_output.snapshot();
@@ -3485,7 +3494,7 @@ impl Agent {
                 iteration,
                 tool_call_id: call.id.clone(),
                 tool_name: call.function.name.clone(),
-                arguments_preview: truncated(call.function.arguments.clone(), 300),
+                arguments_preview: redacted_truncated(call.function.arguments.clone(), 300),
                 execution_mode: "parallel".to_string(),
                 batch_id: Some(batch_id.clone()),
                 batch_index: Some(index + 1),
@@ -3588,6 +3597,7 @@ impl Agent {
                 },
                 None => result,
             };
+            let result = redact_secrets(result);
 
             if let Some(approval) = parse_approval_required(&result) {
                 self.session.record_tool_timeline_entry(
@@ -3744,7 +3754,7 @@ impl Agent {
                 iteration,
                 tool_call_id: call.id.clone(),
                 tool_name: tool_name.clone(),
-                output_preview: truncated(result.clone(), 500),
+                output_preview: redacted_truncated(result.clone(), 500),
                 execution_mode: "parallel".to_string(),
                 batch_id: Some(batch_id.clone()),
                 batch_index: Some(index + 1),
@@ -5746,6 +5756,10 @@ fn inline_clip(value: &str, max_chars: usize) -> String {
     } else {
         normalized.chars().take(max_chars).collect::<String>() + "..."
     }
+}
+
+fn redacted_truncated(text: impl Into<String>, max_len: usize) -> String {
+    truncated(redact_secrets(text.into()), max_len)
 }
 
 fn unix_now_secs() -> u64 {

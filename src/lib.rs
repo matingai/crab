@@ -26,6 +26,7 @@ pub mod office;
 pub mod office_render;
 pub mod pdf;
 pub mod plugins;
+pub mod privacy;
 pub mod prompts;
 pub mod providers;
 pub mod request_recovery;
@@ -74,6 +75,7 @@ pub use meta_pattern_store::{
     MetaPatternRecord, MetaPatternState, MetaPatternStore, MetaPatternStrategyTemplate,
 };
 pub use plugins::PluginSummary;
+pub use privacy::{redact_chat_message_secrets, redact_secrets};
 pub use providers::{ProviderResolutionRequest, ProviderSummary, ResolvedProviderConfig};
 pub use runtime::{RuntimeStatus, RuntimeStatusDetail};
 pub use runtime_profile::{BrowserBackend, OfficeRuntimeProfile, RuntimeBackend, RuntimeProfile};

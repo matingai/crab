@@ -109,8 +109,8 @@ the transcript.
 ## Tool Results As Evidence
 
 Raw tool output can be too large, too noisy, or too local to be useful forever. Crab
-therefore treats tool results as observations that can be summarized and routed
-into the right state:
+therefore redacts common credential patterns and treats tool results as observations that
+can be summarized and routed into the right state:
 
 - Conversation history for user-visible continuity.
 - Goal state for active reasoning.

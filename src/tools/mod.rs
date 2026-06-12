@@ -71,6 +71,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::mcp::list_cached_inspections;
 use crate::plugins::{PluginHookRegistry, load_plugin_catalog};
+use crate::privacy::redact_secrets;
 use crate::tool_policy::{ToolPolicyPreflight, evaluate_tool_policy};
 use crate::types::ToolDefinition;
 
@@ -489,6 +490,7 @@ impl ToolRegistry {
             Ok(output) => output,
             Err(error) => format!("tool_error: {error:#}"),
         };
+        let result = redact_secrets(result);
 
         let post_payload = serde_json::json!({
             "event": "post_tool_call",
@@ -1090,6 +1092,41 @@ mod tests {
             std::fs::read_to_string(tmp.path().join(".env.local")).expect("read env"),
             "OPENAI_API_KEY=secret"
         );
+    }
+
+    #[tokio::test]
+    async fn registry_redacts_secret_like_tool_output() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("env.txt"),
+            "OPENAI_API_KEY=sk-test0123456789abcdef\nplain=value\n",
+        )
+        .expect("write secret");
+        let registry = ToolRegistry::hermes_default(tmp.path());
+        let output = registry
+            .call(
+                "read_file",
+                &json!({ "path": "env.txt" }).to_string(),
+                &ToolContext {
+                    workspace_root: tmp.path().to_path_buf(),
+                    data_dir: tmp.path().to_path_buf(),
+                    shell_enabled: false,
+                    skill_platform: "cli".to_string(),
+                    provider_id: "openai".to_string(),
+                    model: "test-model".to_string(),
+                    base_url: "https://example.invalid/v1".to_string(),
+                    api_key: None,
+                    max_iterations: 4,
+                    current_session_id: "session".to_string(),
+                    current_delegate_run_id: None,
+                    delegate_depth: 0,
+                },
+            )
+            .await;
+
+        assert!(output.contains("OPENAI_API_KEY=[REDACTED]"));
+        assert!(output.contains("plain=value"));
+        assert!(!output.contains("sk-test0123456789abcdef"));
     }
 
     #[test]

@@ -191,6 +191,9 @@ The loop is designed around these ideas:
 - **Configurable tool policy**: local config can require approval for selected tools or
   disable tools entirely, with exact names, prefix patterns such as `browser_*`, and
   path-scoped rules for sensitive files.
+- **Secret-aware observations**: tool outputs, live previews, timeline details, archive
+  records, and stored assistant tool-call arguments redact common credential patterns
+  before they become long-lived context.
 - **Dirty-worktree protection**: file mutation tools refuse to overwrite, patch, delete,
   or move existing Git paths with uncommitted changes unless the tool call explicitly opts
   into `allow_dirty`.
@@ -218,6 +221,8 @@ Important safety notes:
   file-backed scripts contain obvious destructive shell fragments.
 - Local `tool_policy` can protect sensitive paths such as `.env*` or
   `.github/workflows/*` before any matching tool implementation runs.
+- Runtime redaction is best-effort and targets common key/token/password formats. It is
+  not a replacement for keeping secrets out of prompts and generated files.
 - In Git workspaces, file mutation tools protect existing paths with uncommitted changes
   by default. Use an explicit `allow_dirty` tool argument only when intentionally modifying
   local user changes.

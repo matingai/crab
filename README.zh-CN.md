@@ -153,6 +153,8 @@ agent loop 是这个项目真正的中心。Crab 把主 agent 设计成一个面
   terminal 命令和 `execute_code` 片段共用同一套破坏性 shell 风险识别。
 - **可配置工具策略**：本地配置可以要求指定工具先审批，也可以完全禁用某些工具；支持精确工具名和
   `browser_*` 这类前缀模式，也支持针对敏感文件的路径级规则。
+- **敏感信息感知的观察结果**：工具输出、实时预览、timeline 详情、archive 记录和已保存的 assistant
+  tool-call 参数会在进入长期上下文前清洗常见 credential 形态。
 - **保护未提交改动**：文件修改类工具默认拒绝覆盖、patch、删除或移动 Git 工作区里已有未提交改动的路径；
   只有工具调用显式传入 `allow_dirty` 时才会继续。
 - **上下文压力处理**：loop 能识别 context overflow，压缩旧历史，调整输出预算，并用更稳妥的 prompt
@@ -173,6 +175,8 @@ agent loop 是这个项目真正的中心。Crab 把主 agent 设计成一个面
 - `execute_code` 同样受 shell 开关约束；当 inline 或文件脚本里包含明显破坏性 shell 片段时，会先暂停等待
   approval。
 - 本地 `tool_policy` 可以在具体工具执行前保护 `.env*`、`.github/workflows/*` 这类敏感路径。
+- 运行时 redaction 是 best-effort，主要处理常见 key/token/password 格式；它不能替代从源头避免把密钥写进
+  prompt 或生成文件。
 - 在 Git 工作区中，文件修改类工具默认保护已有未提交改动的路径；只有确认要改动本地用户改动时，
   才应显式使用 `allow_dirty`。
 - 本地 session、memory、日志、运行时数据库和 provider 配置应保存在被忽略的本地目录中。不要提交

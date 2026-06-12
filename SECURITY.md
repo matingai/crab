@@ -47,6 +47,8 @@ Reports are especially valuable when they involve:
   dangerous command fragments pause for approval before execution.
 - Local `tool_policy` config can require approval for selected tools, protect sensitive
   path patterns, or disable tools/paths entirely before execution.
+- Tool outputs, live previews, timeline details, archive records, and stored assistant
+  tool-call arguments redact common credential patterns before becoming durable context.
 - In Git workspaces, file mutation tools refuse to overwrite, patch, delete, or move
   existing paths with uncommitted changes unless the tool call explicitly opts into
   `allow_dirty`.

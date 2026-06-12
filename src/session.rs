@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::privacy::redact_secrets;
 use crate::types::ChatMessage;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -152,7 +153,7 @@ impl StoredSession {
         self.upsert_timeline_entry(SessionTimelineEntry::User {
             id: format!("{turn_id}-user"),
             turn_id: turn_id.clone(),
-            content: content.into(),
+            content: redact_secrets(content.into()),
         });
         turn_id
     }
@@ -162,7 +163,7 @@ impl StoredSession {
         self.upsert_timeline_entry(SessionTimelineEntry::Assistant {
             id: format!("{turn_id}-assistant"),
             turn_id,
-            content: content.into(),
+            content: redact_secrets(content.into()),
         });
     }
 
@@ -182,7 +183,7 @@ impl StoredSession {
             id: tool_call_id.into(),
             turn_id,
             name: name.into(),
-            detail: detail.into(),
+            detail: redact_secrets(detail.into()),
             phase,
             execution_mode: execution_mode.map(str::to_string),
             batch_id: batch_id.map(str::to_string),
@@ -230,8 +231,8 @@ impl StoredSession {
             turn_id,
             approval_id,
             tool_name: tool_name.into(),
-            reason: reason.into(),
-            command: command.into(),
+            reason: redact_secrets(reason.into()),
+            command: redact_secrets(command.into()),
             execution_mode: execution_mode.map(str::to_string),
             batch_id: batch_id.map(str::to_string),
             batch_index,
@@ -529,7 +530,9 @@ fn truncate_text(text: &str, max_chars: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{SessionStore, StoredBatchStatus, StoredSession, StoredToolPhase};
+    use super::{
+        SessionStore, SessionTimelineEntry, StoredBatchStatus, StoredSession, StoredToolPhase,
+    };
 
     #[test]
     fn saves_and_loads_sessions() {
@@ -557,6 +560,41 @@ mod tests {
         assert_eq!(loaded.session_id, "demo");
         assert_eq!(loaded.history.len(), 1);
         assert_eq!(loaded.timeline, session.timeline);
+    }
+
+    #[test]
+    fn timeline_entries_redact_secret_like_values() {
+        let mut session = StoredSession::new("demo".to_string(), "model".to_string());
+
+        session.record_tool_timeline_entry(
+            "tool-1",
+            "read_file",
+            "OPENAI_API_KEY=sk-test0123456789abcdef",
+            StoredToolPhase::Done,
+            Some("sequential"),
+            None,
+            None,
+            None,
+        );
+        session.record_approval_timeline_entry(
+            "approval-1",
+            "terminal",
+            "needs TOKEN=abcdef1234567890abcdef",
+            "terminal command with TOKEN=abcdef1234567890abcdef",
+            Some("sequential"),
+            None,
+            None,
+            None,
+        );
+
+        let raw = serde_json::to_string(&session.timeline).expect("serialize timeline");
+        assert!(raw.contains("[REDACTED]"));
+        assert!(!raw.contains("sk-test0123456789abcdef"));
+        assert!(!raw.contains("abcdef1234567890abcdef"));
+        assert!(matches!(
+            &session.timeline[0],
+            SessionTimelineEntry::Tool { detail, .. } if detail.contains("OPENAI_API_KEY=[REDACTED]")
+        ));
     }
 
     #[test]

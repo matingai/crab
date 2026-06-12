@@ -44,6 +44,8 @@ pub enum AgentEvent {
         session_id: String,
         iteration: usize,
         model: String,
+        status: String,
+        duration_ms: u128,
         tool_call_count: usize,
         content_preview: String,
     },
@@ -58,6 +60,7 @@ pub enum AgentEvent {
         purpose: String,
         model: String,
         status: String,
+        duration_ms: u128,
         content_preview: String,
     },
     SkillLifecycleSuggested {

@@ -1365,6 +1365,7 @@ impl Agent {
             message_count: messages.len(),
         });
 
+        let request_started_at = Instant::now();
         let response = timeout(timeout_duration, client.respond(&model, &messages, &[])).await;
         match response {
             Ok(Ok(response)) => {
@@ -1374,6 +1375,7 @@ impl Agent {
                     purpose: purpose.to_string(),
                     model,
                     status: "ok".to_string(),
+                    duration_ms: elapsed_ms(request_started_at),
                     content_preview: truncated(message.content_text(), 240),
                 });
                 Some(message)
@@ -1384,6 +1386,7 @@ impl Agent {
                     purpose: purpose.to_string(),
                     model,
                     status: "error".to_string(),
+                    duration_ms: elapsed_ms(request_started_at),
                     content_preview: truncated(error.to_string(), 240),
                 });
                 None
@@ -1394,6 +1397,7 @@ impl Agent {
                     purpose: purpose.to_string(),
                     model,
                     status: "timeout".to_string(),
+                    duration_ms: elapsed_ms(request_started_at),
                     content_preview: String::new(),
                 });
                 None
@@ -2928,6 +2932,7 @@ impl Agent {
                 message_count: messages.len(),
                 tool_count: tool_definitions.len(),
             });
+            let request_started_at = Instant::now();
             let assistant_result = match self
                 .runtime_client(&runtime)
                 .respond_stream_with_options(
@@ -2971,12 +2976,23 @@ impl Agent {
                         session_id: self.session.session_id.clone(),
                         iteration,
                         model: runtime.model.clone(),
+                        status: "ok".to_string(),
+                        duration_ms: elapsed_ms(request_started_at),
                         tool_call_count: message.tool_calls.as_ref().map(Vec::len).unwrap_or(0),
                         content_preview: truncated(message.content_text(), 240),
                     });
                     return Ok(message);
                 }
                 Err(error) => {
+                    handler.on_event(AgentEvent::ModelRequestFinished {
+                        session_id: self.session.session_id.clone(),
+                        iteration,
+                        model: runtime.model.clone(),
+                        status: "error".to_string(),
+                        duration_ms: elapsed_ms(request_started_at),
+                        tool_call_count: 0,
+                        content_preview: truncated(error.to_string(), 240),
+                    });
                     if !runtime.uses_primary {
                         handler.on_event(AgentEvent::Nudge {
                             session_id: self.session.session_id.clone(),
@@ -4013,6 +4029,7 @@ impl Agent {
             model: background_model.clone(),
             message_count: 2,
         });
+        let request_started_at = Instant::now();
         let title_result = generate_title(
             &background_client,
             &background_model,
@@ -4026,6 +4043,7 @@ impl Agent {
                 purpose: "title_generation".to_string(),
                 model: background_model,
                 status: "skipped".to_string(),
+                duration_ms: elapsed_ms(request_started_at),
                 content_preview: String::new(),
             });
             return;
@@ -4035,6 +4053,7 @@ impl Agent {
             purpose: "title_generation".to_string(),
             model: background_model,
             status: "ok".to_string(),
+            duration_ms: elapsed_ms(request_started_at),
             content_preview: truncated(title.clone(), 240),
         });
         self.session.title = Some(title);
@@ -7395,6 +7414,18 @@ mod tests {
                 && *tool_call_count == 0
                 && response_preview == "mock final response"
         ));
+        assert!(matches!(
+            handler.events().iter().find(|event| matches!(
+                event,
+                AgentEvent::ModelRequestFinished { .. }
+            )),
+            Some(AgentEvent::ModelRequestFinished {
+                status,
+                duration_ms,
+                tool_call_count,
+                ..
+            }) if status == "ok" && *duration_ms < 30_000 && *tool_call_count == 0
+        ));
     }
 
     #[tokio::test]
@@ -7703,6 +7734,28 @@ mod tests {
             AgentEvent::Nudge { kind, message, .. }
             if kind == "retry" && message.contains("请求限流")
         )));
+        assert!(handler.events().iter().any(|event| matches!(
+            event,
+            AgentEvent::ModelRequestFinished {
+                status,
+                duration_ms,
+                content_preview,
+                ..
+            } if status == "error"
+                && *duration_ms < 30_000
+                && content_preview.contains("rate limit")
+        )));
+        assert!(handler.events().iter().any(|event| matches!(
+            event,
+            AgentEvent::ModelRequestFinished {
+                status,
+                duration_ms,
+                content_preview,
+                ..
+            } if status == "ok"
+                && *duration_ms < 30_000
+                && content_preview == "mock final response after rate limit retry"
+        )));
     }
 
     #[tokio::test]
@@ -7879,6 +7932,22 @@ mod tests {
             AgentEvent::BackgroundModelRequestStarted { purpose, model, .. }
             if purpose == "goal_state_compaction" && model == "gpt-4.1-nano"
         )));
+        assert!(matches!(
+            handler.events().iter().find(|event| matches!(
+                event,
+                AgentEvent::BackgroundModelRequestFinished { .. }
+            )),
+            Some(AgentEvent::BackgroundModelRequestFinished {
+                purpose,
+                model,
+                status,
+                duration_ms,
+                ..
+            }) if purpose == "goal_state_compaction"
+                && model == "gpt-4.1-nano"
+                && status == "ok"
+                && *duration_ms < 30_000
+        ));
     }
 
     #[tokio::test]

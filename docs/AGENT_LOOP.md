@@ -167,6 +167,7 @@ The loop emits events because agent work should be inspectable while it happens.
 UI can show:
 
 - Model request and streaming output.
+- Main and background model request completion status and duration.
 - Tool call start and completion.
 - Approval requests.
 - Delegated run lifecycle.

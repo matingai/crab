@@ -2965,13 +2965,16 @@ function summarizeEvent(event: Record<string, unknown> & { type?: string }): str
     case "model_request_started":
       return `请求模型 ${String(event.model || "")}，${String(event.message_count || 0)} 条消息`;
     case "model_request_finished":
+      if (String(event.status || "ok") !== "ok") {
+        return `模型请求${formatModelRequestStatus(String(event.status || ""))}${formatEventDuration(event.duration_ms)} ${truncate(String(event.content_preview || ""), 60)}`;
+      }
       return Number(event.tool_call_count || 0) > 0
-        ? `模型返回 ${String(event.tool_call_count || 0)} 个工具调用`
-        : `模型返回回复 ${truncate(String(event.content_preview || ""), 60)}`;
+        ? `模型返回 ${String(event.tool_call_count || 0)} 个工具调用${formatEventDuration(event.duration_ms)}`
+        : `模型返回回复 ${truncate(String(event.content_preview || ""), 60)}${formatEventDuration(event.duration_ms)}`;
     case "background_model_request_started":
       return `后台 ${String(event.purpose || "")} 请求 ${String(event.model || "")}`;
     case "background_model_request_finished":
-      return `后台 ${String(event.purpose || "")} ${String(event.status || "")} ${truncate(String(event.content_preview || ""), 60)}`;
+      return `后台 ${String(event.purpose || "")} ${String(event.status || "")}${formatEventDuration(event.duration_ms)} ${truncate(String(event.content_preview || ""), 60)}`;
     case "tool_batch_started":
       return `并发批次 ${String(event.batch_id || "")} 启动，${String(event.total_calls || 0)} 个工具`;
     case "tool_batch_progress":
@@ -3125,6 +3128,19 @@ function formatTurnStatus(status: string): string {
       return "失败";
     default:
       return status || "已结束";
+  }
+}
+
+function formatModelRequestStatus(status: string): string {
+  switch (status) {
+    case "ok":
+      return "完成";
+    case "error":
+      return "失败";
+    case "timeout":
+      return "超时";
+    default:
+      return status ? ` ${status}` : "结束";
   }
 }
 
@@ -4672,15 +4688,31 @@ export default function Page() {
         setAgentActivity(`正在请求 ${String(event.model || "模型")}`);
         break;
       case "model_request_finished":
-        setAgentActivity(
-          Number(event.tool_call_count || 0) > 0 ? "正在准备工具调用" : "正在整理回复",
-        );
+        {
+          const duration = formatDurationMs(readDurationMs(event.duration_ms));
+          const suffix = duration ? ` · ${duration}` : "";
+          setAgentActivity(
+            String(event.status || "ok") !== "ok"
+              ? `模型请求${formatModelRequestStatus(String(event.status || ""))}${suffix}`
+              : Number(event.tool_call_count || 0) > 0
+                ? `正在准备工具调用${suffix}`
+                : `正在整理回复${suffix}`,
+          );
+        }
         break;
       case "background_model_request_started":
         setAgentActivity(`后台 ${String(event.purpose || "任务")} 正在请求 ${String(event.model || "模型")}`);
         break;
       case "background_model_request_finished":
-        setAgentActivity(String(event.status || "") === "ok" ? "后台模型请求完成" : "后台模型请求未完成");
+        {
+          const duration = formatDurationMs(readDurationMs(event.duration_ms));
+          const suffix = duration ? ` · ${duration}` : "";
+          setAgentActivity(
+            String(event.status || "") === "ok"
+              ? `后台模型请求完成${suffix}`
+              : `后台模型请求未完成${suffix}`,
+          );
+        }
         break;
       case "assistant_delta":
         appendAssistantDelta(String(event.delta || ""));

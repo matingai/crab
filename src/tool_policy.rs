@@ -803,6 +803,8 @@ tool_policy:
             r#"{"action":"wait","contains_text":"Ready"}"#,
             r#"{"action":"wait","wait_until":"text_absent","contains_text":"Loading"}"#,
             r#"{"action":"wait","wait_until":"settled"}"#,
+            r#"{"action":"wait_app","expect_app":"Finder"}"#,
+            r#"{"action":"wait_app","expect_pid":42}"#,
             r#"{"action":"wait_ref","ref":"@u2","native_action":"AXPress"}"#,
         ] {
             let decision = evaluate_tool_policy(tmp.path(), "session-1", "computer_use", raw_args)

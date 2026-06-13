@@ -38,7 +38,7 @@ side effect of ordinary chat.
 
 ## Tool Surface
 
-The built-in `computer_use` tool supports thirteen actions:
+The built-in `computer_use` tool supports fourteen actions:
 
 | Action | Behavior |
 | --- | --- |
@@ -48,6 +48,7 @@ The built-in `computer_use` tool supports thirteen actions:
 | `inspect_ref` | Reads current details and reported native Accessibility actions for a snapshot ref. |
 | `find` | Searches a fresh snapshot for candidate UI refs by query, role, or state, and returns matching element lines. |
 | `wait` | Polls snapshots until target text appears, disappears, or the UI tree settles, then returns the latest snapshot. |
+| `wait_app` | Polls snapshots until the frontmost app name or pid matches `expect_app` or `expect_pid`. |
 | `wait_ref` | Polls one UI ref until it exists and optional role, text, state, or native action expectations match. |
 | `focus` | Sets keyboard focus to a snapshot ref such as `@u2`, then returns a post-focus snapshot. |
 | `click` | Activates a snapshot ref such as `@u2`, then returns a post-click snapshot. |
@@ -73,7 +74,7 @@ Example tool arguments:
 ```
 
 Snapshot output includes non-sensitive record metadata, the frontmost app name, process
-id, and a bounded UI tree. `snapshot`, `find`, `wait`, `wait_ref`, and `inspect_ref`
+id, and a bounded UI tree. `snapshot`, `find`, `wait`, `wait_app`, `wait_ref`, and `inspect_ref`
 return the same `snapshot_*` metadata header so the agent can carry explicit evidence
 between observation and action. Each visible element line uses a stable reference for that
 snapshot and includes the best available role, name, value, bounds, and compact state
@@ -206,6 +207,21 @@ next action can be based on current evidence:
 }
 ```
 
+`wait_app` is the read-only frontmost-application loop. It is useful when the user or OS
+focus may move away from the target app and the agent wants to wait for the expected app
+or pid before asking for approval on a write action:
+
+```json
+{
+  "action": "wait_app",
+  "expect_app": "Finder",
+  "timeout_seconds": 10,
+  "poll_interval_ms": 250,
+  "max_items": 40,
+  "max_depth": 3
+}
+```
+
 Action refs are deliberately ephemeral: take a fresh `snapshot`, choose a visible `@u`
 reference from that output, then call `click` or `set_text` immediately. If the app
 changes before the action, the ref may resolve to a different UI element in the new tree.
@@ -315,8 +331,8 @@ frontmost app text.
 `focus`, `click`, `perform_action`, `set_text`, `scroll`, and `press_key` are write
 actions. Crab's default tool policy requires approval before they run, even if the user
 has not configured a custom `tool_policy`. `status`, `snapshot`, `inspect_ref`, `find`,
-`wait`, and `wait_ref` stay available without approval. `set_text` does not send global
-keystrokes; it attempts to set the target Accessibility element's value directly, so it
+`wait`, `wait_app`, and `wait_ref` stay available without approval. `set_text` does not
+send global keystrokes; it attempts to set the target Accessibility element's value directly, so it
 is mainly for text fields and similar controls.
 
 `perform_action` accepts only a small native Accessibility action allowlist: `press`,

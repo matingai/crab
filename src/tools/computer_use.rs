@@ -99,13 +99,13 @@ impl Tool for ComputerUseTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::function(
             "computer_use",
-            "Inspect and prepare native computer-use automation. On macOS, this checks Accessibility trust, can request the permission prompt, can return/search/inspect a shallow Accessibility UI tree for the frontmost app, can wait for a specific UI ref to become ready, can focus, click, perform a whitelisted native Accessibility action, scroll, or set text on a UI ref after tool-policy approval, and can press a small whitelist of non-text keys after approval. Broad keyboard and app-control actions are intentionally not enabled yet.",
+            "Inspect and prepare native computer-use automation. On macOS, this checks Accessibility trust, can request the permission prompt, can return/search/inspect a shallow Accessibility UI tree for the frontmost app, can wait for the frontmost app or a specific UI ref to become ready, can focus, click, perform a whitelisted native Accessibility action, scroll, or set text on a UI ref after tool-policy approval, and can press a small whitelist of non-text keys after approval. Broad keyboard and app-control actions are intentionally not enabled yet.",
             object_schema(
                 json!({
                     "action": {
                         "type": "string",
-                        "enum": ["status", "request_permission", "snapshot", "inspect_ref", "find", "wait", "wait_ref", "focus", "click", "perform_action", "set_text", "scroll", "press_key"],
-                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; inspect_ref reads the current details and available actions for a snapshot ref; find searches a fresh snapshot for candidate UI refs; wait polls snapshots until text appears, text disappears, or the UI settles; wait_ref polls one UI ref until it exists and optional role, text, state, or native Accessibility action expectations match; focus sets keyboard focus to a snapshot ref such as @u2 after approval; click activates a snapshot ref after approval; perform_action runs one whitelisted native Accessibility action on a ref after approval; set_text sets the Accessibility value for a ref after approval; scroll performs a small Accessibility scroll action on a snapshot ref after approval; press_key sends one whitelisted non-text key to the frontmost app after approval."
+                        "enum": ["status", "request_permission", "snapshot", "inspect_ref", "find", "wait", "wait_app", "wait_ref", "focus", "click", "perform_action", "set_text", "scroll", "press_key"],
+                        "description": "status checks support and permission; request_permission asks macOS to show the Accessibility prompt; snapshot reads the frontmost app Accessibility UI tree; inspect_ref reads the current details and available actions for a snapshot ref; find searches a fresh snapshot for candidate UI refs; wait polls snapshots until text appears, text disappears, or the UI settles; wait_app polls snapshots until the frontmost app name or pid matches expect_app/expect_pid; wait_ref polls one UI ref until it exists and optional role, text, state, or native Accessibility action expectations match; focus sets keyboard focus to a snapshot ref such as @u2 after approval; click activates a snapshot ref after approval; perform_action runs one whitelisted native Accessibility action on a ref after approval; set_text sets the Accessibility value for a ref after approval; scroll performs a small Accessibility scroll action on a snapshot ref after approval; press_key sends one whitelisted non-text key to the frontmost app after approval."
                     },
                     "max_items": {
                         "type": "integer",
@@ -202,12 +202,12 @@ impl Tool for ComputerUseTool {
                     "expect_app": {
                         "type": "string",
                         "maxLength": 240,
-                        "description": "Optional pre-action guard for focus, click, perform_action, set_text, scroll, and press_key. When set, the current frontmost app name must match before the write action runs."
+                        "description": "Expectation for action=wait_app and optional pre-action guard for focus, click, perform_action, set_text, scroll, and press_key. When set, the current frontmost app name must match."
                     },
                     "expect_pid": {
                         "type": "integer",
                         "minimum": 1,
-                        "description": "Optional pre-action guard for focus, click, perform_action, set_text, scroll, and press_key. When set, the current frontmost process id must match before the write action runs."
+                        "description": "Expectation for action=wait_app and optional pre-action guard for focus, click, perform_action, set_text, scroll, and press_key. When set, the current frontmost process id must match."
                     },
                     "case_sensitive": {
                         "type": "boolean",
@@ -217,13 +217,13 @@ impl Tool for ComputerUseTool {
                         "type": "integer",
                         "minimum": 1,
                         "maximum": 30,
-                        "description": "Maximum time to wait for action=wait or action=wait_ref. Defaults to 10 seconds."
+                        "description": "Maximum time to wait for action=wait, action=wait_app, or action=wait_ref. Defaults to 10 seconds."
                     },
                     "poll_interval_ms": {
                         "type": "integer",
                         "minimum": 100,
                         "maximum": 2000,
-                        "description": "Polling interval for action=wait or action=wait_ref. Defaults to 250 ms."
+                        "description": "Polling interval for action=wait, action=wait_app, or action=wait_ref. Defaults to 250 ms."
                     },
                     "snapshot_id": {
                         "type": "string",
@@ -272,6 +272,26 @@ impl Tool for ComputerUseTool {
                     render_snapshot_record_metadata(&record, "snapshot"),
                     outcome.result,
                     request.mode.label(),
+                    outcome.attempts,
+                    outcome.elapsed_ms,
+                    render_status(false),
+                    outcome.snapshot.trim()
+                ))
+            }
+            "wait_app" => {
+                let request = args.wait_app_request()?;
+                let status = inspect_computer_use(false);
+                if !status.ready() {
+                    bail!("{}", status.guidance);
+                }
+                let max_items = args.max_items.clamp(1, 50);
+                let max_depth = args.max_depth.clamp(1, 6);
+                let outcome = wait_for_frontmost_app_match(&request, max_items, max_depth).await?;
+                let record = save_snapshot_record(ctx, max_items, max_depth, &outcome.snapshot)?;
+                Ok(format!(
+                    "{}wait_result: {}\nwait_until: app_matches\nattempts: {}\nelapsed_ms: {}\n{}\n\n{}",
+                    render_snapshot_record_metadata(&record, "snapshot"),
+                    outcome.result,
                     outcome.attempts,
                     outcome.elapsed_ms,
                     render_status(false),
@@ -559,7 +579,7 @@ impl Tool for ComputerUseTool {
                 ))
             }
             other => bail!(
-                "unsupported computer_use action `{other}`; use status, request_permission, snapshot, inspect_ref, find, wait, wait_ref, focus, click, perform_action, set_text, scroll, or press_key"
+                "unsupported computer_use action `{other}`; use status, request_permission, snapshot, inspect_ref, find, wait, wait_app, wait_ref, focus, click, perform_action, set_text, scroll, or press_key"
             ),
         }
     }
@@ -697,6 +717,23 @@ impl ComputerUseArgs {
         Ok(ComputerUseWaitRefRequest {
             guard,
             native_action,
+            timeout_seconds: self
+                .timeout_seconds
+                .unwrap_or(DEFAULT_WAIT_TIMEOUT_SECONDS)
+                .clamp(1, MAX_WAIT_TIMEOUT_SECONDS),
+            poll_interval_ms: self
+                .poll_interval_ms
+                .unwrap_or(DEFAULT_WAIT_POLL_INTERVAL_MS)
+                .clamp(100, 2_000),
+        })
+    }
+
+    fn wait_app_request(&self) -> Result<ComputerUseWaitAppRequest> {
+        let Some(guard) = self.app_guard_request()? else {
+            bail!("computer_use wait_app requires `expect_app` or `expect_pid`");
+        };
+        Ok(ComputerUseWaitAppRequest {
+            guard,
             timeout_seconds: self
                 .timeout_seconds
                 .unwrap_or(DEFAULT_WAIT_TIMEOUT_SECONDS)
@@ -875,6 +912,13 @@ struct ComputerUseWaitOutcome {
     snapshot: String,
     attempts: usize,
     elapsed_ms: u128,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ComputerUseWaitAppRequest {
+    guard: ComputerUseAppGuardRequest,
+    timeout_seconds: u64,
+    poll_interval_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1263,6 +1307,43 @@ async fn wait_for_frontmost_app(
     }
 }
 
+async fn wait_for_frontmost_app_match(
+    request: &ComputerUseWaitAppRequest,
+    max_items: usize,
+    max_depth: usize,
+) -> Result<ComputerUseWaitOutcome> {
+    let started = Instant::now();
+    let deadline = started + Duration::from_secs(request.timeout_seconds);
+    let poll_interval = Duration::from_millis(request.poll_interval_ms);
+    let mut attempts = 0usize;
+
+    loop {
+        let snapshot = frontmost_app_snapshot(max_items, max_depth)?;
+        attempts += 1;
+
+        if snapshot_matches_app_guard(&snapshot, &request.guard) {
+            return Ok(ComputerUseWaitOutcome {
+                result: "matched",
+                snapshot,
+                attempts,
+                elapsed_ms: started.elapsed().as_millis(),
+            });
+        }
+
+        let now = Instant::now();
+        if now >= deadline {
+            return Ok(ComputerUseWaitOutcome {
+                result: "timed_out",
+                snapshot,
+                attempts,
+                elapsed_ms: started.elapsed().as_millis(),
+            });
+        }
+        let remaining = deadline.saturating_duration_since(now);
+        sleep(std::cmp::min(poll_interval, remaining)).await;
+    }
+}
+
 async fn wait_for_frontmost_app_ref(
     reference: &str,
     request: &ComputerUseWaitRefRequest,
@@ -1534,7 +1615,7 @@ fn check_snapshot_origin_guard(
 ) -> Result<ComputerUseSnapshotOriginGuardOutcome> {
     let expected_app_line_sha256 = record.frontmost_app_line_sha256.as_deref().ok_or_else(|| {
         anyhow::anyhow!(
-            "computer_use snapshot `{}` lacks frontmost-app origin metadata; call snapshot/find/inspect_ref/wait/wait_ref again before a write action",
+            "computer_use snapshot `{}` lacks frontmost-app origin metadata; call snapshot/find/inspect_ref/wait/wait_app/wait_ref again before a write action",
             record.snapshot_id
         )
     })?;
@@ -1547,7 +1628,7 @@ fn check_snapshot_origin_guard(
     let current_app_line_sha256 = sha256_hex(app_line.as_bytes());
     if current_app_line_sha256 != expected_app_line_sha256 {
         bail!(
-            "computer_use snapshot origin guard failed for `{}`: frontmost app changed since observation (current_app_line_sha256: {}, expected_app_line_sha256: {}). call snapshot/find/inspect_ref/wait/wait_ref again",
+            "computer_use snapshot origin guard failed for `{}`: frontmost app changed since observation (current_app_line_sha256: {}, expected_app_line_sha256: {}). call snapshot/find/inspect_ref/wait/wait_app/wait_ref again",
             record.snapshot_id,
             current_app_line_sha256,
             expected_app_line_sha256
@@ -1559,7 +1640,7 @@ fn check_snapshot_origin_guard(
         && current_pid != Some(expected_pid)
     {
         bail!(
-            "computer_use snapshot origin guard failed for `{}`: frontmost pid changed since observation (current_pid: {}, expected_pid: {}). call snapshot/find/inspect_ref/wait/wait_ref again",
+            "computer_use snapshot origin guard failed for `{}`: frontmost pid changed since observation (current_pid: {}, expected_pid: {}). call snapshot/find/inspect_ref/wait/wait_app/wait_ref again",
             record.snapshot_id,
             current_pid
                 .map(|pid| pid.to_string())
@@ -1573,6 +1654,10 @@ fn check_snapshot_origin_guard(
         pid: current_pid,
         snapshot_sha256: sha256_hex(snapshot.as_bytes()),
     })
+}
+
+fn snapshot_matches_app_guard(snapshot: &str, request: &ComputerUseAppGuardRequest) -> bool {
+    check_app_guard_snapshot(snapshot, request).is_ok()
 }
 
 fn check_app_guard_snapshot(
@@ -1810,7 +1895,8 @@ mod tests {
         ref_line_from_details, render_snapshot_record_metadata, render_wait_ref_unavailable,
         render_write_result, resolve_snapshot_record, save_post_action_snapshot_record,
         save_snapshot_record, snapshot_contains_text, snapshot_frontmost_app_line,
-        snapshot_line_for_ref, snapshot_pid, snapshot_record_path, ui_ref_from_snapshot_line,
+        snapshot_line_for_ref, snapshot_matches_app_guard, snapshot_pid, snapshot_record_path,
+        ui_ref_from_snapshot_line,
     };
     use crate::computer_use::normalize_computer_use_native_action;
     use crate::tools::{Tool, ToolContext};
@@ -2082,6 +2168,18 @@ mod tests {
         assert!(format!("{error:#}").contains("requires a non-empty"));
     }
 
+    #[tokio::test]
+    async fn wait_app_requires_app_or_pid_expectation() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tool = ComputerUseTool;
+        let error = tool
+            .execute(json!({ "action": "wait_app" }), &ctx(tmp.path()))
+            .await
+            .expect_err("missing app expectation");
+
+        assert!(format!("{error:#}").contains("requires `expect_app` or `expect_pid`"));
+    }
+
     #[test]
     fn wait_request_defaults_to_settled_and_clamps_bounds() {
         let args: super::ComputerUseArgs = serde_json::from_value(json!({
@@ -2093,6 +2191,26 @@ mod tests {
         let request = args.wait_request().expect("wait request");
 
         assert_eq!(request.mode, ComputerUseWaitMode::Settled);
+        assert_eq!(request.timeout_seconds, super::MAX_WAIT_TIMEOUT_SECONDS);
+        assert_eq!(request.poll_interval_ms, 100);
+    }
+
+    #[test]
+    fn wait_app_request_parses_expectations_and_clamps_bounds() {
+        let args: super::ComputerUseArgs = serde_json::from_value(json!({
+            "action": "wait_app",
+            "expect_app": "Finder",
+            "expect_pid": 42,
+            "case_sensitive": true,
+            "timeout_seconds": 500,
+            "poll_interval_ms": 1
+        }))
+        .expect("args");
+        let request = args.wait_app_request().expect("wait_app request");
+
+        assert_eq!(request.guard.app.as_deref(), Some("Finder"));
+        assert_eq!(request.guard.pid, Some(42));
+        assert!(request.guard.case_sensitive);
         assert_eq!(request.timeout_seconds, super::MAX_WAIT_TIMEOUT_SECONDS);
         assert_eq!(request.poll_interval_ms, 100);
     }
@@ -2528,6 +2646,24 @@ ui_tree:
     }
 
     #[test]
+    fn wait_app_match_uses_app_guard_rules() {
+        let snapshot = "frontmost_app: Finder\npid: 42\nui_tree:\n- @u1 role='window'";
+        let matching = ComputerUseAppGuardRequest {
+            app: Some("finder".to_string()),
+            pid: Some(42),
+            case_sensitive: false,
+        };
+        let mismatched = ComputerUseAppGuardRequest {
+            app: Some("Finder".to_string()),
+            pid: Some(43),
+            case_sensitive: true,
+        };
+
+        assert!(snapshot_matches_app_guard(snapshot, &matching));
+        assert!(!snapshot_matches_app_guard(snapshot, &mismatched));
+    }
+
+    #[test]
     fn app_guard_snapshot_rejects_mismatch_without_echoing_current_app() {
         let snapshot = "frontmost_app: Private Customer Console\npid: 42";
         let request = ComputerUseAppGuardRequest {
@@ -2741,6 +2877,7 @@ available_actions: AXPress
         assert!(schema.contains("\"inspect_ref\""));
         assert!(schema.contains("\"find\""));
         assert!(schema.contains("\"wait\""));
+        assert!(schema.contains("\"wait_app\""));
         assert!(schema.contains("\"wait_ref\""));
         assert!(schema.contains("\"focus\""));
         assert!(schema.contains("\"click\""));

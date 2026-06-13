@@ -305,6 +305,8 @@ npm run dev
 export OPENAI_API_KEY="your-api-key"
 export OPENAI_BASE_URL="https://api.openai.com/v1"
 export HERMES_RS_MODEL="gpt-4.1-mini"
+# 可选：responses 或 chat_completions。
+export OPENAI_API_MODE="responses"
 ```
 
 启动交互式会话：
@@ -360,7 +362,7 @@ runtime-reset      重置本地 runtime 状态
 desktop-bridge     启动桌面壳使用的 JSON bridge
 ```
 
-全局参数包括 `--provider`、`--model`、`--base-url`、`--api-key`、`--workspace`、
+全局参数包括 `--provider`、`--model`、`--base-url`、`--api-key`、`--api-mode`、`--workspace`、
 `--data-dir`、`--session`、`--max-iterations` 和 `--enable-shell`。
 
 出于安全考虑，建议优先使用环境变量或被 Git 忽略的本地配置文件，不要在命令行参数中直接传 API key。
@@ -380,8 +382,10 @@ desktop-bridge     启动桌面壳使用的 JSON bridge
 | --- | --- |
 | `OPENAI_API_KEY` | OpenAI-compatible provider 的 API key。 |
 | `OPENAI_BASE_URL` | OpenAI-compatible endpoint 的 base URL。 |
+| `OPENAI_API_MODE` | 当 endpoint 自动推断不够时，强制使用 `responses` 或 `chat_completions`。 |
 | `HERMES_RS_PROVIDER` | 指定 provider id 或 provider profile。 |
 | `HERMES_RS_MODEL` | 覆盖主模型。 |
+| `HERMES_RS_API_MODE` | `OPENAI_API_MODE` 的兼容别名。 |
 | `HERMES_RS_DATA_DIR` | 覆盖本地 data directory。 |
 | `HERMES_RS_SESSION_ID` | 恢复或固定 session id。 |
 | `HERMES_RS_MAX_ITERATIONS` | 工具调用循环的最大迭代次数。 |
@@ -397,8 +401,13 @@ model:
   provider: openai
   model: gpt-4.1-mini
   base_url: https://api.openai.com/v1
+  api_mode: responses
   # 推荐使用 OPENAI_API_KEY，而不是在这里保存 api_key。
 ```
+
+官方 OpenAI endpoint 默认使用 Responses API。本地 OpenAI-compatible endpoint 默认使用 Chat
+Completions；如果是 Codex/Cockpit sidecar 这类只支持 Responses 的 `/v1` 网关，请设置
+`api_mode: responses`、`OPENAI_API_MODE=responses` 或 `--api-mode responses`。
 
 仓库内置 skills 默认启用。测试、极简本地 store 或下游嵌入场景可以显式关闭：
 

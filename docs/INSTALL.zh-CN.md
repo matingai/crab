@@ -151,10 +151,14 @@ Crab 接受 OpenAI-compatible endpoint：
 export OPENAI_API_KEY="your-api-key"
 export OPENAI_BASE_URL="https://api.openai.com/v1"
 export HERMES_RS_MODEL="gpt-4.1-mini"
+# 可选：responses 或 chat_completions。
+export OPENAI_API_MODE="responses"
 ```
 
 如果使用 Cockpit、NewAPI 或本地网关，把 `OPENAI_BASE_URL` 指向网关兼容 OpenAI 的 `/v1`
-endpoint，并把 `HERMES_RS_MODEL` 设置为对应的路由模型名。
+endpoint，并把 `HERMES_RS_MODEL` 设置为对应的路由模型名。只支持 Responses 的网关设置
+`OPENAI_API_MODE=responses`；传统 Chat Completions server 设置
+`OPENAI_API_MODE=chat_completions`。
 
 ## 从源码运行或打包桌面壳
 
@@ -206,7 +210,8 @@ Crab 当前会把本地 runtime 状态存到：
 ## 排障
 
 - 如果 `cargo install` 失败，先检查 `rustc --version`，并升级到 Rust 1.85 或更新版本。
-- 如果模型请求失败，检查 `OPENAI_API_KEY`、`OPENAI_BASE_URL` 和 `HERMES_RS_MODEL`。
+- 如果模型请求失败，检查 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`HERMES_RS_MODEL` 和
+  `OPENAI_API_MODE`。
 - 如果 PDF 检查或抽取失败，确认同一个终端里 `swift --version` 可以正常运行。
 - 如果桌面壳启动失败，在 `desktop-shell/` 里重新运行 `npm install`，并确认 Node.js 可用。
 - 除非明确需要，否则保持 terminal 工具关闭。只在可信工作区使用 `--enable-shell`。

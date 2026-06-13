@@ -32,10 +32,12 @@ cargo install --git https://github.com/matingai/crab.git --locked
 export OPENAI_API_KEY="your-gateway-key"
 export OPENAI_BASE_URL="https://your-gateway.example.com/v1"
 export HERMES_RS_MODEL="your-routed-model"
+export OPENAI_API_MODE="responses"
 ```
 
 本地网关也可以使用类似 `http://127.0.0.1:11434/v1` 的地址，只要它兼容 Chat
-Completions 或 Responses 风格的接口。
+Completions 或 Responses 风格的接口。Crab 默认把本地 endpoint 当作 Chat Completions；
+如果是只支持 Responses 的 sidecar，请设置 `OPENAI_API_MODE=responses`。
 
 ## Crab 最核心的想法是什么？
 

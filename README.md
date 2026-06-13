@@ -363,6 +363,8 @@ Set model access through environment variables. The default model can be overrid
 export OPENAI_API_KEY="your-api-key"
 export OPENAI_BASE_URL="https://api.openai.com/v1"
 export HERMES_RS_MODEL="gpt-4.1-mini"
+# Optional: responses or chat_completions.
+export OPENAI_API_MODE="responses"
 ```
 
 Start an interactive chat session:
@@ -418,7 +420,7 @@ runtime-reset      Reset local runtime state
 desktop-bridge     Run the JSON bridge used by the desktop shell
 ```
 
-Global options include `--provider`, `--model`, `--base-url`, `--api-key`,
+Global options include `--provider`, `--model`, `--base-url`, `--api-key`, `--api-mode`,
 `--workspace`, `--data-dir`, `--session`, `--max-iterations`, and `--enable-shell`.
 
 For security, prefer environment variables or ignored local configuration files over
@@ -439,8 +441,10 @@ Useful environment variables currently keep the `HERMES_RS_*` compatibility pref
 | --- | --- |
 | `OPENAI_API_KEY` | API key for OpenAI-compatible providers. |
 | `OPENAI_BASE_URL` | Base URL for OpenAI-compatible endpoints. |
+| `OPENAI_API_MODE` | Force `responses` or `chat_completions` when endpoint auto-detection is not enough. |
 | `HERMES_RS_PROVIDER` | Provider id or provider profile to use. |
 | `HERMES_RS_MODEL` | Primary model override. |
+| `HERMES_RS_API_MODE` | Compatibility alias for `OPENAI_API_MODE`. |
 | `HERMES_RS_DATA_DIR` | Override the local data directory. |
 | `HERMES_RS_SESSION_ID` | Resume or pin a session id. |
 | `HERMES_RS_MAX_ITERATIONS` | Tool-calling loop iteration limit. |
@@ -456,8 +460,13 @@ model:
   provider: openai
   model: gpt-4.1-mini
   base_url: https://api.openai.com/v1
+  api_mode: responses
   # Prefer OPENAI_API_KEY instead of storing api_key here.
 ```
+
+Official OpenAI endpoints default to the Responses API. Local OpenAI-compatible endpoints
+default to Chat Completions unless `api_mode`, `OPENAI_API_MODE`, or `--api-mode` says
+otherwise. Use `responses` for Responses-only gateways such as Codex/Cockpit sidecars.
 
 Bundled repository skills are enabled by default. Minimal stores, tests, or downstream
 embeddings can disable them explicitly:

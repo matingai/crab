@@ -46,6 +46,7 @@ pub struct ProviderResolutionRequest {
     pub model: Option<String>,
     pub base_url: Option<String>,
     pub api_key: Option<String>,
+    pub api_mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -164,7 +165,9 @@ pub fn resolve_runtime_provider(
                 .api_key
                 .clone()
                 .or_else(|| config.configured_api_key.clone()),
-            config.configured_api_mode.as_deref(),
+            clean(request.api_mode.clone())
+                .as_deref()
+                .or(config.configured_api_mode.as_deref()),
         );
     }
 
@@ -192,6 +195,13 @@ pub fn resolve_runtime_provider(
                             None
                         }
                     }),
+                    api_mode: clean(request.api_mode.clone()).or_else(|| {
+                        if config.active_provider_id() == Some(provider_id.as_str()) {
+                            config.configured_api_mode.clone()
+                        } else {
+                            None
+                        }
+                    }),
                 },
                 true,
             );
@@ -205,7 +215,9 @@ pub fn resolve_runtime_provider(
                     clean(request.model.clone()).or_else(|| config.configured_model.clone()),
                     base_url,
                     clean(request.api_key.clone()).or_else(|| config.configured_api_key.clone()),
-                    config.configured_api_mode.as_deref(),
+                    clean(request.api_mode.clone())
+                        .as_deref()
+                        .or(config.configured_api_mode.as_deref()),
                 );
             }
         }
@@ -220,7 +232,9 @@ pub fn resolve_runtime_provider(
             clean(request.model.clone()).or_else(|| config.configured_model.clone()),
             base_url,
             clean(request.api_key.clone()).or_else(|| config.configured_api_key.clone()),
-            config.configured_api_mode.as_deref(),
+            clean(request.api_mode.clone())
+                .as_deref()
+                .or(config.configured_api_mode.as_deref()),
         );
     }
 
@@ -229,6 +243,7 @@ pub fn resolve_runtime_provider(
         model: clean(request.model).or_else(|| config.configured_model),
         base_url: None,
         api_key: clean(request.api_key).or_else(|| config.configured_api_key),
+        api_mode: clean(request.api_mode).or(config.configured_api_mode),
     }))
 }
 
@@ -247,6 +262,11 @@ fn summary_request_for_profile(
         base_url: None,
         api_key: if is_active {
             config.configured_api_key.clone()
+        } else {
+            None
+        },
+        api_mode: if is_active {
+            config.configured_api_mode.clone()
         } else {
             None
         },
@@ -297,6 +317,13 @@ fn resolve_known_provider(
             None
         }
     });
+    let api_mode_override = clean(request.api_mode).or_else(|| {
+        if is_active {
+            config.configured_api_mode.clone()
+        } else {
+            None
+        }
+    });
 
     let profile = ProviderProfile {
         id: provider_id.to_string(),
@@ -324,6 +351,7 @@ fn resolve_known_provider(
             model: None,
             base_url: None,
             api_key: api_key_override,
+            api_mode: api_mode_override,
         },
         true,
     )
@@ -379,8 +407,8 @@ fn resolve_from_profile(
         .unwrap_or_else(|| default_model(&profile.kind).to_string());
 
     let (api_key, auth_source) = resolve_profile_api_key(profile, request.api_key)?;
-    let api_mode =
-        infer_api_mode_for_endpoint(&profile.kind, &base_url, profile.api_mode_hint.as_deref());
+    let api_mode_hint = clean(request.api_mode).or_else(|| profile.api_mode_hint.clone());
+    let api_mode = infer_api_mode_for_endpoint(&profile.kind, &base_url, api_mode_hint.as_deref());
 
     Ok(ResolvedProviderConfig {
         id: profile.id.clone(),
@@ -528,7 +556,7 @@ fn resolve_legacy_openai(request: ProviderResolutionRequest) -> ResolvedProvider
         model: clean(request.model).unwrap_or_else(|| "gpt-4.1-mini".to_string()),
         base_url: base_url.clone(),
         api_key,
-        api_mode: infer_api_mode_for_endpoint("openai", &base_url, None),
+        api_mode: infer_api_mode_for_endpoint("openai", &base_url, request.api_mode.as_deref()),
         auth_source,
     }
 }
@@ -553,11 +581,17 @@ pub fn infer_api_mode_for_endpoint(
     base_url: &str,
     api_mode_hint: Option<&str>,
 ) -> ApiMode {
-    if matches!(
-        api_mode_hint.map(str::trim),
-        Some("responses" | "codex_responses")
-    ) {
-        return ApiMode::Responses;
+    if let Some(hint) = api_mode_hint
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        match hint {
+            "responses" | "codex_responses" => return ApiMode::Responses,
+            "chat" | "chat_completions" | "chat-completions" => {
+                return ApiMode::ChatCompletions;
+            }
+            _ => {}
+        }
     }
     if kind == "openai-codex" || kind == "copilot-acp" || base_url.contains("/backend-api/codex") {
         return ApiMode::Responses;
@@ -1072,6 +1106,39 @@ custom_providers:
         )
         .expect("resolve provider");
         assert_eq!(resolved.kind, "custom");
+        assert_eq!(resolved.api_mode.as_str(), "chat_completions");
+    }
+
+    #[test]
+    fn direct_endpoint_api_mode_can_force_responses() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let resolved = resolve_runtime_provider(
+            tmp.path(),
+            ProviderResolutionRequest {
+                base_url: Some("http://localhost:50930/v1".to_string()),
+                api_mode: Some("responses".to_string()),
+                ..ProviderResolutionRequest::default()
+            },
+        )
+        .expect("resolve provider");
+
+        assert_eq!(resolved.kind, "custom");
+        assert_eq!(resolved.api_mode.as_str(), "responses");
+    }
+
+    #[test]
+    fn official_openai_api_mode_can_force_chat_completions() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let resolved = resolve_runtime_provider(
+            tmp.path(),
+            ProviderResolutionRequest {
+                base_url: Some("https://api.openai.com/v1".to_string()),
+                api_mode: Some("chat_completions".to_string()),
+                ..ProviderResolutionRequest::default()
+            },
+        )
+        .expect("resolve provider");
+
         assert_eq!(resolved.api_mode.as_str(), "chat_completions");
     }
 }

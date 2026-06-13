@@ -76,6 +76,11 @@ impl AppConfig {
                     .api_key
                     .clone()
                     .or_else(|| env::var("OPENAI_API_KEY").ok()),
+                api_mode: cli
+                    .api_mode
+                    .clone()
+                    .or_else(|| env_value("OPENAI_API_MODE"))
+                    .or_else(|| env_value("HERMES_RS_API_MODE")),
             },
         )?;
         let auxiliary_model = load_auxiliary_model_from_env(&data_dir, &provider)?;
@@ -132,12 +137,18 @@ pub fn resolve_auxiliary_model(
     model: Option<String>,
     base_url: Option<String>,
     api_key: Option<String>,
+    api_mode: Option<String>,
 ) -> Result<Option<AuxiliaryModelConfig>> {
-    if provider.is_none() && model.is_none() && base_url.is_none() && api_key.is_none() {
+    if provider.is_none()
+        && model.is_none()
+        && base_url.is_none()
+        && api_key.is_none()
+        && api_mode.is_none()
+    {
         return Ok(None);
     }
 
-    if provider.is_some() || base_url.is_some() {
+    if provider.is_some() || base_url.is_some() || api_mode.is_some() {
         let resolved = resolve_runtime_provider(
             data_dir,
             ProviderResolutionRequest {
@@ -145,6 +156,7 @@ pub fn resolve_auxiliary_model(
                 model,
                 base_url,
                 api_key,
+                api_mode,
             },
         )?;
         return Ok(Some(AuxiliaryModelConfig::from_resolved(resolved)));
@@ -170,6 +182,7 @@ fn load_auxiliary_model_from_env(
         env_value("HERMES_RS_AUX_MODEL").or(shared.aux_model),
         env_value("HERMES_RS_AUX_BASE_URL"),
         env_value("HERMES_RS_AUX_API_KEY"),
+        env_value("HERMES_RS_AUX_API_MODE"),
     )
 }
 

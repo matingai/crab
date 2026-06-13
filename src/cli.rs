@@ -25,6 +25,8 @@ pub struct GlobalOptions {
     #[arg(long, global = true)]
     pub api_key: Option<String>,
     #[arg(long, global = true)]
+    pub api_mode: Option<String>,
+    #[arg(long, global = true)]
     pub workspace: Option<PathBuf>,
     #[arg(long, global = true)]
     pub data_dir: Option<PathBuf>,

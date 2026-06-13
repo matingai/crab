@@ -153,6 +153,7 @@ fn tool_context_from_config(config: &AppConfig) -> ToolContext {
         model: config.model.clone(),
         base_url: config.base_url.clone(),
         api_key: config.api_key.clone(),
+        api_mode: config.api_mode,
         max_iterations: config.max_iterations,
         current_session_id: config
             .session_id
@@ -693,6 +694,7 @@ fn runtime_status_context(request: RuntimeProfileRequest) -> ToolContext {
         model: "runtime-status".to_string(),
         base_url: String::new(),
         api_key: None,
+        api_mode: hermes_agent_rs::llm::ApiMode::ChatCompletions,
         max_iterations: 1,
         current_session_id: "runtime-status".to_string(),
         current_delegate_run_id: None,
@@ -712,6 +714,7 @@ async fn browser_stream_endpoint(
         model: "workspace-browser".to_string(),
         base_url: String::new(),
         api_key: None,
+        api_mode: hermes_agent_rs::llm::ApiMode::ChatCompletions,
         max_iterations: 1,
         current_session_id: request.session_id.clone(),
         current_delegate_run_id: None,
@@ -1055,6 +1058,7 @@ async fn preview_workspace_file(
         model: "workspace-preview".to_string(),
         base_url: String::new(),
         api_key: None,
+        api_mode: hermes_agent_rs::llm::ApiMode::ChatCompletions,
         max_iterations: 1,
         current_session_id: format!("workspace-preview:{display_path}"),
         current_delegate_run_id: None,

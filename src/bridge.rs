@@ -45,10 +45,12 @@ pub struct RunAgentRequest {
     pub model: Option<String>,
     pub base_url: Option<String>,
     pub api_key: Option<String>,
+    pub api_mode: Option<String>,
     pub aux_provider: Option<String>,
     pub aux_model: Option<String>,
     pub aux_base_url: Option<String>,
     pub aux_api_key: Option<String>,
+    pub aux_api_mode: Option<String>,
     pub workspace_root: PathBuf,
     pub data_dir: Option<PathBuf>,
     pub session_id: Option<String>,
@@ -65,6 +67,7 @@ pub struct ResolveProviderStatusRequest {
     pub model: Option<String>,
     pub base_url: Option<String>,
     pub api_key: Option<String>,
+    pub api_mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -123,10 +126,12 @@ pub struct SessionCommandRequest {
     pub model: Option<String>,
     pub base_url: Option<String>,
     pub api_key: Option<String>,
+    pub api_mode: Option<String>,
     pub aux_provider: Option<String>,
     pub aux_model: Option<String>,
     pub aux_base_url: Option<String>,
     pub aux_api_key: Option<String>,
+    pub aux_api_mode: Option<String>,
     pub max_iterations: Option<usize>,
     pub system_prompt_override: Option<String>,
     pub enable_shell_tool: bool,
@@ -142,10 +147,12 @@ pub struct RunCronJobRequest {
     pub model: Option<String>,
     pub base_url: Option<String>,
     pub api_key: Option<String>,
+    pub api_mode: Option<String>,
     pub aux_provider: Option<String>,
     pub aux_model: Option<String>,
     pub aux_base_url: Option<String>,
     pub aux_api_key: Option<String>,
+    pub aux_api_mode: Option<String>,
     pub max_iterations: Option<usize>,
     pub system_prompt_override: Option<String>,
     pub enable_shell_tool: bool,
@@ -167,10 +174,12 @@ pub struct RetryDelegateRunRequest {
     pub model: Option<String>,
     pub base_url: Option<String>,
     pub api_key: Option<String>,
+    pub api_mode: Option<String>,
     pub aux_provider: Option<String>,
     pub aux_model: Option<String>,
     pub aux_base_url: Option<String>,
     pub aux_api_key: Option<String>,
+    pub aux_api_mode: Option<String>,
     pub max_iterations: Option<usize>,
     pub system_prompt_override: Option<String>,
     pub enable_shell_tool: bool,
@@ -566,6 +575,7 @@ impl AgentBridge {
                 model: request.model,
                 base_url: request.base_url,
                 api_key: request.api_key,
+                api_mode: request.api_mode,
             },
         )?;
         let auth_required = !is_local_endpoint(&resolved.base_url);
@@ -882,6 +892,7 @@ fn build_run_config(request: &RunAgentRequest) -> Result<AppConfig> {
         request.model.clone(),
         request.base_url.clone(),
         request.api_key.clone(),
+        request.api_mode.clone(),
     );
     let auxiliary_model = resolve_auxiliary_model(
         &data_dir,
@@ -890,6 +901,7 @@ fn build_run_config(request: &RunAgentRequest) -> Result<AppConfig> {
         request.aux_model.clone(),
         request.aux_base_url.clone(),
         request.aux_api_key.clone(),
+        request.aux_api_mode.clone(),
     )
     .unwrap_or(None);
     let smart_model_routing = load_smart_model_routing(&data_dir).unwrap_or(None);
@@ -932,6 +944,7 @@ fn build_session_config(request: &SessionCommandRequest) -> Result<AppConfig> {
         request.model.clone(),
         request.base_url.clone(),
         request.api_key.clone(),
+        request.api_mode.clone(),
     );
     let auxiliary_model = resolve_auxiliary_model(
         &data_dir,
@@ -940,6 +953,7 @@ fn build_session_config(request: &SessionCommandRequest) -> Result<AppConfig> {
         request.aux_model.clone(),
         request.aux_base_url.clone(),
         request.aux_api_key.clone(),
+        request.aux_api_mode.clone(),
     )
     .unwrap_or(None);
     let smart_model_routing = load_smart_model_routing(&data_dir).unwrap_or(None);
@@ -982,6 +996,7 @@ fn build_cron_run_config(request: &RunCronJobRequest) -> Result<AppConfig> {
         request.model.clone(),
         request.base_url.clone(),
         request.api_key.clone(),
+        request.api_mode.clone(),
     );
     let auxiliary_model = resolve_auxiliary_model(
         &data_dir,
@@ -990,6 +1005,7 @@ fn build_cron_run_config(request: &RunCronJobRequest) -> Result<AppConfig> {
         request.aux_model.clone(),
         request.aux_base_url.clone(),
         request.aux_api_key.clone(),
+        request.aux_api_mode.clone(),
     )
     .unwrap_or(None);
     let smart_model_routing = load_smart_model_routing(&data_dir).unwrap_or(None);
@@ -1035,6 +1051,7 @@ fn build_retry_delegate_config(
         request.model.clone(),
         request.base_url.clone(),
         request.api_key.clone(),
+        request.api_mode.clone(),
     );
     let auxiliary_model = resolve_auxiliary_model(
         &data_dir,
@@ -1043,6 +1060,7 @@ fn build_retry_delegate_config(
         request.aux_model.clone(),
         request.aux_base_url.clone(),
         request.aux_api_key.clone(),
+        request.aux_api_mode.clone(),
     )
     .unwrap_or(None);
     let smart_model_routing = load_smart_model_routing(&data_dir).unwrap_or(None);
@@ -1099,6 +1117,7 @@ fn resolve_primary_provider(
     model: Option<String>,
     base_url: Option<String>,
     api_key: Option<String>,
+    api_mode: Option<String>,
 ) -> crate::providers::ResolvedProviderConfig {
     resolve_runtime_provider(
         data_dir,
@@ -1107,6 +1126,7 @@ fn resolve_primary_provider(
             model,
             base_url,
             api_key,
+            api_mode,
         },
     )
     .unwrap_or_else(|_| {
@@ -1343,10 +1363,12 @@ mod tests {
             model: None,
             base_url: None,
             api_key: None,
+            api_mode: None,
             aux_provider: None,
             aux_model: None,
             aux_base_url: None,
             aux_api_key: None,
+            aux_api_mode: None,
             max_iterations: None,
             system_prompt_override: None,
             enable_shell_tool: false,
@@ -1450,6 +1472,7 @@ mod tests {
             model: Some("qwen-coder".to_string()),
             base_url: Some("http://127.0.0.1:1234/v1".to_string()),
             api_key: None,
+            api_mode: None,
         })
         .expect("status");
 
@@ -1491,10 +1514,12 @@ mod tests {
                 model: Some("test-model".to_string()),
                 base_url: Some("mock://final-response".to_string()),
                 api_key: None,
+                api_mode: None,
                 aux_provider: None,
                 aux_model: None,
                 aux_base_url: None,
                 aux_api_key: None,
+                aux_api_mode: None,
                 max_iterations: Some(4),
                 system_prompt_override: None,
                 enable_shell_tool: false,
@@ -1556,6 +1581,7 @@ mod tests {
                 model: Some("test-model".to_string()),
                 base_url: Some(base_url.clone()),
                 api_key: None,
+                api_mode: None,
                 workspace_root: tmp.path().to_path_buf(),
                 data_dir: Some(data_dir.clone()),
                 session_id: Some(session_id.clone()),
@@ -1565,6 +1591,7 @@ mod tests {
                 aux_model: None,
                 aux_base_url: None,
                 aux_api_key: None,
+                aux_api_mode: None,
                 enable_shell_tool: true,
             },
             &mut first_sink,
@@ -1609,10 +1636,12 @@ mod tests {
                 model: Some("test-model".to_string()),
                 base_url: Some(base_url),
                 api_key: None,
+                api_mode: None,
                 aux_provider: None,
                 aux_model: None,
                 aux_base_url: None,
                 aux_api_key: None,
+                aux_api_mode: None,
                 max_iterations: Some(4),
                 system_prompt_override: None,
                 enable_shell_tool: true,
@@ -1660,6 +1689,7 @@ mod tests {
                 model: Some("test-model".to_string()),
                 base_url: Some(base_url.clone()),
                 api_key: None,
+                api_mode: None,
                 workspace_root: tmp.path().to_path_buf(),
                 data_dir: Some(data_dir.clone()),
                 session_id: Some(session_id.clone()),
@@ -1669,6 +1699,7 @@ mod tests {
                 aux_model: None,
                 aux_base_url: None,
                 aux_api_key: None,
+                aux_api_mode: None,
                 enable_shell_tool: true,
             },
             &mut RecordingBridgeEventSink::new(),
@@ -1695,10 +1726,12 @@ mod tests {
                 model: Some("test-model".to_string()),
                 base_url: Some(base_url),
                 api_key: None,
+                api_mode: None,
                 aux_provider: None,
                 aux_model: None,
                 aux_base_url: None,
                 aux_api_key: None,
+                aux_api_mode: None,
                 max_iterations: Some(4),
                 system_prompt_override: None,
                 enable_shell_tool: true,
@@ -1759,10 +1792,12 @@ mod tests {
             model: Some("test-model".to_string()),
             base_url: Some("mock://final-response".to_string()),
             api_key: None,
+            api_mode: None,
             aux_provider: None,
             aux_model: None,
             aux_base_url: None,
             aux_api_key: None,
+            aux_api_mode: None,
             workspace_root: tmp.path().to_path_buf(),
             data_dir: Some(tmp.path().join(".data")),
             session_id: Some("duplicate-run".to_string()),
@@ -1825,10 +1860,12 @@ mod tests {
                         model: Some("test-model".to_string()),
                         base_url: Some("mock://terminal-approval".to_string()),
                         api_key: None,
+                        api_mode: None,
                         aux_provider: None,
                         aux_model: None,
                         aux_base_url: None,
                         aux_api_key: None,
+                        aux_api_mode: None,
                         workspace_root: tmp.path().to_path_buf(),
                         data_dir: Some(data_dir.clone()),
                         session_id: Some(session_id.clone()),
@@ -1858,10 +1895,12 @@ mod tests {
             model: Some("test-model".to_string()),
             base_url: Some("mock://terminal-approval".to_string()),
             api_key: None,
+            api_mode: None,
             aux_provider: None,
             aux_model: None,
             aux_base_url: None,
             aux_api_key: None,
+            aux_api_mode: None,
             max_iterations: Some(4),
             system_prompt_override: None,
             enable_shell_tool: true,

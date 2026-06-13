@@ -145,6 +145,7 @@ mod tests {
             model: "test-model".to_string(),
             base_url: "https://example.invalid/v1".to_string(),
             api_key: None,
+            api_mode: crate::llm::ApiMode::ChatCompletions,
             max_iterations: 4,
             current_session_id: "browser-session".to_string(),
             current_delegate_run_id: None,

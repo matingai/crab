@@ -71,6 +71,7 @@ use std::sync::{Mutex, OnceLock};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::delegate_runs::DelegateRunRecord;
+use crate::llm::ApiMode;
 use crate::mcp::list_cached_inspections;
 use crate::plugins::{PluginHookRegistry, load_plugin_catalog};
 use crate::privacy::redact_secrets;
@@ -274,6 +275,7 @@ pub struct ToolContext {
     pub model: String,
     pub base_url: String,
     pub api_key: Option<String>,
+    pub api_mode: ApiMode,
     pub max_iterations: usize,
     pub current_session_id: String,
     pub current_delegate_run_id: Option<String>,
@@ -1043,6 +1045,7 @@ mod tests {
                     model: "test-model".to_string(),
                     base_url: "https://example.invalid/v1".to_string(),
                     api_key: None,
+                    api_mode: crate::llm::ApiMode::ChatCompletions,
                     max_iterations: 4,
                     current_session_id: "session".to_string(),
                     current_delegate_run_id: None,
@@ -1077,6 +1080,7 @@ mod tests {
             model: "test-model".to_string(),
             base_url: "https://example.invalid/v1".to_string(),
             api_key: None,
+            api_mode: crate::llm::ApiMode::ChatCompletions,
             max_iterations: 4,
             current_session_id: "session".to_string(),
             current_delegate_run_id: None,
@@ -1125,6 +1129,7 @@ mod tests {
                     model: "test-model".to_string(),
                     base_url: "https://example.invalid/v1".to_string(),
                     api_key: None,
+                    api_mode: crate::llm::ApiMode::ChatCompletions,
                     max_iterations: 4,
                     current_session_id: "session".to_string(),
                     current_delegate_run_id: None,
@@ -1161,6 +1166,7 @@ mod tests {
             model: "test-model".to_string(),
             base_url: "https://example.invalid/v1".to_string(),
             api_key: None,
+            api_mode: crate::llm::ApiMode::ChatCompletions,
             max_iterations: 4,
             current_session_id: "session".to_string(),
             current_delegate_run_id: None,
@@ -1212,6 +1218,7 @@ mod tests {
                     model: "test-model".to_string(),
                     base_url: "https://example.invalid/v1".to_string(),
                     api_key: None,
+                    api_mode: crate::llm::ApiMode::ChatCompletions,
                     max_iterations: 4,
                     current_session_id: "session".to_string(),
                     current_delegate_run_id: None,
@@ -1320,6 +1327,7 @@ mod tests {
             model: "test-model".to_string(),
             base_url: "https://example.invalid/v1".to_string(),
             api_key: None,
+            api_mode: crate::llm::ApiMode::ChatCompletions,
             max_iterations: 4,
             current_session_id: "session".to_string(),
             current_delegate_run_id: None,

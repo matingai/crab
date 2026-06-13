@@ -7,7 +7,6 @@ use uuid::Uuid;
 use crate::agent::Agent;
 use crate::config::AppConfig;
 use crate::delegate_runs::{DelegateWorkerTask, finalize_record, new_record, save_record};
-use crate::providers::infer_api_mode_for_endpoint;
 use crate::runtime_profile::RuntimeProfile;
 use crate::tools::{Tool, ToolContext, ToolRegistry, emit_delegate_run_update, truncated};
 use crate::types::{ToolDefinition, object_schema};
@@ -174,7 +173,7 @@ impl Tool for DelegateToWorkerTool {
             model: worker_model,
             base_url: ctx.base_url.clone(),
             api_key: ctx.api_key.clone(),
-            api_mode: infer_api_mode_for_endpoint(&provider_kind, &ctx.base_url, None),
+            api_mode: ctx.api_mode,
             skill_platform: ctx.skill_platform.clone(),
             workspace_root: ctx.workspace_root.clone(),
             data_dir: ctx.data_dir.clone(),
@@ -347,6 +346,7 @@ mod tests {
                     model: "test-model".to_string(),
                     base_url: "mock://final-response".to_string(),
                     api_key: None,
+                    api_mode: crate::llm::ApiMode::ChatCompletions,
                     max_iterations: 4,
                     current_session_id: "parent-session".to_string(),
                     current_delegate_run_id: None,

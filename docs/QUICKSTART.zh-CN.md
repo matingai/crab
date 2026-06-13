@@ -51,10 +51,14 @@ Crab 接受 OpenAI-compatible endpoint：
 export OPENAI_API_KEY="your-api-key"
 export OPENAI_BASE_URL="https://api.openai.com/v1"
 export HERMES_RS_MODEL="gpt-4.1-mini"
+# 可选：responses 或 chat_completions。
+export OPENAI_API_MODE="responses"
 ```
 
 如果使用 Cockpit、NewAPI 或其他网关，变量仍然保持同样形状，只需要把 `OPENAI_BASE_URL`
-指向网关的 `/v1` endpoint。
+指向网关的 `/v1` endpoint。如果网关只暴露 Responses API，设置
+`OPENAI_API_MODE=responses`；本地 chat-completions server 可以不设置，或显式设置
+`OPENAI_API_MODE=chat_completions`。
 
 再次检查：
 

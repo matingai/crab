@@ -104,6 +104,7 @@ pub fn resolve_turn_route(
             model: Some(config.cheap_model.model.clone()),
             base_url: config.cheap_model.base_url.clone(),
             api_key: explicit_api_key,
+            api_mode: None,
         },
     )?;
 

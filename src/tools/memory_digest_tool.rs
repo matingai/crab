@@ -112,6 +112,7 @@ mod tests {
                     model: "gpt-test".to_string(),
                     base_url: "mock://test".to_string(),
                     api_key: None,
+                    api_mode: crate::llm::ApiMode::ChatCompletions,
                     max_iterations: 8,
                     current_session_id: "session-a".to_string(),
                     current_delegate_run_id: None,

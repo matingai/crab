@@ -34,10 +34,12 @@ environment variables:
 export OPENAI_API_KEY="your-gateway-key"
 export OPENAI_BASE_URL="https://your-gateway.example.com/v1"
 export HERMES_RS_MODEL="your-routed-model"
+export OPENAI_API_MODE="responses"
 ```
 
 Local gateways can use a loopback URL such as `http://127.0.0.1:11434/v1` when they provide
-compatible Chat Completions or Responses-style behavior.
+compatible Chat Completions or Responses-style behavior. Crab defaults local endpoints to
+Chat Completions; set `OPENAI_API_MODE=responses` for Responses-only sidecars.
 
 ## What is the main idea behind Crab?
 

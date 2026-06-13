@@ -156,10 +156,14 @@ Crab accepts OpenAI-compatible endpoints:
 export OPENAI_API_KEY="your-api-key"
 export OPENAI_BASE_URL="https://api.openai.com/v1"
 export HERMES_RS_MODEL="gpt-4.1-mini"
+# Optional: responses or chat_completions.
+export OPENAI_API_MODE="responses"
 ```
 
 For Cockpit, NewAPI, or a local gateway, point `OPENAI_BASE_URL` at the gateway's
-OpenAI-compatible `/v1` endpoint and set `HERMES_RS_MODEL` to the routed model name.
+OpenAI-compatible `/v1` endpoint and set `HERMES_RS_MODEL` to the routed model name. Set
+`OPENAI_API_MODE=responses` for Responses-only gateways, or
+`OPENAI_API_MODE=chat_completions` for classic Chat Completions servers.
 
 ## Run Or Package The Desktop Shell From Source
 
@@ -213,7 +217,8 @@ configuration, and model outputs. Do not commit it.
 ## Troubleshooting
 
 - If `cargo install` fails, check `rustc --version` and upgrade to Rust 1.85 or newer.
-- If model calls fail, confirm `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and `HERMES_RS_MODEL`.
+- If model calls fail, confirm `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `HERMES_RS_MODEL`, and
+  `OPENAI_API_MODE`.
 - If PDF inspection or extraction fails, confirm `swift --version` works in the same terminal.
 - If the desktop shell fails to start, run `npm install` inside `desktop-shell/` and check
   that Node.js is available.

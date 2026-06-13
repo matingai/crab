@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::types::{
-    ChatChoice, ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolDefinition, ToolFunctionCall,
+    ChatChoice, ChatMessage, ChatRequest, ChatResponse, TokenUsage, ToolCall, ToolDefinition,
+    ToolFunctionCall,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -267,16 +268,29 @@ impl OpenAiCompatClient {
         tools: &[ToolDefinition],
         options: RequestOptions,
     ) -> Result<ModelResponse> {
-        self.responses_respond(
-            model,
-            messages,
-            tools,
-            RequestOptions {
-                max_output_tokens: options.max_output_tokens,
-                previous_response_id: None,
-            },
-        )
-        .await
+        let url = format!("{}/chat/completions", self.base_url);
+        let body = ChatRequest {
+            model: model.to_string(),
+            messages: messages.to_vec(),
+            tools: tools.to_vec(),
+            max_tokens: options.max_output_tokens,
+            tool_choice: (!tools.is_empty()).then(|| "auto".to_string()),
+            stream: false,
+        };
+
+        let response = self.send_json(url, &body).await?;
+        let text = response
+            .text()
+            .await
+            .context("failed to read chat completions API body")?;
+        let parsed: ChatResponse =
+            serde_json::from_str(&text).context("failed to parse chat completions API body")?;
+        let (message, usage) = parsed.into_first_message_and_usage()?;
+        Ok(ModelResponse {
+            message,
+            response_id: None,
+            usage,
+        })
     }
 
     async fn responses_respond(
@@ -317,22 +331,34 @@ impl OpenAiCompatClient {
         messages: &[ChatMessage],
         tools: &[ToolDefinition],
         options: RequestOptions,
+        on_text_delta: F,
+    ) -> Result<ModelResponse>
+    where
+        F: FnMut(&str),
+    {
+        self.chat_completions_streaming_fallback(model, messages, tools, options, on_text_delta)
+            .await
+    }
+
+    async fn chat_completions_streaming_fallback<F>(
+        &self,
+        model: &str,
+        messages: &[ChatMessage],
+        tools: &[ToolDefinition],
+        options: RequestOptions,
         mut on_text_delta: F,
     ) -> Result<ModelResponse>
     where
         F: FnMut(&str),
     {
-        self.responses_stream(
-            model,
-            messages,
-            tools,
-            RequestOptions {
-                max_output_tokens: options.max_output_tokens,
-                previous_response_id: None,
-            },
-            &mut on_text_delta,
-        )
-        .await
+        let response = self
+            .chat_completions(model, messages, tools, options)
+            .await?;
+        let text = response.message.content_text();
+        if !text.is_empty() {
+            on_text_delta(&text);
+        }
+        Ok(response)
     }
 
     async fn responses_stream<F>(
@@ -945,6 +971,9 @@ fn mock_usage() -> TokenUsage {
 mod tests {
     use super::{ApiMode, OpenAiCompatClient, RequestOptions};
     use crate::types::{ChatMessage, ChatRequest, ToolDefinition, object_schema};
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
 
     #[tokio::test]
     async fn respond_returns_message_without_chat_choice_wrapper() {
@@ -1018,6 +1047,48 @@ mod tests {
         assert_eq!(tool_calls[0].function.name, "list_files");
     }
 
+    #[tokio::test]
+    async fn chat_completions_mode_posts_to_chat_completions_endpoint() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
+        let addr = listener.local_addr().expect("local addr");
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept request");
+            let request = read_http_request(&mut stream);
+            assert!(request.starts_with("POST /chat/completions HTTP/1.1"));
+            assert!(request.contains("authorization: Bearer test-key"));
+            assert!(request.contains(r#""model":"gpt-test""#));
+            assert!(request.contains(r#""messages":[{"role":"user""#));
+
+            let body = r#"{"choices":[{"message":{"role":"assistant","content":"pong"}}],"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3}}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("write response");
+        });
+
+        let client = OpenAiCompatClient::new(
+            format!("http://{}", addr),
+            Some("test-key".to_string()),
+            ApiMode::ChatCompletions,
+        )
+        .expect("client");
+        let response = client
+            .respond("gpt-test", &[ChatMessage::user("hello")], &[])
+            .await
+            .expect("respond");
+
+        assert_eq!(response.message.content_text(), "pong");
+        assert_eq!(
+            response.usage.as_ref().and_then(|usage| usage.total_tokens),
+            Some(3)
+        );
+        handle.join().expect("server thread");
+    }
+
     #[test]
     fn chat_request_type_stays_serializable_for_compatibility() {
         let request = ChatRequest {
@@ -1031,6 +1102,37 @@ mod tests {
 
         let json = serde_json::to_string(&request).expect("serialize chat request");
         assert!(json.contains("\"messages\""));
+    }
+
+    fn read_http_request(stream: &mut std::net::TcpStream) -> String {
+        let mut buffer = Vec::new();
+        let mut chunk = [0u8; 4096];
+        let mut content_length = None;
+        loop {
+            let n = stream.read(&mut chunk).expect("read request");
+            assert!(n > 0, "client closed before request completed");
+            buffer.extend_from_slice(&chunk[..n]);
+            let text = String::from_utf8_lossy(&buffer);
+            if content_length.is_none()
+                && let Some((headers, _)) = text.split_once("\r\n\r\n")
+            {
+                content_length = headers.lines().find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse::<usize>().ok())
+                        .flatten()
+                });
+            }
+            if let (Some(length), Some(header_end)) = (
+                content_length,
+                buffer.windows(4).position(|window| window == b"\r\n\r\n"),
+            ) {
+                let body_start = header_end + 4;
+                if buffer.len().saturating_sub(body_start) >= length {
+                    return String::from_utf8_lossy(&buffer).to_string();
+                }
+            }
+        }
     }
 
     #[test]

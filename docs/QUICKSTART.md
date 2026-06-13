@@ -53,10 +53,14 @@ Crab speaks to OpenAI-compatible endpoints:
 export OPENAI_API_KEY="your-api-key"
 export OPENAI_BASE_URL="https://api.openai.com/v1"
 export HERMES_RS_MODEL="gpt-4.1-mini"
+# Optional: responses or chat_completions.
+export OPENAI_API_MODE="responses"
 ```
 
 For Cockpit, NewAPI, or another gateway, keep the same variables and point
-`OPENAI_BASE_URL` at the gateway's `/v1` endpoint.
+`OPENAI_BASE_URL` at the gateway's `/v1` endpoint. If the gateway only exposes the
+Responses API, set `OPENAI_API_MODE=responses`; local chat-completions servers can leave
+the mode unset or set `OPENAI_API_MODE=chat_completions`.
 
 Check again:
 

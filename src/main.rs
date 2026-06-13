@@ -6,6 +6,7 @@ use hermes_agent_rs::browser_backend::{
 };
 use hermes_agent_rs::browser_state::BrowserStateStore;
 use hermes_agent_rs::tools::ToolContext;
+use hermes_agent_rs::tools::WorkerModelConfig;
 use hermes_agent_rs::{
     Agent, AgentBridge, AppConfig, BridgeEventEnvelope, BridgeEventSink, Cli, Commands,
     RecordingBridgeEventSink, RecordingEventHandler, ResolveProviderStatusRequest,
@@ -169,6 +170,15 @@ fn tool_context_from_config(config: &AppConfig) -> ToolContext {
         base_url: config.base_url.clone(),
         api_key: config.api_key.clone(),
         api_mode: config.api_mode,
+        worker_model: config
+            .auxiliary_model
+            .as_ref()
+            .map(|auxiliary| WorkerModelConfig {
+                model: auxiliary.model.clone(),
+                base_url: auxiliary.base_url.clone(),
+                api_key: auxiliary.api_key.clone(),
+                api_mode: auxiliary.api_mode,
+            }),
         max_iterations: config.max_iterations,
         current_session_id: config
             .session_id
@@ -710,6 +720,7 @@ fn runtime_status_context(request: RuntimeProfileRequest) -> ToolContext {
         base_url: String::new(),
         api_key: None,
         api_mode: hermes_agent_rs::llm::ApiMode::ChatCompletions,
+        worker_model: None,
         max_iterations: 1,
         current_session_id: "runtime-status".to_string(),
         current_delegate_run_id: None,
@@ -730,6 +741,7 @@ async fn browser_stream_endpoint(
         base_url: String::new(),
         api_key: None,
         api_mode: hermes_agent_rs::llm::ApiMode::ChatCompletions,
+        worker_model: None,
         max_iterations: 1,
         current_session_id: request.session_id.clone(),
         current_delegate_run_id: None,
@@ -1074,6 +1086,7 @@ async fn preview_workspace_file(
         base_url: String::new(),
         api_key: None,
         api_mode: hermes_agent_rs::llm::ApiMode::ChatCompletions,
+        worker_model: None,
         max_iterations: 1,
         current_session_id: format!("workspace-preview:{display_path}"),
         current_delegate_run_id: None,

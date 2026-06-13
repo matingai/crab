@@ -395,7 +395,7 @@ desktop-bridge     启动桌面壳使用的 JSON bridge
 | `HERMES_RS_MAX_ITERATIONS` | 工具调用循环的最大迭代次数。 |
 | `HERMES_RS_ENABLE_SHELL` | 设置为 `1`、`true`、`yes` 或 `on` 时启用 terminal 工具。 |
 | `HERMES_RS_DEBUG_CONTEXT` | 写入上下文调试快照。 |
-| `HERMES_RS_AUX_MODEL` | 为部分摘要路径指定辅助模型。 |
+| `HERMES_RS_AUX_MODEL` | 为后台摘要和默认委派 worker 指定辅助/小模型。 |
 | `HERMES_RS_BROWSER_BACKEND` | 选择本地 browser tooling 的 backend。 |
 
 也可以在 `.hermes-agent-rs/config.yaml` 中保存本地 provider 配置：
@@ -427,6 +427,10 @@ smart_model_routing:
 
 等价环境变量包括 `HERMES_RS_SMART_MODEL`、`HERMES_RS_SMART_MODEL_BASE_URL`、
 `HERMES_RS_SMART_MODEL_API_KEY_ENV` 和 `HERMES_RS_SMART_MODEL_API_MODE`。
+
+配置 `HERMES_RS_AUX_MODEL` 后，委派 worker session 默认也会使用这个辅助/小模型，除非
+`delegate_to_worker` 调用显式传入 `worker_model`。这样主模型负责目标拆解与综合判断，边界清晰的 worker
+任务可以交给更小的执行模型。
 
 仓库内置 skills 默认启用。测试、极简本地 store 或下游嵌入场景可以显式关闭：
 

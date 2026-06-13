@@ -455,7 +455,7 @@ Useful environment variables currently keep the `HERMES_RS_*` compatibility pref
 | `HERMES_RS_MAX_ITERATIONS` | Tool-calling loop iteration limit. |
 | `HERMES_RS_ENABLE_SHELL` | Enable the terminal tool when set to `1`, `true`, `yes`, or `on`. |
 | `HERMES_RS_DEBUG_CONTEXT` | Write context debug snapshots. |
-| `HERMES_RS_AUX_MODEL` | Optional auxiliary model used by some summarization paths. |
+| `HERMES_RS_AUX_MODEL` | Optional auxiliary model for background summaries and default delegated workers. |
 | `HERMES_RS_BROWSER_BACKEND` | Browser backend selection for local browser tooling. |
 
 You can also store local provider settings in `.hermes-agent-rs/config.yaml`:
@@ -489,6 +489,11 @@ smart_model_routing:
 Equivalent environment variables are `HERMES_RS_SMART_MODEL`,
 `HERMES_RS_SMART_MODEL_BASE_URL`, `HERMES_RS_SMART_MODEL_API_KEY_ENV`, and
 `HERMES_RS_SMART_MODEL_API_MODE`.
+
+When `HERMES_RS_AUX_MODEL` is configured, delegated worker sessions also default to that
+auxiliary model unless a `delegate_to_worker` call explicitly sets `worker_model`. This
+keeps the main model in the orchestration seat while bounded worker tasks can run on a
+smaller execution model.
 
 Bundled repository skills are enabled by default. Minimal stores, tests, or downstream
 embeddings can disable them explicitly:

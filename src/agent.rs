@@ -46,7 +46,7 @@ use crate::subdir_hints::SubdirectoryHintTracker;
 use crate::title_generation::{generate_title, should_generate_title};
 use crate::todo::{TodoItem, TodoStore, summarize_todos};
 use crate::tools::{
-    ToolContext, ToolRegistry, ToolRuntimeEvent, clear_tool_event_sender,
+    ToolContext, ToolRegistry, ToolRuntimeEvent, WorkerModelConfig, clear_tool_event_sender,
     register_tool_event_sender, truncated, with_tool_runtime_scope,
 };
 use crate::types::{ChatMessage, TokenUsage, ToolDefinition};
@@ -346,6 +346,8 @@ struct DelegateWorkerToolResult {
     status: Option<String>,
     objective: Option<String>,
     focus_goal_id: Option<String>,
+    worker_model: Option<String>,
+    worker_api_mode: Option<String>,
     worker_result: Option<String>,
 }
 
@@ -378,6 +380,9 @@ struct DelegateWorkerObservation {
     tool_status: Option<String>,
     objective: String,
     focus_goal_id: Option<String>,
+    worker_model: Option<String>,
+    worker_api_mode: Option<String>,
+    worker_result: String,
     payload: DelegateWorkerResultPayload,
 }
 
@@ -435,6 +440,15 @@ impl Agent {
             base_url: config.base_url.clone(),
             api_key: config.api_key.clone(),
             api_mode: config.api_mode,
+            worker_model: config
+                .auxiliary_model
+                .as_ref()
+                .map(|auxiliary| WorkerModelConfig {
+                    model: auxiliary.model.clone(),
+                    base_url: auxiliary.base_url.clone(),
+                    api_key: auxiliary.api_key.clone(),
+                    api_mode: auxiliary.api_mode,
+                }),
             max_iterations: config.max_iterations,
             current_session_id: session.session_id.clone(),
             current_delegate_run_id: None,
@@ -7299,7 +7313,7 @@ fn summarize_tool_result(tool_name: &str, result: &str, status: &str) -> String 
                 .as_deref()
                 .map(|value| inline_clip(value, 160))
                 .unwrap_or_else(|| inline_clip(&observation.objective, 160));
-            return match observation
+            let headline = match observation
                 .tool_status
                 .as_deref()
                 .or(Some(status))
@@ -7311,6 +7325,7 @@ fn summarize_tool_result(tool_name: &str, result: &str, status: &str) -> String 
                 "failed" => format!("Delegated worker failed: {summary}"),
                 _ => format!("Delegated worker reported: {summary}"),
             };
+            return render_delegate_worker_history_summary(headline, &observation);
         }
     }
     let normalized = result.replace('\n', " ").trim().to_string();
@@ -7327,6 +7342,30 @@ fn summarize_tool_result(tool_name: &str, result: &str, status: &str) -> String 
         }
         other => format!("Tool `{tool_name}` status `{other}`: {snippet}"),
     }
+}
+
+fn render_delegate_worker_history_summary(
+    headline: String,
+    observation: &DelegateWorkerObservation,
+) -> String {
+    let mut lines = vec![headline];
+    if let Some(model) = observation.worker_model.as_deref() {
+        let api_mode = observation
+            .worker_api_mode
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .unwrap_or("unknown");
+        lines.push(format!("Worker model: {model} ({api_mode})"));
+    }
+    if !observation.objective.trim().is_empty() {
+        lines.push(format!(
+            "Worker objective: {}",
+            inline_clip(&observation.objective, 220)
+        ));
+    }
+    lines.push("Worker result:".to_string());
+    lines.push(truncated(&observation.worker_result, 2_000));
+    lines.join("\n")
 }
 
 fn tool_history_headline(tool_name: &str, result: &str, status: &str) -> String {
@@ -7543,6 +7582,15 @@ fn parse_delegate_worker_observation(result: &str) -> Option<DelegateWorkerObser
             .focus_goal_id
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty()),
+        worker_model: envelope
+            .worker_model
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        worker_api_mode: envelope
+            .worker_api_mode
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        worker_result: worker_result.to_string(),
         payload,
     })
 }
@@ -7945,6 +7993,7 @@ mod tests {
             base_url: "mock://final-response".to_string(),
             api_key: None,
             api_mode: crate::llm::ApiMode::ChatCompletions,
+            worker_model: None,
             max_iterations: 4,
             current_session_id: "test-session".to_string(),
             current_delegate_run_id: None,
@@ -8154,11 +8203,13 @@ mod tests {
 
         let delegate = summarize_tool_result_for_history(
             "delegate_to_worker",
-            r#"{"status":"completed","objective":"Inspect build","worker_result":"{\"summary\":\"Trait mismatch\"}"}"#,
+            r#"{"status":"completed","objective":"Inspect smart routing","worker_model":"gpt-5.4-mini","worker_api_mode":"responses","worker_result":"{\"summary\":\"Smart routing is implemented in src/smart_model_routing.rs by pub fn load_smart_model_routing(data_dir: &Path) -> Result<Option<SmartModelRoutingConfig>>.\"}"}"#,
             "done",
             None,
         );
         assert!(delegate.contains("Delegated worker"));
+        assert!(delegate.contains("Worker model: gpt-5.4-mini (responses)"));
+        assert!(delegate.contains("load_smart_model_routing(data_dir"));
     }
 
     #[test]

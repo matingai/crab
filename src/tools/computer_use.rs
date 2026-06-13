@@ -1913,6 +1913,7 @@ mod tests {
             base_url: "https://example.invalid/v1".to_string(),
             api_key: None,
             api_mode: crate::llm::ApiMode::ChatCompletions,
+            worker_model: None,
             max_iterations: 4,
             current_session_id: "computer-use-session".to_string(),
             current_delegate_run_id: None,

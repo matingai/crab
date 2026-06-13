@@ -266,6 +266,14 @@ pub(crate) fn emit_delegate_run_update(session_id: &str, record: &DelegateRunRec
 }
 
 #[derive(Debug, Clone)]
+pub struct WorkerModelConfig {
+    pub model: String,
+    pub base_url: String,
+    pub api_key: Option<String>,
+    pub api_mode: ApiMode,
+}
+
+#[derive(Debug, Clone)]
 pub struct ToolContext {
     pub workspace_root: PathBuf,
     pub data_dir: PathBuf,
@@ -276,6 +284,7 @@ pub struct ToolContext {
     pub base_url: String,
     pub api_key: Option<String>,
     pub api_mode: ApiMode,
+    pub worker_model: Option<WorkerModelConfig>,
     pub max_iterations: usize,
     pub current_session_id: String,
     pub current_delegate_run_id: Option<String>,
@@ -1046,6 +1055,7 @@ mod tests {
                     base_url: "https://example.invalid/v1".to_string(),
                     api_key: None,
                     api_mode: crate::llm::ApiMode::ChatCompletions,
+                    worker_model: None,
                     max_iterations: 4,
                     current_session_id: "session".to_string(),
                     current_delegate_run_id: None,
@@ -1081,6 +1091,7 @@ mod tests {
             base_url: "https://example.invalid/v1".to_string(),
             api_key: None,
             api_mode: crate::llm::ApiMode::ChatCompletions,
+            worker_model: None,
             max_iterations: 4,
             current_session_id: "session".to_string(),
             current_delegate_run_id: None,
@@ -1130,6 +1141,7 @@ mod tests {
                     base_url: "https://example.invalid/v1".to_string(),
                     api_key: None,
                     api_mode: crate::llm::ApiMode::ChatCompletions,
+                    worker_model: None,
                     max_iterations: 4,
                     current_session_id: "session".to_string(),
                     current_delegate_run_id: None,
@@ -1167,6 +1179,7 @@ mod tests {
             base_url: "https://example.invalid/v1".to_string(),
             api_key: None,
             api_mode: crate::llm::ApiMode::ChatCompletions,
+            worker_model: None,
             max_iterations: 4,
             current_session_id: "session".to_string(),
             current_delegate_run_id: None,
@@ -1219,6 +1232,7 @@ mod tests {
                     base_url: "https://example.invalid/v1".to_string(),
                     api_key: None,
                     api_mode: crate::llm::ApiMode::ChatCompletions,
+                    worker_model: None,
                     max_iterations: 4,
                     current_session_id: "session".to_string(),
                     current_delegate_run_id: None,
@@ -1328,6 +1342,7 @@ mod tests {
             base_url: "https://example.invalid/v1".to_string(),
             api_key: None,
             api_mode: crate::llm::ApiMode::ChatCompletions,
+            worker_model: None,
             max_iterations: 4,
             current_session_id: "session".to_string(),
             current_delegate_run_id: None,

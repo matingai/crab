@@ -64,6 +64,8 @@ python3 scripts/agent-loop-eval.py \
 Extended cases include:
 
 - `computer_use_status`: asks the model to call the read-only `computer_use` status action.
+- `delegated_worker`: asks the main model to call `delegate_to_worker` and verifies that the
+  child worker session uses the configured small model.
 - `browser_local_page`: asks the model to navigate to `https://example.com` and inspect the page.
 
 These cases are useful for smoke testing, but a failure can indicate missing local permissions,
@@ -95,6 +97,7 @@ For the desired "main model thinks, small model executes" profile, the key signa
 ```text
 direct_simple -> routed_model=gpt-5.4-mini, effective_tool_definition_count=0
 workspace_tool/code_navigation -> routed_model=gpt-5.5, tool_call_count>=1
+delegated_worker -> parent routed_model=gpt-5.5, child worker model=gpt-5.4-mini
 ```
 
 That means the control loop is conserving the main model for judgment-heavy work while allowing

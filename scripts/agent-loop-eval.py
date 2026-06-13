@@ -33,6 +33,7 @@ class EvalCase:
     response_contains: str | None = None
     min_tool_calls: int = 0
     required_tool: str | None = None
+    expected_worker_model: str | None = None
     max_iterations: int = 4
     enable_shell: bool = False
 
@@ -75,9 +76,27 @@ CASES: tuple[EvalCase, ...] = (
             "whether computer control appears available."
         ),
         expect_route="primary",
+        response_contains="load_smart_model_routing",
         min_tool_calls=1,
         required_tool="computer_use",
         max_iterations=4,
+    ),
+    EvalCase(
+        name="delegated_worker",
+        suite="extended",
+        prompt=(
+            "Use delegate_to_worker to assign a bounded worker task: find where smart model "
+            "routing decides whether to use the small model and report the per-turn decision "
+            "function that produces the route. Pass max_iterations=3, context_access=brief, and "
+            "allowed_tools=list_files,search_files,read_file. After the worker returns, "
+            "summarize the worker result in one sentence without more tools."
+        ),
+        expect_route="primary",
+        response_contains="resolve_turn_route",
+        min_tool_calls=1,
+        required_tool="delegate_to_worker",
+        expected_worker_model="small",
+        max_iterations=5,
     ),
     EvalCase(
         name="browser_local_page",
@@ -237,6 +256,34 @@ def collect_context_snapshots(data_dir: Path, session_id: str | None) -> list[di
     return snapshots
 
 
+def collect_delegate_records(data_dir: Path) -> list[dict[str, Any]]:
+    directory = data_dir / "runtime" / "delegate-runs"
+    if not directory.is_dir():
+        return []
+    records: list[dict[str, Any]] = []
+    for path in sorted(directory.glob("*.json")):
+        try:
+            item = json.loads(path.read_text(encoding="utf-8"))
+            item["_file"] = str(path)
+            records.append(item)
+        except json.JSONDecodeError:
+            continue
+    return records
+
+
+def collect_delegate_worker_models(data_dir: Path, records: list[dict[str, Any]]) -> list[str]:
+    models: list[str] = []
+    for record in records:
+        session_id = record.get("session_id")
+        if not session_id:
+            continue
+        session = collect_session(data_dir, session_id)
+        model = (session or {}).get("model")
+        if model:
+            models.append(model)
+    return models
+
+
 def event_items(payload: dict[str, Any] | None, event_type: str) -> list[dict[str, Any]]:
     events = payload.get("events", []) if payload else []
     return [event for event in events if event.get("type") == event_type]
@@ -261,6 +308,8 @@ def evaluate_case(
     payload: dict[str, Any] | None,
     session: dict[str, Any] | None,
     snapshots: list[dict[str, Any]],
+    delegate_records: list[dict[str, Any]],
+    delegate_worker_models: list[str],
 ) -> tuple[bool, list[str], dict[str, Any]]:
     reasons: list[str] = []
     preview = payload.get("preview", payload) if payload else {}
@@ -300,6 +349,15 @@ def evaluate_case(
     if not args.preview_only and case.required_tool and case.required_tool not in tool_names:
         reasons.append(f"required tool {case.required_tool!r} was not called")
 
+    if not args.preview_only and case.expected_worker_model:
+        expected_model = (
+            args.small_model if case.expected_worker_model == "small" else case.expected_worker_model
+        )
+        if expected_model not in delegate_worker_models:
+            reasons.append(
+                f"expected delegated worker model {expected_model!r}, saw {delegate_worker_models}"
+            )
+
     prompt_tokens = sum((event.get("prompt_tokens") or 0) for event in model_finishes)
     completion_tokens = sum((event.get("completion_tokens") or 0) for event in model_finishes)
     total_tokens = sum((event.get("total_tokens") or 0) for event in model_finishes)
@@ -322,6 +380,8 @@ def evaluate_case(
         "tool_call_count": len(tool_names),
         "tool_names": tool_names,
         "tool_finish_count": len(tool_finishes),
+        "delegate_run_count": len(delegate_records),
+        "delegate_worker_models": delegate_worker_models,
         "prompt_tokens": prompt_tokens or None,
         "completion_tokens": completion_tokens or None,
         "total_tokens": total_tokens,
@@ -341,14 +401,14 @@ def write_reports(root: Path, results: list[dict[str, Any]]) -> None:
         f"- Passed: {sum(1 for item in results if item['ok'])}",
         f"- Failed: {sum(1 for item in results if not item['ok'])}",
         "",
-        "| Case | OK | Routed model | Effective schemas | Tool calls | Projected tokens | Provider tokens | Notes |",
-        "| --- | --- | --- | ---: | ---: | ---: | ---: | --- |",
+        "| Case | OK | Routed model | Effective schemas | Tool calls | Worker models | Projected tokens | Provider tokens | Notes |",
+        "| --- | --- | --- | ---: | ---: | --- | ---: | ---: | --- |",
     ]
     for item in results:
         notes = "; ".join(item["reasons"]) if item["reasons"] else ""
-        provider_tokens = item["total_tokens"] if item["total_tokens"] is not None else ""
+        provider_tokens = item.get("total_tokens") if item.get("total_tokens") is not None else ""
         lines.append(
-            "| {name} | {ok} | {model} | {schemas} | {tools} | {projected} | {provider_tokens} | {notes} |".format(
+            "| {name} | {ok} | {model} | {schemas} | {tools} | {workers} | {projected} | {provider_tokens} | {notes} |".format(
                 name=item["name"],
                 ok="yes" if item["ok"] else "no",
                 model=item.get("routed_model") or "",
@@ -356,6 +416,7 @@ def write_reports(root: Path, results: list[dict[str, Any]]) -> None:
                 if item.get("effective_tool_definition_count") is not None
                 else "",
                 tools=item.get("tool_call_count") or 0,
+                workers=", ".join(item.get("delegate_worker_models") or []),
                 projected=item.get("projected_tokens") or "",
                 provider_tokens=provider_tokens,
                 notes=notes.replace("|", "\\|"),
@@ -398,7 +459,18 @@ def main() -> int:
         session_id = preview.get("session_id") if isinstance(preview, dict) else None
         session = collect_session(data_dir, session_id)
         snapshots = collect_context_snapshots(data_dir, session_id)
-        ok, _reasons, metrics = evaluate_case(case, args, proc, payload, session, snapshots)
+        delegate_records = collect_delegate_records(data_dir)
+        delegate_worker_models = collect_delegate_worker_models(data_dir, delegate_records)
+        ok, _reasons, metrics = evaluate_case(
+            case,
+            args,
+            proc,
+            payload,
+            session,
+            snapshots,
+            delegate_records,
+            delegate_worker_models,
+        )
         metrics["data_dir"] = str(data_dir)
         metrics["session_id"] = session_id
         metrics["stderr_preview"] = proc.stderr[-1000:]

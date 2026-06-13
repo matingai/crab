@@ -78,7 +78,9 @@ Crab also supports a small-model lane for simple turns. When smart routing class
 message as short and tool-free, the turn can use a cheaper model and send zero tool
 schemas. That keeps routine acknowledgements, tiny rewrites, and direct answers from
 paying the full orchestration cost, while tool-grounded or goal-heavy work remains on the
-main model.
+main model. Delegated worker sessions can also default to the configured auxiliary model,
+so the main model can hold the goal and integration judgment while bounded worker tasks
+run on a smaller execution model.
 
 Approval boundaries apply across equivalent execution surfaces. A destructive shell
 fragment should pause whether it arrives through the terminal tool or through a local

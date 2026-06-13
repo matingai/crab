@@ -144,10 +144,7 @@ impl Tool for DelegateToWorkerTool {
             .max_iterations
             .unwrap_or(5)
             .clamp(1, ctx.max_iterations.min(8));
-        let worker_model = args
-            .worker_model
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| ctx.model.clone());
+        let worker_runtime = resolve_worker_runtime(args.worker_model.as_deref(), ctx);
         let mut record = new_record(
             &ctx.current_session_id,
             ctx.current_delegate_run_id.as_deref(),
@@ -170,10 +167,10 @@ impl Tool for DelegateToWorkerTool {
             provider_id: ctx.provider_id.clone(),
             provider_label: ctx.provider_id.clone(),
             provider_kind: provider_kind.clone(),
-            model: worker_model,
-            base_url: ctx.base_url.clone(),
-            api_key: ctx.api_key.clone(),
-            api_mode: ctx.api_mode,
+            model: worker_runtime.model.clone(),
+            base_url: worker_runtime.base_url.clone(),
+            api_key: worker_runtime.api_key.clone(),
+            api_mode: worker_runtime.api_mode,
             skill_platform: ctx.skill_platform.clone(),
             workspace_root: ctx.workspace_root.clone(),
             data_dir: ctx.data_dir.clone(),
@@ -217,6 +214,8 @@ impl Tool for DelegateToWorkerTool {
             "delegate_run_id": record.id,
             "delegate_session_id": session_id,
             "status": record.status,
+            "worker_model": worker_runtime.model,
+            "worker_api_mode": worker_runtime.api_mode.as_str(),
             "objective": worker_task.objective,
             "focus_goal_id": worker_task.focus_goal_id,
             "allowed_tools": allowed_tools,
@@ -226,6 +225,46 @@ impl Tool for DelegateToWorkerTool {
             "worker_result": truncated(response, 12_000),
         }))
         .context("failed to serialize delegate_to_worker response")
+    }
+}
+
+struct ResolvedWorkerRuntime {
+    model: String,
+    base_url: String,
+    api_key: Option<String>,
+    api_mode: crate::llm::ApiMode,
+}
+
+fn resolve_worker_runtime(
+    worker_model_override: Option<&str>,
+    ctx: &ToolContext,
+) -> ResolvedWorkerRuntime {
+    if let Some(worker_model) = worker_model_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return ResolvedWorkerRuntime {
+            model: worker_model.to_string(),
+            base_url: ctx.base_url.clone(),
+            api_key: ctx.api_key.clone(),
+            api_mode: ctx.api_mode,
+        };
+    }
+
+    if let Some(worker_model) = ctx.worker_model.as_ref() {
+        return ResolvedWorkerRuntime {
+            model: worker_model.model.clone(),
+            base_url: worker_model.base_url.clone(),
+            api_key: worker_model.api_key.clone(),
+            api_mode: worker_model.api_mode,
+        };
+    }
+
+    ResolvedWorkerRuntime {
+        model: ctx.model.clone(),
+        base_url: ctx.base_url.clone(),
+        api_key: ctx.api_key.clone(),
+        api_mode: ctx.api_mode,
     }
 }
 
@@ -316,9 +355,9 @@ fn build_worker_prompt(task: &DelegateWorkerTask) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::DelegateToWorkerTool;
+    use super::{DelegateToWorkerTool, resolve_worker_runtime};
     use crate::delegate_runs::list_records;
-    use crate::tools::{Tool, ToolContext};
+    use crate::tools::{Tool, ToolContext, WorkerModelConfig};
     use serde_json::json;
 
     #[tokio::test]
@@ -347,6 +386,7 @@ mod tests {
                     base_url: "mock://final-response".to_string(),
                     api_key: None,
                     api_mode: crate::llm::ApiMode::ChatCompletions,
+                    worker_model: None,
                     max_iterations: 4,
                     current_session_id: "parent-session".to_string(),
                     current_delegate_run_id: None,
@@ -371,5 +411,44 @@ mod tests {
                 .iter()
                 .any(|item| item == "read_delegate_context")
         );
+    }
+
+    #[test]
+    fn worker_runtime_defaults_to_auxiliary_worker_model() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let ctx = ToolContext {
+            workspace_root: tmp.path().to_path_buf(),
+            data_dir: tmp.path().join(".data"),
+            shell_enabled: false,
+            skill_platform: "cli".to_string(),
+            provider_id: "openai".to_string(),
+            model: "gpt-5.5".to_string(),
+            base_url: "https://primary.example/v1".to_string(),
+            api_key: Some("primary-key".to_string()),
+            api_mode: crate::llm::ApiMode::Responses,
+            worker_model: Some(WorkerModelConfig {
+                model: "gpt-5.4-mini".to_string(),
+                base_url: "https://worker.example/v1".to_string(),
+                api_key: Some("worker-key".to_string()),
+                api_mode: crate::llm::ApiMode::ChatCompletions,
+            }),
+            max_iterations: 4,
+            current_session_id: "parent-session".to_string(),
+            current_delegate_run_id: None,
+            delegate_depth: 0,
+        };
+
+        let runtime = resolve_worker_runtime(None, &ctx);
+
+        assert_eq!(runtime.model, "gpt-5.4-mini");
+        assert_eq!(runtime.base_url, "https://worker.example/v1");
+        assert_eq!(runtime.api_key.as_deref(), Some("worker-key"));
+        assert_eq!(runtime.api_mode, crate::llm::ApiMode::ChatCompletions);
+
+        let overridden = resolve_worker_runtime(Some("gpt-worker-override"), &ctx);
+        assert_eq!(overridden.model, "gpt-worker-override");
+        assert_eq!(overridden.base_url, "https://primary.example/v1");
+        assert_eq!(overridden.api_key.as_deref(), Some("primary-key"));
+        assert_eq!(overridden.api_mode, crate::llm::ApiMode::Responses);
     }
 }

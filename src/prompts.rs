@@ -36,6 +36,7 @@ const TOOL_USE_GUIDANCE: &str = r#"Use tools to verify state instead of guessing
 - Automation: prefer `execute_code`; use `terminal` only when shell is clearly shortest.
 - Optional prior solve/process memory is not preloaded; load it on demand with `context_module` when needed.
 - Keep only category awareness for office/pdf/memory/skills/MCP/delegation until relevant.
+- Use the fewest tool calls that can verify the answer; once you have enough evidence, stop searching and respond.
 - Do not invent file contents or command output."#;
 
 const BROWSER_GUIDANCE: &str = r#"For live websites, prefer browser tools.

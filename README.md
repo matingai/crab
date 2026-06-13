@@ -142,6 +142,8 @@ SmartScreen may show warnings until code signing and notarization are added. See
   state.
 - [Agent Loop](docs/AGENT_LOOP.md): goal-state reasoning, delegation, tool evidence, and
   recovery.
+- [Agent Loop Eval](docs/AGENT_LOOP_EVAL.md): CLI evals for main-model/small-model
+  routing, tool payloads, and grounded loop behavior.
 - [Install Guide](docs/INSTALL.md): source installation, `cargo install`, provider setup,
   and desktop shell startup.
 - [Quickstart](docs/QUICKSTART.md): the shortest path from install to doctor, no-key
@@ -194,6 +196,9 @@ The loop is designed around these ideas:
 - **Delegation to submodels/workers**: bounded subtasks such as code exploration,
   verification, document drafting, browser research, or alternative solution search can be
   delegated to worker runs or auxiliary models, then read back and reconciled.
+- **Smart small-model execution**: simple turns can route to a cheaper model while sending
+  zero tool schemas, preserving the main model for goal framing, tradeoff judgment, and
+  tool-grounded work.
 - **Context before action**: each turn rebuilds the model input from project instructions,
   recent conversation history, recalled memory, active skills, todos, goal state, runtime
   profile, and optional debug/context modules. Directory-specific instruction files are
@@ -467,6 +472,23 @@ model:
 Official OpenAI endpoints default to the Responses API. Local OpenAI-compatible endpoints
 default to Chat Completions unless `api_mode`, `OPENAI_API_MODE`, or `--api-mode` says
 otherwise. Use `responses` for Responses-only gateways such as Codex/Cockpit sidecars.
+
+Optional smart routing can reserve the main model for complex, tool-grounded work while
+sending simple turns to a cheaper model:
+
+```yaml
+smart_model_routing:
+  enabled: true
+  cheap_model:
+    model: gpt-5.4-mini
+    base_url: http://localhost:50930/v1
+    api_key_env: OPENAI_API_KEY
+    api_mode: responses
+```
+
+Equivalent environment variables are `HERMES_RS_SMART_MODEL`,
+`HERMES_RS_SMART_MODEL_BASE_URL`, `HERMES_RS_SMART_MODEL_API_KEY_ENV`, and
+`HERMES_RS_SMART_MODEL_API_MODE`.
 
 Bundled repository skills are enabled by default. Minimal stores, tests, or downstream
 embeddings can disable them explicitly:

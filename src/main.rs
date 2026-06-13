@@ -8,10 +8,10 @@ use hermes_agent_rs::browser_state::BrowserStateStore;
 use hermes_agent_rs::tools::ToolContext;
 use hermes_agent_rs::{
     Agent, AgentBridge, AppConfig, BridgeEventEnvelope, BridgeEventSink, Cli, Commands,
-    RecordingBridgeEventSink, ResolveProviderStatusRequest, RetryDelegateRunRequest,
-    RunAgentRequest, RunCronJobRequest, RuntimeProfile, RuntimeStatus as RuntimeStatusView,
-    SaveCronJobRequest, SessionCommandRequest, build_doctor_report, build_semantic_memory_digest,
-    load_session_for_semantic_digest,
+    RecordingBridgeEventSink, RecordingEventHandler, ResolveProviderStatusRequest,
+    RetryDelegateRunRequest, RunAgentRequest, RunCronJobRequest, RuntimeProfile,
+    RuntimeStatus as RuntimeStatusView, SaveCronJobRequest, SessionCommandRequest,
+    build_doctor_report, build_semantic_memory_digest, load_session_for_semantic_digest,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -111,14 +111,29 @@ async fn main() -> Result<()> {
             let mut agent = Agent::new(config)?;
             let preview = agent.debug_context_preview(&debug.prompt).await?;
             if debug.execute {
-                let assistant_response = agent.run_prompt(&debug.prompt).await?;
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&json!({
-                        "preview": preview,
-                        "assistant_response": assistant_response,
-                    }))?
-                );
+                if debug.events {
+                    let mut handler = RecordingEventHandler::new();
+                    let assistant_response = agent
+                        .run_prompt_with_handler(&debug.prompt, &mut handler)
+                        .await?;
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&json!({
+                            "preview": preview,
+                            "assistant_response": assistant_response,
+                            "events": handler.into_events(),
+                        }))?
+                    );
+                } else {
+                    let assistant_response = agent.run_prompt(&debug.prompt).await?;
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&json!({
+                            "preview": preview,
+                            "assistant_response": assistant_response,
+                        }))?
+                    );
+                }
             } else {
                 println!("{}", serde_json::to_string_pretty(&preview)?);
             }

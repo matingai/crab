@@ -15,6 +15,8 @@ evidence, and exposes the whole execution as a stream of structured events.
   state fit together.
 - [Agent Loop](AGENT_LOOP.md): the core reasoning loop, goal tracking, tool protocol, and
   worker delegation model.
+- [Agent Loop Eval](AGENT_LOOP_EVAL.md): CLI evals for main-model/small-model routing,
+  effective tool payloads, and tool-grounded loop behavior.
 - [Computer Use](COMPUTER_USE.md): macOS Accessibility permission checks and the first
   native desktop snapshot surface.
 - [Computer Use 中文版](COMPUTER_USE.zh-CN.md): Chinese guide for the Accessibility-backed

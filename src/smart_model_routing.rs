@@ -22,6 +22,7 @@ pub struct SmartModelTarget {
     pub base_url: Option<String>,
     pub api_key: Option<String>,
     pub api_key_env: Option<String>,
+    pub api_mode: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -104,7 +105,7 @@ pub fn resolve_turn_route(
             model: Some(config.cheap_model.model.clone()),
             base_url: config.cheap_model.base_url.clone(),
             api_key: explicit_api_key,
-            api_mode: None,
+            api_mode: config.cheap_model.api_mode.clone(),
         },
     )?;
 
@@ -163,6 +164,7 @@ fn parse_target(value: &Value) -> Option<SmartModelTarget> {
         base_url,
         api_key: mapping_string(map, "api_key"),
         api_key_env: mapping_string(map, "api_key_env"),
+        api_mode: mapping_string(map, "api_mode"),
     })
 }
 
@@ -184,6 +186,7 @@ fn apply_env_overrides(
             base_url: None,
             api_key: None,
             api_key_env: None,
+            api_mode: None,
         },
     });
 
@@ -207,6 +210,9 @@ fn apply_env_overrides(
     }
     if let Some(value) = env_string("HERMES_RS_SMART_MODEL_API_KEY_ENV") {
         config.cheap_model.api_key_env = Some(value);
+    }
+    if let Some(value) = env_string("HERMES_RS_SMART_MODEL_API_MODE") {
+        config.cheap_model.api_mode = Some(value);
     }
 
     let target_valid = !config.cheap_model.model.trim().is_empty()
@@ -313,6 +319,7 @@ mod tests {
                 base_url: None,
                 api_key: None,
                 api_key_env: None,
+                api_mode: None,
             },
         };
 
@@ -339,6 +346,7 @@ mod tests {
   cheap_model:
     provider: openai
     model: gpt-4.1-nano
+    api_mode: responses
 "#,
         )
         .expect("write config");
@@ -350,6 +358,7 @@ mod tests {
         assert_eq!(config.max_simple_words, 12);
         assert_eq!(config.cheap_model.provider.as_deref(), Some("openai"));
         assert_eq!(config.cheap_model.model, "gpt-4.1-nano");
+        assert_eq!(config.cheap_model.api_mode.as_deref(), Some("responses"));
     }
 
     #[test]
@@ -364,6 +373,7 @@ mod tests {
                 base_url: Some("mock://final-response".to_string()),
                 api_key: None,
                 api_key_env: None,
+                api_mode: Some("responses".to_string()),
             },
         };
 
@@ -373,5 +383,6 @@ mod tests {
         assert_eq!(route.reason, "simple_turn");
         assert_eq!(route.runtime.model, "gpt-4.1-nano");
         assert_eq!(route.runtime.base_url, "mock://final-response");
+        assert_eq!(route.runtime.api_mode.as_str(), "responses");
     }
 }

@@ -49,7 +49,7 @@ use crate::tools::{
     ToolContext, ToolRegistry, ToolRuntimeEvent, clear_tool_event_sender,
     register_tool_event_sender, truncated, with_tool_runtime_scope,
 };
-use crate::types::{ChatMessage, TokenUsage};
+use crate::types::{ChatMessage, TokenUsage, ToolDefinition};
 use crate::wiki_store::WikiStore;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, sleep, timeout};
@@ -135,9 +135,13 @@ pub struct ContextPreviewStats {
 pub struct ContextPreview {
     pub session_id: String,
     pub user_input: String,
+    pub routed_model: String,
+    pub routed_api_mode: String,
+    pub routed_reason: Option<String>,
     pub projected_tokens: usize,
     pub request_budget_tokens: usize,
     pub tool_definition_count: usize,
+    pub effective_tool_definition_count: usize,
     pub matched_skills: Vec<String>,
     pub messages: Vec<ChatMessage>,
     pub injections: Vec<ContextPreviewInjection>,
@@ -2059,13 +2063,26 @@ impl Agent {
             let (messages, injection_stats, projected_tokens) = self
                 .prepare_turn_messages_with_budget(&mut handler, system_prompt, &injections)
                 .await?;
+            let route = self.select_turn_model_runtime(1, user_input, &messages)?;
+            let tool_definition_count = self.tools.primary_model_definitions().len();
+            let primary_tool_definitions =
+                self.primary_tool_definitions_for_turn(user_input, &progress);
+            let effective_tool_definition_count = if route.uses_primary {
+                primary_tool_definitions.len()
+            } else {
+                0
+            };
 
             Ok::<ContextPreview, anyhow::Error>(ContextPreview {
                 session_id: self.session.session_id.clone(),
                 user_input: user_input.to_string(),
+                routed_model: route.model.clone(),
+                routed_api_mode: route.api_mode.as_str().to_string(),
+                routed_reason: route.routed_label.as_deref().map(|label| label.to_string()),
                 projected_tokens,
                 request_budget_tokens: self.request_context_budget_tokens(),
-                tool_definition_count: self.tools.primary_model_definitions().len(),
+                tool_definition_count,
+                effective_tool_definition_count,
                 matched_skills: matched_skill_labels,
                 messages,
                 injections: injections
@@ -2371,8 +2388,6 @@ impl Agent {
         handler: &mut dyn EventHandler,
         mut progress: TurnProgress,
     ) -> Result<String> {
-        let tool_definitions = self.tools.primary_model_definitions();
-
         for iteration in 1..=self.config.max_iterations {
             self.check_stop_requested_in_phase(handler, "iteration_preflight")?;
             info!("starting agent iteration {iteration}");
@@ -2381,6 +2396,7 @@ impl Agent {
                 iteration,
                 max_iterations: self.config.max_iterations,
             });
+            let tool_definitions = self.primary_tool_definitions_for_turn(user_input, &progress);
             if should_run_context_compression_before_iteration(iteration) {
                 let background_client = self.background_client();
                 let background_model = self.background_model();
@@ -3449,6 +3465,11 @@ impl Agent {
                 message: label,
             });
         }
+        let initial_tool_definitions = if runtime.uses_primary {
+            tool_definitions
+        } else {
+            &[]
+        };
         self.persist_debug_context_snapshot(
             "assistant_request",
             Some(iteration),
@@ -3458,10 +3479,15 @@ impl Agent {
             &messages,
             None,
             None,
-            tool_definitions.len(),
+            initial_tool_definitions.len(),
         );
 
         loop {
+            let active_tool_definitions = if runtime.uses_primary {
+                tool_definitions
+            } else {
+                &[]
+            };
             let mut request_options = self.take_request_options();
             request_options.previous_response_id =
                 self.response_continuation_id_for_runtime(&runtime);
@@ -3474,7 +3500,7 @@ impl Agent {
                 model: runtime.model.clone(),
                 api_mode: runtime.api_mode.as_str().to_string(),
                 message_count: messages.len(),
-                tool_count: tool_definitions.len(),
+                tool_count: active_tool_definitions.len(),
                 output_budget_tokens,
                 uses_response_continuation,
             });
@@ -3484,7 +3510,7 @@ impl Agent {
                 .respond_stream_with_options(
                     &runtime.model,
                     &messages,
-                    tool_definitions,
+                    active_tool_definitions,
                     request_options.clone(),
                     |delta| {
                         if !delta.is_empty() {
@@ -3507,7 +3533,7 @@ impl Agent {
                         .respond_with_options(
                             &runtime.model,
                             &messages,
-                            tool_definitions,
+                            active_tool_definitions,
                             request_options,
                         )
                         .await
@@ -3585,7 +3611,7 @@ impl Agent {
                         &messages,
                         None,
                         None,
-                        tool_definitions.len(),
+                        active_tool_definitions.len(),
                     );
                     recovery_attempts += 1;
                 }
@@ -4018,6 +4044,39 @@ impl Agent {
                 "failed to write context debug snapshot {}: {error:#}",
                 path.display()
             );
+        }
+    }
+
+    fn primary_tool_definitions_for_turn(
+        &self,
+        user_input: &str,
+        progress: &TurnProgress,
+    ) -> Vec<ToolDefinition> {
+        let definitions = self.tools.primary_model_definitions();
+        let mut selected = selected_primary_tool_names_for_turn(user_input, progress);
+        let normalized_input = user_input.to_ascii_lowercase();
+
+        for definition in &definitions {
+            let name = definition.function.name.as_str();
+            if normalized_input.contains(name) {
+                selected
+                    .get_or_insert_with(BTreeSet::new)
+                    .insert(name.to_string());
+            }
+        }
+
+        let Some(selected) = selected else {
+            return definitions;
+        };
+        let filtered = definitions
+            .iter()
+            .filter(|definition| selected.contains(definition.function.name.as_str()))
+            .cloned()
+            .collect::<Vec<_>>();
+        if filtered.is_empty() {
+            definitions
+        } else {
+            filtered
         }
     }
 
@@ -6958,6 +7017,277 @@ fn summarize_tool_result_for_history(
 
 fn should_run_context_compression_before_iteration(iteration: usize) -> bool {
     iteration > 1
+}
+
+fn selected_primary_tool_names_for_turn(
+    user_input: &str,
+    progress: &TurnProgress,
+) -> Option<BTreeSet<String>> {
+    let normalized = user_input.to_ascii_lowercase();
+    if mentions_any(
+        &normalized,
+        &[
+            "all tools",
+            "any tool",
+            "available tools",
+            "mcp",
+            "plugin",
+            "cron",
+            "schedule",
+            "automation",
+        ],
+    ) {
+        return None;
+    }
+
+    let mut selected = BTreeSet::new();
+    let mut matched_profile = false;
+
+    if mentions_any(
+        &normalized,
+        &[
+            "repository",
+            "workspace",
+            "code",
+            "rust",
+            "file",
+            "files",
+            "path",
+            "find",
+            "search",
+            "inspect",
+            "where",
+            "implemented",
+            "implementation",
+            "read",
+            "list_files",
+            "search_files",
+            "read_file",
+            "git",
+        ],
+    ) {
+        matched_profile = true;
+        extend_tool_names(
+            &mut selected,
+            &[
+                "goal_state",
+                "todo",
+                "delegate_to_worker",
+                "read_delegate_context",
+                "list_files",
+                "search_files",
+                "read_file",
+                "git_status",
+                "git_diff",
+                "git_log",
+            ],
+        );
+    }
+
+    if mentions_any_token(
+        &normalized,
+        &[
+            "implement",
+            "refactor",
+            "patch",
+            "edit",
+            "write",
+            "create",
+            "delete",
+            "move",
+            "rename",
+            "fix",
+            "test",
+            "build",
+            "cargo",
+            "terminal",
+            "shell",
+            "execute",
+        ],
+    ) {
+        matched_profile = true;
+        extend_tool_names(
+            &mut selected,
+            &[
+                "goal_state",
+                "todo",
+                "delegate_to_worker",
+                "read_delegate_context",
+                "list_files",
+                "search_files",
+                "read_file",
+                "git_status",
+                "git_diff",
+                "git_log",
+                "patch_file",
+                "write_file",
+                "move_file",
+                "delete_file",
+                "execute_code",
+                "terminal",
+            ],
+        );
+    }
+
+    if mentions_any(
+        &normalized,
+        &[
+            "browser",
+            "web page",
+            "website",
+            "click",
+            "selector",
+            "screenshot",
+            "browser_",
+            "http://",
+            "https://",
+        ],
+    ) {
+        matched_profile = true;
+        extend_tool_names(
+            &mut selected,
+            &[
+                "goal_state",
+                "todo",
+                "delegate_to_worker",
+                "browser_navigate",
+                "browser_snapshot",
+                "browser_find",
+                "browser_click",
+                "browser_type",
+                "browser_press",
+                "browser_scroll",
+                "browser_wait",
+                "browser_eval",
+                "browser_screenshot",
+                "browser_back",
+                "browser_forward",
+                "browser_hover",
+                "browser_select_option",
+                "browser_upload_file",
+                "browser_get_images",
+                "web_extract",
+            ],
+        );
+    }
+
+    if mentions_any(
+        &normalized,
+        &[
+            "computer_use",
+            "frontmost",
+            "desktop",
+            "accessibility",
+            "ui snapshot",
+            "native app",
+        ],
+    ) {
+        matched_profile = true;
+        extend_tool_names(
+            &mut selected,
+            &["goal_state", "todo", "delegate_to_worker", "computer_use"],
+        );
+    }
+
+    if mentions_any(
+        &normalized,
+        &[
+            "docx",
+            "xlsx",
+            "pptx",
+            "office",
+            "word",
+            "excel",
+            "powerpoint",
+            "spreadsheet",
+            "presentation",
+            "slide",
+            "slides",
+        ],
+    ) {
+        matched_profile = true;
+        extend_tool_names(
+            &mut selected,
+            &[
+                "goal_state",
+                "todo",
+                "delegate_to_worker",
+                "list_files",
+                "read_file",
+                "office_inspect",
+                "office_extract_ir",
+                "office_apply_ops",
+                "office_create",
+                "office_preview",
+                "slidev_create",
+                "slidev_preview",
+            ],
+        );
+    }
+
+    if mentions_any(&normalized, &["pdf", ".pdf"]) {
+        matched_profile = true;
+        extend_tool_names(
+            &mut selected,
+            &[
+                "goal_state",
+                "todo",
+                "delegate_to_worker",
+                "list_files",
+                "read_file",
+                "pdf_inspect",
+                "pdf_extract_ir",
+                "pdf_preview",
+            ],
+        );
+    }
+
+    for used in &progress.turn_tool_names {
+        selected.insert(used.clone());
+        if used.starts_with("browser_") {
+            extend_tool_names(
+                &mut selected,
+                &[
+                    "browser_navigate",
+                    "browser_snapshot",
+                    "browser_find",
+                    "browser_click",
+                    "browser_type",
+                    "browser_press",
+                    "browser_scroll",
+                    "browser_wait",
+                    "browser_eval",
+                    "browser_screenshot",
+                    "browser_back",
+                    "browser_forward",
+                ],
+            );
+        }
+    }
+
+    if progress.turn_tool_calls >= 5 {
+        selected.insert("skill_manage".to_string());
+    }
+
+    if matched_profile || !selected.is_empty() {
+        Some(selected)
+    } else {
+        None
+    }
+}
+
+fn extend_tool_names(selected: &mut BTreeSet<String>, names: &[&str]) {
+    selected.extend(names.iter().map(|name| (*name).to_string()));
+}
+
+fn mentions_any(text: &str, needles: &[&str]) -> bool {
+    needles.iter().any(|needle| text.contains(needle))
+}
+
+fn mentions_any_token(text: &str, needles: &[&str]) -> bool {
+    text.split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
+        .filter(|token| !token.is_empty())
+        .any(|token| needles.iter().any(|needle| token == *needle))
 }
 
 fn summarize_tool_result(tool_name: &str, result: &str, status: &str) -> String {
@@ -10192,6 +10522,7 @@ mod tests {
                 base_url: Some("mock://final-response".to_string()),
                 api_key: None,
                 api_key_env: None,
+                api_mode: None,
             },
         });
         let mut agent = Agent::new(config).expect("agent");
@@ -10208,11 +10539,42 @@ mod tests {
             AgentEvent::Nudge { kind, message, .. }
             if kind == "routing" && message.contains("gpt-4.1-nano")
         )));
+        assert!(handler.events().iter().any(|event| matches!(
+            event,
+            AgentEvent::ModelRequestStarted { model, tool_count, .. }
+            if model == "gpt-4.1-nano" && *tool_count == 0
+        )));
         assert!(!handler.events().iter().any(|event| matches!(
             event,
             AgentEvent::Nudge { kind, message, .. }
             if kind == "context" && message.contains("输出上限")
         )));
+    }
+
+    #[test]
+    fn narrows_repository_tool_profile() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let config = build_test_config("mock://final-response", tmp.path());
+        let agent = Agent::new(config).expect("agent");
+        let all_count = agent.tools.primary_model_definitions().len();
+        let progress = TurnProgress::default();
+
+        let definitions = agent.primary_tool_definitions_for_turn(
+            "Use repository tools to find where smart model routing is implemented.",
+            &progress,
+        );
+        let names = definitions
+            .iter()
+            .map(|definition| definition.function.name.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+
+        assert!(definitions.len() < all_count);
+        assert!(names.contains("goal_state"));
+        assert!(names.contains("list_files"));
+        assert!(names.contains("search_files"));
+        assert!(names.contains("read_file"));
+        assert!(!names.contains("browser_navigate"));
+        assert!(!names.contains("office_create"));
     }
 
     #[tokio::test]
@@ -10513,6 +10875,7 @@ mod tests {
                 base_url: Some("mock://final-response".to_string()),
                 api_key: None,
                 api_key_env: None,
+                api_mode: None,
             },
         });
         let mut agent = Agent::new(config).expect("agent");

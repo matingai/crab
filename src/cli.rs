@@ -66,6 +66,8 @@ pub struct DebugContextArgs {
     pub prompt: String,
     #[arg(long, default_value_t = false)]
     pub execute: bool,
+    #[arg(long, default_value_t = false)]
+    pub events: bool,
 }
 
 #[derive(Debug, Clone, Args)]
